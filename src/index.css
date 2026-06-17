@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+@theme {
+  /* ── Surfaces ──────────────────────────────── */
+  --color-canvas: #f5f6f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f8f9;
+  --color-surface-sunken: #eef0f3;
+
+  /* ── Ink / text ────────────────────────────── */
+  --color-ink: #14151a;
+  --color-ink-2: #5a5f68;
+  --color-ink-3: #868b95;
+  --color-ink-4: #a3a8b0;
+  --color-ink-5: #aeb3bb;
+  --color-hairtick: #cdd1d7;
+
+  /* ── Hairlines ─────────────────────────────── */
+  --color-line: rgba(20, 21, 26, 0.1);
+  --color-line-strong: rgba(20, 21, 26, 0.14);
+
+  /* ── Brand accent (vivid instrument red) ───── */
+  --color-brand: #f5333b;
+  --color-brand-hover: #e11f28;
+  --color-brand-soft: #fdebec;
+  --color-brand-ink: #b3161d;
+  --color-brand-2: #fa8a8f;
+
+  /* ── Semantic ──────────────────────────────── */
+  --color-good: #0f7a45;
+  --color-good-soft: #e4f3ea;
+  --color-good-ink: #0b5230;
+
+  --color-warn: #c1820f;
+  --color-warn-soft: #faf0d9;
+  --color-warn-ink: #7a510a;
+
+  --color-alert: #cf3b3b;
+  --color-alert-soft: #fbeaea;
+  --color-alert-ink: #8c2222;
+
+  --color-info: #2f63d6;
+  --color-info-soft: #e9f0fc;
+  --color-info-ink: #1d3f8c;
+
+  --color-violet: #6b4fd6;
+  --color-violet-soft: #efebfc;
+  --color-violet-ink: #3f2c8c;
+
+  /* health ramp */
+  --color-h1: #0f7a45;
+  --color-h2: #8aa81b;
+  --color-h3: #c1820f;
+  --color-h4: #d9601f;
+  --color-h5: #cf3b3b;
+
+  /* ── Radii (sharper, instrument) ───────────── */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+
+  /* ── Type ──────────────────────────────────── */
+  --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+    'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, 'SF Mono',
+    Menlo, monospace;
+
+  /* ── Shadow (very restrained) ──────────────── */
+  --shadow-card: 0 1px 2px rgba(20, 21, 26, 0.04);
+  --shadow-pop: 0 8px 28px -6px rgba(20, 21, 26, 0.16),
+    0 2px 6px rgba(20, 21, 26, 0.06);
+  --shadow-brand: 0 6px 16px -8px rgba(245, 51, 59, 0.7);
+}
+
+* {
+  border-color: var(--color-line);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* mono tabular numerals — the instrument signature */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-brand-soft);
+  color: var(--color-brand-ink);
+}
+
+/* refined scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(20, 21, 26, 0.16);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(20, 21, 26, 0.28);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* fine 24px engineering grid for the main work surface */
+.grid-bg {
+  background-image: linear-gradient(rgba(20, 21, 26, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 21, 26, 0.018) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── instrument motion ─────────────────────────── */
+@keyframes revUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes revUpSm {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes growX {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes drawerIn {
+  from {
+    opacity: 0.4;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-in {
+  animation: revUpSm 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
