@@ -102,6 +102,46 @@ function subscribe(l: () => void) {
 }
 const getSnapshot = () => state
 
+/**
+ * 真实模式：用服务端数据水合 store（业务页随后照常读 store，但反映服务端真值）。
+ * 服务端表是扁平子集，UI 需要的嵌套字段（品牌 plans/channels/thresholds 等）以 seed 为底，
+ * 服务端标量字段覆盖其上，保证既是真数据又不破坏页面所需结构。
+ */
+export async function hydrateFromServer() {
+  if (!isRealApi) return
+  try {
+    const [brands, agents, merchants, orders, settlements, tickets] = await Promise.all([
+      bizApi.brands<Partial<Brand>[]>(),
+      bizApi.agents<Partial<Agent>[]>(),
+      bizApi.merchants<Partial<MerchantAccount>[]>(),
+      bizApi.orders<Partial<Order>[]>(),
+      bizApi.settlements<Partial<Settlement>[]>(),
+      bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>(),
+    ])
+    const seedB = new Map(seedBrands.map((b) => [b.id, b]))
+    const seedA = new Map(seedAgents.map((a) => [a.id, a]))
+    const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
+    const next: StoreState = {
+      // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖
+      brands: brands.map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[],
+      agents: agents.map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[],
+      merchants: merchants.map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[],
+      // 订单/结算：服务端为准（结构与 DB 一致）
+      orders: orders as Order[],
+      settlements: settlements as Settlement[],
+      // 工单：DB 用 reason 文案；UI Complaint 形状以 seed 兜底
+      complaints: tickets.map((t) => {
+        const s = seedComplaints.find((c) => c.id === t.id)
+        return { ...(s ?? seedComplaints[0]), ...t } as Complaint
+      }),
+      activity: state.activity,
+    }
+    commit(next)
+  } catch {
+    /* 取数失败：保留本地 seed，不阻断（演示连续性） */
+  }
+}
+
 export function useStore(): StoreState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
@@ -227,6 +267,7 @@ export function refundOrder(orderId: string) {
   const activity = logActivity({ ...state, activity: logActivity(state, `订单 ${orderId} 已退款 ¥${amount}`, 'warn') }, `逆向冲账 ¥${share} → 冲减代理分润`, 'alert')
   commit({ ...state, orders, settlements, agents, activity })
   emit('order:refunded', { orderId, amount })
+  mirror(() => bizApi.refundOrder(orderId))
 }
 
 // 工单：升级 / 转派 / 关闭
@@ -234,6 +275,7 @@ export function updateTicket(ticketId: string, patch: Partial<Complaint>, note?:
   const complaints = state.complaints.map((c) => (c.id === ticketId ? { ...c, ...patch } : c))
   const activity = note ? logActivity(state, note, 'info') : state.activity
   commit({ ...state, complaints, activity })
+  mirror(() => bizApi.updateTicket(ticketId, { status: patch.status, owner: patch.owner, note }))
 }
 
 // 品牌入驻：新建（默认审核中）
@@ -284,12 +326,14 @@ export function updateBrandConfig(id: string, patch: Partial<Pick<Brand, 'feeRat
   const b = state.brands.find((x) => x.id === id)
   const activity = logActivity(state, `品牌「${b?.name ?? id}」配置已更新`, 'info')
   commit({ ...state, brands, activity })
+  mirror(() => bizApi.setBrandConfig(id, patch))
 }
 export function setBrandStatus(id: string, status: Brand['status'], label: string) {
   const brands = state.brands.map((b) => (b.id === id ? { ...b, status } : b))
   const b = state.brands.find((x) => x.id === id)
   const activity = logActivity(state, `品牌「${b?.name ?? id}」${label}`, status === 'live' ? 'good' : status === 'paused' ? 'warn' : 'info')
   commit({ ...state, brands, activity })
+  mirror(() => bizApi.setBrandStatus(id, status, label))
 }
 
 // 商户号：新增录入
@@ -327,6 +371,7 @@ export function settleAgent(id: string) {
   const activity = logActivity(state, `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款`, 'good')
   commit({ ...state, agents, activity })
   emit('agent:settled', { id, amt })
+  mirror(() => bizApi.settleAgent(id))
 }
 
 // 代理：限流 / 冻结 / 恢复

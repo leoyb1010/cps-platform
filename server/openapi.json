@@ -221,6 +221,29 @@
         "tags": [
           "business"
         ]
+      },
+      "post": {
+        "operationId": "BusinessController_addBrand",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBrandDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "新增品牌（入驻）",
+        "tags": [
+          "business"
+        ]
       }
     },
     "/agents": {
@@ -248,6 +271,29 @@
           }
         },
         "summary": "商户号/号池",
+        "tags": [
+          "business"
+        ]
+      },
+      "post": {
+        "operationId": "BusinessController_addMerchant",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMerchantDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌专属号池新增商户号",
         "tags": [
           "business"
         ]
@@ -453,6 +499,184 @@
         ]
       }
     },
+    "/agents/{id}/settle": {
+      "post": {
+        "operationId": "BusinessController_settleAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "代理提现结算（待结算清零→计入累计已结）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/brands/{id}/status": {
+      "patch": {
+        "operationId": "BusinessController_setBrandStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌上线/暂停/复审",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/brands/{id}/config": {
+      "patch": {
+        "operationId": "BusinessController_setBrandConfig",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌接入配置（费率/账期/预留/资金路径）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/orders/{id}/refund": {
+      "post": {
+        "operationId": "BusinessController_refundOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "订单退款（订单冲正→结算冲账→代理分润回收）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/tickets/{id}": {
+      "patch": {
+        "operationId": "BusinessController_updateTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketUpdateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "工单流转（状态/责任人/备注）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/config": {
+      "get": {
+        "operationId": "BusinessController_getConfig",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "读取平台配置（键值）",
+        "tags": [
+          "business"
+        ]
+      },
+      "post": {
+        "operationId": "BusinessController_setConfig",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "写入平台配置（键值，upsert）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_health",
@@ -518,6 +742,26 @@
         "properties": {}
       },
       "AgentStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "NewBrandDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BrandStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BrandConfigDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "NewMerchantDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TicketUpdateDto": {
         "type": "object",
         "properties": {}
       }

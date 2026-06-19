@@ -42,13 +42,31 @@ export const adminApi = {
   audit: (category?: string) => http.get<RemoteAudit[]>(`/audit-logs${category && category !== 'all' ? `?category=${category}` : ''}`),
 }
 
+type Ok = { ok: boolean; detail?: string }
 export const bizApi = {
-  summary: () => http.get('/summary'),
-  clearSettlement: (id: string) => http.post<{ ok: boolean; detail?: string }>(`/settlements/${id}/clear`),
-  reconcile: (id: string) => http.post<{ ok: boolean; detail?: string }>(`/settlements/${id}/reconcile`),
-  refundTicket: (id: string) => http.post<{ ok: boolean; detail?: string }>(`/tickets/${id}/refund`),
-  setMerchant: (id: string, state: string, label?: string) => http.post<{ ok: boolean; detail?: string }>(`/merchants/${id}/state`, { state, label }),
-  setAgent: (id: string, status: string) => http.post<{ ok: boolean; detail?: string }>(`/agents/${id}/status`, { status }),
+  // reads（业务页 real 模式取数）
+  summary: <T = unknown>() => http.get<T>('/summary'),
+  brands: <T = unknown>() => http.get<T>('/brands'),
+  agents: <T = unknown>() => http.get<T>('/agents'),
+  merchants: <T = unknown>() => http.get<T>('/merchants'),
+  orders: <T = unknown>() => http.get<T>('/orders'),
+  settlements: <T = unknown>() => http.get<T>('/settlements'),
+  tickets: <T = unknown>() => http.get<T>('/tickets'),
+  config: <T = unknown>() => http.get<T>('/config'),
+  // writes（store 动作镜像）
+  clearSettlement: (id: string) => http.post<Ok>(`/settlements/${id}/clear`),
+  reconcile: (id: string) => http.post<Ok>(`/settlements/${id}/reconcile`),
+  refundTicket: (id: string) => http.post<Ok>(`/tickets/${id}/refund`),
+  refundOrder: (id: string) => http.post<Ok>(`/orders/${id}/refund`),
+  updateTicket: (id: string, body: { status?: string; owner?: string; note?: string }) => http.patch<Ok>(`/tickets/${id}`, body),
+  setMerchant: (id: string, state: string, label?: string) => http.post<Ok>(`/merchants/${id}/state`, { state, label }),
+  addMerchant: (body: { brandId: string; channel: string; weight: number }) => http.post<Ok>('/merchants', body),
+  setAgent: (id: string, status: string) => http.post<Ok>(`/agents/${id}/status`, { status }),
+  settleAgent: (id: string) => http.post<Ok>(`/agents/${id}/settle`),
+  addBrand: (body: { name: string; category: string; feeRate: number; period: number; reservePct: number; path: string }) => http.post<Ok & { id?: string }>('/brands', body),
+  setBrandStatus: (id: string, status: string, label?: string) => http.patch<Ok>(`/brands/${id}/status`, { status, label }),
+  setBrandConfig: (id: string, body: { feeRate?: number; period?: number; reservePct?: number; path?: string }) => http.patch<Ok>(`/brands/${id}/config`, body),
+  setConfig: (body: Record<string, unknown>) => http.post<Ok>('/config', body),
 }
 
 type ApiState<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void }

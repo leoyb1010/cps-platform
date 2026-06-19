@@ -5,6 +5,7 @@ import { Button } from '../components/ui/primitives'
 import { Field, Input } from '../components/ui/forms'
 import { login, DEMO_USERS, ROLES } from '../lib/auth'
 import { isRealApi } from '../lib/http'
+import { hydrateFromServer } from '../lib/store'
 
 export default function Login() {
   const nav = useNavigate()
@@ -18,6 +19,7 @@ export default function Login() {
     setBusy(true)
     try {
       await login(account.trim() || 'admin', pwd || 'demo')
+      await hydrateFromServer()
       nav('/', { replace: true })
     } catch (e) {
       setErr(e instanceof Error ? e.message : '登录失败，请重试')

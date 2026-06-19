@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth, bootstrapAuth } from './lib/auth'
 import { isRealApi } from './lib/http'
+import { hydrateFromServer } from './lib/store'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -31,7 +32,10 @@ export default function App() {
   // 真实模式：启动时用 refresh cookie 静默恢复登录态，避免已登录用户被闪到登录页
   const [ready, setReady] = useState(!isRealApi)
   useEffect(() => {
-    if (isRealApi) bootstrapAuth().finally(() => setReady(true))
+    if (isRealApi)
+      bootstrapAuth()
+        .then((ok) => (ok ? hydrateFromServer() : undefined))
+        .finally(() => setReady(true))
   }, [])
   if (!ready) {
     return (
