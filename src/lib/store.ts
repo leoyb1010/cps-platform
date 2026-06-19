@@ -109,37 +109,36 @@ const getSnapshot = () => state
  */
 export async function hydrateFromServer() {
   if (!isRealApi) return
-  try {
-    const [brands, agents, merchants, orders, settlements, tickets] = await Promise.all([
-      bizApi.brands<Partial<Brand>[]>(),
-      bizApi.agents<Partial<Agent>[]>(),
-      bizApi.merchants<Partial<MerchantAccount>[]>(),
-      bizApi.orders<Partial<Order>[]>(),
-      bizApi.settlements<Partial<Settlement>[]>(),
-      bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>(),
-    ])
-    const seedB = new Map(seedBrands.map((b) => [b.id, b]))
-    const seedA = new Map(seedAgents.map((a) => [a.id, a]))
-    const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
-    const next: StoreState = {
-      // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖
-      brands: brands.map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[],
-      agents: agents.map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[],
-      merchants: merchants.map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[],
-      // 订单/结算：服务端为准（结构与 DB 一致）
-      orders: orders as Order[],
-      settlements: settlements as Settlement[],
-      // 工单：DB 用 reason 文案；UI Complaint 形状以 seed 兜底
-      complaints: tickets.map((t) => {
-        const s = seedComplaints.find((c) => c.id === t.id)
-        return { ...(s ?? seedComplaints[0]), ...t } as Complaint
-      }),
-      activity: state.activity,
-    }
-    commit(next)
-  } catch {
-    /* 取数失败：保留本地 seed，不阻断（演示连续性） */
+  // 每个集合独立取数：某集合无权限(403)则置空（用户本就看不到），
+  // 不让单个失败拖垮整体——这同时让数据级 RBAC 在 UI 自然生效。
+  const safe = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null)
+  const [brands, agents, merchants, orders, settlements, tickets] = await Promise.all([
+    safe(bizApi.brands<Partial<Brand>[]>()),
+    safe(bizApi.agents<Partial<Agent>[]>()),
+    safe(bizApi.merchants<Partial<MerchantAccount>[]>()),
+    safe(bizApi.orders<Partial<Order>[]>()),
+    safe(bizApi.settlements<Partial<Settlement>[]>()),
+    safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
+  ])
+  // 全部失败（如完全离线）：保留本地 seed，不阻断演示
+  if (!brands && !agents && !merchants && !orders && !settlements && !tickets) return
+  const seedB = new Map(seedBrands.map((b) => [b.id, b]))
+  const seedA = new Map(seedAgents.map((a) => [a.id, a]))
+  const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
+  const next: StoreState = {
+    // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖；无权限集合 → 空
+    brands: (brands ?? []).map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[],
+    agents: (agents ?? []).map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[],
+    merchants: (merchants ?? []).map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[],
+    orders: (orders ?? []) as Order[],
+    settlements: (settlements ?? []) as Settlement[],
+    complaints: (tickets ?? []).map((t) => {
+      const s = seedComplaints.find((c) => c.id === t.id)
+      return { ...(s ?? seedComplaints[0]), ...t } as Complaint
+    }),
+    activity: state.activity,
   }
+  commit(next)
 }
 
 export function useStore(): StoreState {
