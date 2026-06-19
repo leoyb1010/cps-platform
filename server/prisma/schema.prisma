@@ -1,0 +1,179 @@
+// 网易有道 CPS 平台 — 数据模型 (Prisma + SQLite)
+// 与 v4 技术方案 §9 一致：账户/RBAC/审计/组织/配置 + 核心业务实体。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── 账户 / RBAC ──────────────────────────────
+model User {
+  id           String         @id @default(cuid())
+  account      String         @unique
+  name         String
+  passwordHash String
+  roleId       String
+  role         Role           @relation(fields: [roleId], references: [id])
+  scopeType    String         @default("platform") // platform | brand | agent
+  scopeId      String?
+  status       String         @default("active") // active | disabled
+  createdAt    DateTime       @default(now())
+  sessions     RefreshToken[]
+  audits       AuditLog[]
+}
+
+model Role {
+  id          String   @id
+  name        String
+  description String   @default("")
+  permissions String // JSON array of permission keys
+  builtin     Boolean  @default(false)
+  users       User[]
+  createdAt   DateTime @default(now())
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  ua        String   @default("")
+  ip        String   @default("")
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  actorName  String   @default("系统")
+  role       String   @default("")
+  action     String // e.g. settlement.clear
+  resource   String // e.g. Settlement
+  resourceId String   @default("")
+  category   String   @default("other") // fund | risk | config | account | other
+  detail     String   @default("") // human text
+  before     String? // JSON snapshot
+  after      String? // JSON snapshot
+  ip         String   @default("")
+  ua         String   @default("")
+  at         DateTime @default(now())
+}
+
+// ── 组织 / 配置 ──────────────────────────────
+model Org {
+  id        String   @id @default("org")
+  name      String   @default("网易有道")
+  license   String   @default("")
+  logo      String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
+model Config {
+  key       String   @id
+  value     String // JSON
+  updatedAt DateTime @updatedAt
+}
+
+// ── 业务实体（核心，承袭领域模型） ──────────────
+model Brand {
+  id         String   @id
+  name       String
+  mark       String
+  category   String
+  status     String   @default("review") // live | review | paused
+  path       String   @default("direct") // direct | licensed | mixed
+  feeRate    Float
+  period     Int
+  reservePct Int
+  gmvMtd     Float    @default(0)
+  activeSubs Int      @default(0)
+  renewalRate Float   @default(0)
+  complaintRate Float @default(0)
+  joinedAt   String
+  createdAt  DateTime @default(now())
+}
+
+model Agent {
+  id            String   @id
+  name          String
+  type          String // 个人 | 企业
+  status        String   @default("active") // active | throttled | frozen | blacklist
+  creditScore   Int      @default(800)
+  spendMtd      Float    @default(0)
+  firstOrders   Int      @default(0)
+  roi           Float    @default(0)
+  renewalRate   Float    @default(0)
+  complaintRate Float    @default(0)
+  refundRate    Float    @default(0)
+  payoutPending Float    @default(0)
+  settledTotal  Float    @default(0)
+  deposit       Float    @default(0)
+  brandsCount   Int      @default(0)
+  invoicing     String   @default("灵活用工")
+  joinedAt      String
+}
+
+model MerchantAccount {
+  id            String  @id
+  brandId       String
+  channel       String // wechat | alipay | bank
+  mid           String
+  state         String  @default("healthy")
+  complaintRate Float   @default(0)
+  escalatedRate Float   @default(0)
+  chargebackRate Float  @default(0)
+  refundRate    Float   @default(0)
+  close72h      Float   @default(100)
+  gmvMtd        Float   @default(0)
+  txCount       Int     @default(0)
+  limitUsedPct  Int     @default(0)
+  weight        Int     @default(50)
+}
+
+model Order {
+  id        String   @id
+  time      String
+  brandId   String
+  agentId   String
+  channel   String
+  type      String // first | renew | refund | chargeback
+  amount    Float
+  plan      String
+  mid       String
+  createdAt DateTime @default(now())
+}
+
+model Settlement {
+  id            String @id
+  period        String
+  brandId       String
+  gross         Float
+  brandShare    Float
+  platformFee   Float
+  agentPayout   Float
+  reversal      Float  @default(0)
+  frozen        Float  @default(0)
+  status        String @default("pending")
+  reconcileDiff Float  @default(0)
+}
+
+model Ticket {
+  id        String @id
+  time      String
+  source    String
+  level     String
+  status    String
+  slaLeftMin Int
+  brandId   String
+  agentId   String
+  orderId   String
+  reason    String
+  owner     String @default("未分配")
+}

@@ -1,0 +1,73 @@
+import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
+import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import type { Request, Response } from 'express'
+import { IsString, MinLength } from 'class-validator'
+import { ConfigService } from '@nestjs/config'
+import { AuthService } from './auth.service'
+import { Public } from './auth.guard'
+import { CurrentUser, type AuthUser } from '../rbac/rbac'
+
+class LoginDto {
+  @IsString() account!: string
+  @IsString() @MinLength(1) password!: string
+}
+
+const REFRESH_COOKIE = 'cps_rt'
+
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private auth: AuthService,
+    private cfg: ConfigService,
+  ) {}
+
+  private setRefreshCookie(res: Response, raw: string) {
+    const days = Number(this.cfg.get('REFRESH_TTL_DAYS') || 14)
+    res.cookie(REFRESH_COOKIE, raw, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: this.cfg.get('NODE_ENV') === 'production',
+      maxAge: days * 86400_000,
+      path: '/auth',
+    })
+  }
+
+  @Public()
+  @Post('login')
+  @ApiOperation({ summary: '登录，返回 access token 与用户权限；refresh 走 httpOnly cookie' })
+  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const u = await this.auth.validate(dto.account, dto.password)
+    const authUser = (await this.auth.toAuthUser(u.id))!
+    const raw = await this.auth.issueRefresh(u.id, req.headers['user-agent'] || '', req.ip || '')
+    this.setRefreshCookie(res, raw)
+    return { access: this.auth.signAccess(authUser), user: authUser }
+  }
+
+  @Public()
+  @Post('refresh')
+  @ApiOperation({ summary: '用 httpOnly refresh cookie 静默换取新 access' })
+  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const raw = req.cookies?.[REFRESH_COOKIE]
+    if (!raw) throw new UnauthorizedException('无刷新令牌')
+    const { userId, refresh } = await this.auth.rotateRefresh(raw, req.headers['user-agent'] || '', req.ip || '')
+    const authUser = await this.auth.toAuthUser(userId)
+    if (!authUser) throw new UnauthorizedException('用户不存在')
+    this.setRefreshCookie(res, refresh)
+    return { access: this.auth.signAccess(authUser), user: authUser }
+  }
+
+  @Get('me')
+  @ApiOperation({ summary: '当前登录用户 + 角色 + 权限点 + 数据范围' })
+  me(@CurrentUser() user: AuthUser) {
+    return { user }
+  }
+
+  @Post('logout')
+  @ApiOperation({ summary: '登出，撤销刷新令牌' })
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    await this.auth.revokeRefresh(req.cookies?.[REFRESH_COOKIE])
+    res.clearCookie(REFRESH_COOKIE, { path: '/auth' })
+    return { ok: true }
+  }
+}

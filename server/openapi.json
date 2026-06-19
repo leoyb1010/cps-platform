@@ -1,0 +1,526 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "登录，返回 access token 与用户权限；refresh 走 httpOnly cookie",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "用 httpOnly refresh cookie 静默换取新 access",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "当前登录用户 + 角色 + 权限点 + 数据范围",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "登出，撤销刷新令牌",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/audit-logs": {
+      "get": {
+        "operationId": "AuditController_list",
+        "parameters": [
+          {
+            "name": "category",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "操作审计日志（可按类别筛选）",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/permissions": {
+      "get": {
+        "operationId": "MembersController_perms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "权限点字典",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/roles": {
+      "get": {
+        "operationId": "MembersController_roles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "角色列表（含权限点）",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/roles/{id}": {
+      "patch": {
+        "operationId": "MembersController_updateRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新角色权限（超级管理员不可改）",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/members": {
+      "get": {
+        "operationId": "MembersController_members",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "成员列表",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/members/{id}": {
+      "patch": {
+        "operationId": "MembersController_updateMember",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "更新成员角色 / 停用",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/brands": {
+      "get": {
+        "operationId": "BusinessController_brands",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌列表",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/agents": {
+      "get": {
+        "operationId": "BusinessController_agents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "代理列表",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/merchants": {
+      "get": {
+        "operationId": "BusinessController_merchants",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "商户号/号池",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/orders": {
+      "get": {
+        "operationId": "BusinessController_orders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "订单",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/settlements": {
+      "get": {
+        "operationId": "BusinessController_settlements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "结算单",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/tickets": {
+      "get": {
+        "operationId": "BusinessController_tickets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "投诉工单",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/summary": {
+      "get": {
+        "operationId": "BusinessController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "经营总览汇总（风险条/待办派生）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/settlements/{id}/clear": {
+      "post": {
+        "operationId": "BusinessController_clear",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "发起结算（待结算→已结算）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/settlements/{id}/reconcile": {
+      "post": {
+        "operationId": "BusinessController_reconcile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "对账差异核销",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/tickets/{id}/refund": {
+      "post": {
+        "operationId": "BusinessController_refundTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "工单退款，联动逆向冲账与代理分润/信用分",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/merchants/{id}/state": {
+      "post": {
+        "operationId": "BusinessController_setMerchant",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "商户号状态机人工干预",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/agents/{id}/status": {
+      "post": {
+        "operationId": "BusinessController_setAgent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "代理限流/冻结/恢复",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "存活探针",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "就绪探针（含 DB 连通）",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "网易有道 CPS 平台 API",
+    "description": "账户/鉴权 · RBAC · 审计 · 业务管理 后端契约",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateRoleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpdateMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "StateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "AgentStatusDto": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

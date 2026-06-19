@@ -23,3 +23,9 @@ pnpm-debug.log*
 
 # vite cache
 .vite
+
+# server
+server/node_modules
+server/dist
+server/*.db
+server/*.db-journal
