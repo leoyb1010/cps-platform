@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Search, Bell, ChevronDown, RotateCcw, Menu, X } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat } from 'lucide-react'
 import { NAV } from './nav'
 import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
 import { useStore, markAllRead } from '../../lib/store'
+import { useAuth, useCan, logout, switchRole, ROLES, type RoleId } from '../../lib/auth'
 import { CommandPalette } from './CommandPalette'
 
 function openPalette() {
@@ -25,6 +26,8 @@ function LogoMark() {
 }
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const can = useCan()
+  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((it) => can(it.perm)) })).filter((g) => g.items.length > 0)
   return (
     <>
       {open && <div className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={onClose} />}
@@ -39,7 +42,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           <button aria-label="关闭菜单" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
         </div>
       <nav className="flex-1 overflow-y-auto px-3 pt-3.5 pb-5">
-        {NAV.map((group) => (
+        {groups.map((group) => (
           <div key={group.title} className="mb-1">
             <div className="px-2 pt-3.5 pb-[5px] text-[10.5px] font-semibold tracking-[0.14em] text-ink-5">
               {group.title}
@@ -84,16 +87,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           </div>
         ))}
       </nav>
-      <div className="flex items-center gap-2.5 border-t border-line px-3.5 py-[11px]">
-        <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand-ink ring-1 ring-brand/15">
-          李
-        </span>
-        <div className="min-w-0 flex-1 leading-[1.25]">
-          <div className="truncate text-[12.5px] font-semibold text-ink">李运营</div>
-          <div className="truncate text-[10.5px] text-ink-4">平台管理员</div>
-        </div>
-        <ChevronDown size={14} className="text-ink-4" />
-      </div>
+      <AccountMenu />
       </aside>
     </>
   )
@@ -156,6 +150,73 @@ function Topbar({ title, onReplay, onMenu }: { title: string; onReplay: () => vo
   )
 }
 
+function AccountMenu() {
+  const user = useAuth()
+  const nav = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [roles, setRoles] = useState(false)
+  if (!user) return null
+  const role = ROLES[user.roleId]
+  return (
+    <div className="relative border-t border-line p-2.5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-colors hover:bg-surface-muted"
+      >
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand-ink ring-1 ring-brand/15">
+          {user.name.slice(0, 1)}
+        </span>
+        <span className="min-w-0 flex-1 leading-[1.25]">
+          <span className="block truncate text-[12.5px] font-semibold text-ink">{user.name}</span>
+          <span className="block truncate text-[10.5px] text-ink-4">{role.name}</span>
+        </span>
+        <ChevronUp size={14} className={cx('text-ink-4 transition-transform', !open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={() => { setOpen(false); setRoles(false) }} />
+          <div className="absolute right-2.5 bottom-[58px] left-2.5 z-[56] rounded-xl border border-line bg-surface py-1.5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .18s both' }}>
+            {!roles ? (
+              <>
+                <MenuRow icon={<UserCog size={14} />} label="个人资料" onClick={() => setOpen(false)} hint={user.account} />
+                <MenuRow icon={<Repeat size={14} />} label="切换角色（演示）" onClick={() => setRoles(true)} chevron />
+                <div className="my-1 border-t border-line" />
+                <MenuRow icon={<LogOut size={14} />} label="退出登录" tone="alert" onClick={() => { logout(); nav('/login', { replace: true }) }} />
+              </>
+            ) : (
+              <>
+                <div className="px-3 py-1.5 text-[10.5px] font-medium tracking-wide text-ink-4 uppercase">切换角色</div>
+                {(Object.keys(ROLES) as RoleId[]).map((rid) => (
+                  <button
+                    key={rid}
+                    onClick={() => { switchRole(rid); setOpen(false); setRoles(false) }}
+                    className={cx('flex w-full items-center justify-between px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-surface-muted', rid === user.roleId ? 'text-brand' : 'text-ink-2')}
+                  >
+                    <span>{ROLES[rid].name}</span>
+                    {rid === user.roleId && <span className="h-1.5 w-1.5 rounded-full bg-brand" />}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function MenuRow({ icon, label, onClick, hint, chevron, tone }: { icon: React.ReactNode; label: string; onClick: () => void; hint?: string; chevron?: boolean; tone?: 'alert' }) {
+  return (
+    <button onClick={onClick} className={cx('flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-surface-muted', tone === 'alert' ? 'text-alert-ink' : 'text-ink-2')}>
+      <span className={tone === 'alert' ? 'text-alert-ink' : 'text-ink-4'}>{icon}</span>
+      <span className="flex-1">{label}</span>
+      {hint && <span className="text-[10.5px] text-ink-4">{hint}</span>}
+      {chevron && <ChevronUp size={12} className="rotate-90 text-ink-4" />}
+    </button>
+  )
+}
+
 const TITLES: Record<string, string> = {
   '/': '经营总览',
   '/brands': '品牌管理',
@@ -168,6 +229,8 @@ const TITLES: Record<string, string> = {
   '/complaints': '投诉工单',
   '/compliance': '资金合规',
   '/analytics': '数据 · 归因',
+  '/members': '成员与角色',
+  '/audit': '操作审计',
   '/settings': '配置中心',
 }
 
