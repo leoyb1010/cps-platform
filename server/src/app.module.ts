@@ -31,7 +31,11 @@ import { MetricsInterceptor } from './common/metrics.interceptor'
     }),
     JwtModule.register({}),
     // 限流：默认每 IP 每分钟 120 次；登录等敏感端点用 @Throttle 单独收紧（防爆破）
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // 测试环境跳过（套件会高频登录），避免误触发 429
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 120 }],
+      skipIf: () => process.env.NODE_ENV === 'test',
+    }),
   ],
   controllers: [AuthController, AuditController, MembersController, BusinessController, HealthController],
   providers: [

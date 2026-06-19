@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  web:
+    name: 前端 (build + typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: TypeScript 严格检查
+        run: npx tsc -p tsconfig.app.json --noEmit --noUnusedLocals
+      - name: 生产构建
+        run: npm run build
+
+  server:
+    name: 后端 (build + e2e)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Schema 同步校验 (sqlite ↔ postgres)
+        run: sh scripts/check-schema-sync.sh
+      - name: Prisma 生成 + 建表 (sqlite)
+        run: npx prisma generate && npx prisma db push --skip-generate
+        env:
+          DATABASE_URL: file:./dev.db
+      - name: 构建
+        run: npm run build
+      - name: e2e (独立 test.db, 自建+灌种子)
+        run: npm test
+        env:
+          NODE_ENV: test
+          JWT_ACCESS_SECRET: ci-access-secret-not-for-prod-xxxxx
+          JWT_REFRESH_SECRET: ci-refresh-secret-not-for-prod-xxxxx
+
+  pg-schema:
+    name: PostgreSQL schema 校验
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: 校验 PG schema 合法
+        run: npx prisma validate --schema prisma/schema.postgres.prisma
+        env:
+          DATABASE_URL: postgresql://u:p@localhost:5432/db

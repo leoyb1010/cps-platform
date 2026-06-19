@@ -83,6 +83,60 @@ describe('Business 联动 + audit', () => {
   })
 })
 
+describe('数据级 RBAC (scope)', () => {
+  it('品牌方账户只见自己品牌；平台管理员见全部', async () => {
+    const brandTok = await token('brand')
+    const brands = await request(httpServer).get('/brands').set('Authorization', `Bearer ${brandTok}`).expect(200)
+    expect(brands.body.length).toBe(1)
+    expect(brands.body[0].id).toBe('youdao')
+
+    const su = await token('admin')
+    const all = await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`).expect(200)
+    expect(all.body.length).toBeGreaterThan(1)
+  })
+  it('代理账户只见自己', async () => {
+    const agentTok = await token('agent')
+    const agents = await request(httpServer).get('/agents').set('Authorization', `Bearer ${agentTok}`).expect(200)
+    expect(agents.body.length).toBe(1)
+    expect(agents.body[0].id).toBe('A-2041')
+  })
+})
+
+describe('业务写端点 + 审计', () => {
+  it('品牌状态变更落库并写审计', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).patch('/brands/youdao/status').set('Authorization', `Bearer ${su}`).send({ status: 'paused', label: '暂停' })
+    expect([200, 201]).toContain(r.status)
+    expect(r.body.ok).toBe(true)
+    const brands = await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`)
+    expect(brands.body.find((b: any) => b.id === 'youdao').status).toBe('paused')
+  })
+  it('品牌接入配置 PATCH 生效', async () => {
+    const su = await token('admin')
+    await request(httpServer).patch('/brands/wps/config').set('Authorization', `Bearer ${su}`).send({ feeRate: 38 }).expect((res) => expect([200, 201]).toContain(res.status))
+    const brands = await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`)
+    expect(brands.body.find((b: any) => b.id === 'wps').feeRate).toBe(38)
+  })
+  it('平台配置 写后可读', async () => {
+    const su = await token('admin')
+    await request(httpServer).post('/config').set('Authorization', `Bearer ${su}`).send({ reserveDefaultPct: 11 }).expect((res) => expect([200, 201]).toContain(res.status))
+    const cfg = await request(httpServer).get('/config').set('Authorization', `Bearer ${su}`).expect(200)
+    expect(cfg.body.reserveDefaultPct).toBe(11)
+  })
+  it('ops 角色无 config.write → 写配置 403', async () => {
+    const ops = await token('ops')
+    await request(httpServer).post('/config').set('Authorization', `Bearer ${ops}`).send({ x: 1 }).expect(403)
+  })
+})
+
+describe('Observability', () => {
+  it('GET /metrics 暴露 Prometheus 文本', async () => {
+    const res = await request(httpServer).get('/metrics').expect(200)
+    expect(res.text).toContain('cps_requests_total')
+    expect(res.text).toContain('cps_uptime_seconds')
+  })
+})
+
 describe('Health', () => {
   it('GET /health is public and ok', async () => {
     const res = await request(httpServer).get('/health').expect(200)
