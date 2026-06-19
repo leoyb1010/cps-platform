@@ -1,54 +1,109 @@
 # 聚联 · LINKVE — CPS 会员联运清结算平台
 
-基于《CPS 会员联运 & 投流 SaaS 平台计划方案》落地的**多品牌、开放代理、混合资金、SaaS 化**平台前端。
-定位：**业务层（会员联运分发）在上，投流 SaaS 底座在下**。设计语言：高级、简约、商业化（参考 Mercury / Ramp / Linear），单一品牌红色点缀 + 语义色，浅色为主。
+基于《CPS 会员联运 & 投流 SaaS 平台计划方案》落地的**多品牌、开放代理、混合资金、SaaS 化**平台。
+定位：**业务层（会员联运分发）在上，投流 SaaS 底座在下**。设计语言：高级、简约、商业化（精密仪表风格），网易有道品牌红点缀 + 语义色。
 
-> 演示性质：纯前端 + mock 数据，无真实后端 / 支付 / 商户号。金额为结构示意，用于呈现平台能力与信息架构。
+本仓库是**全栈单体**：
 
-## 运行
+```
+cps-platform/
+├── src/                前端（Vite 6 + React 19 + TS + Tailwind v4）— 16 个页面
+├── server/             后端（NestJS 11 + Prisma + SQLite）— 鉴权/RBAC/审计/业务 API
+├── docker-compose.yml  一键启动（web + server）
+└── *.md                计划方案 v1 / 升级计划 v2·v3 / 后端方案 v4 / 商业化清单
+```
+
+---
+
+## 一、快速开始
+
+### 方式 A：本地双进程（已在本机验证通过）
 
 ```bash
-cd ~/cps-platform
-npm install        # 已安装可跳过
-npm run dev        # 启动开发服务器（默认 http://localhost:5273）
-npm run build      # 生产构建（输出到 dist/）
+# 1) 后端（终端 1）
+cd server
+npm install
+npx prisma db push      # 建表
+npm run seed            # 灌演示数据（5 账户/5 角色/品牌/代理/号池…）
+npm run start:dev       # http://localhost:3001  · API 文档 /docs
+
+# 2) 前端（终端 2）
+cd ..
+npm install
+npm run dev:real        # 真实后端模式 → http://localhost:5273
+# 或 npm run dev         # 纯前端演示模式（不连后端，localStorage mock）
 ```
 
-技术栈：Vite 6 + React 19 + TypeScript + Tailwind CSS v4 + react-router 7 + lucide-react。
-图表为自研轻量 SVG 组件（无图表库依赖），保证「不花里胡哨」的定制观感。
+登录：`admin / demo`（超管）。其它演示账户：`finance` `risk` `ops` `audit`，密码均为 `demo`。
 
-## 模块地图（13 个页面）
+### 方式 B：Docker 一键起（需本机装有 Docker）
 
-| 路由 | 模块 | 核心能力 |
+```bash
+docker compose up --build
+# 打开 http://localhost:8080   （前端 Nginx，/api 反代到后端；首启自动建表+灌种子）
+```
+
+> ⚠️ 当前开发沙箱未安装 Docker，故 compose **未做实机构建验证**；Dockerfile / compose / nginx 配置已按标准编写并通过静态核对。在装有 Docker 的机器上 `docker compose up --build` 即可。本地双进程（方式 A）已完整跑通验证。
+
+---
+
+## 二、技术栈与能力
+
+**前端**：Vite 6 · React 19 · TypeScript（strict）· Tailwind v4 · react-router 7 · lucide-react。图表为自研轻量 SVG（无图表库）。
+**后端**：NestJS 11 · Prisma 6 · SQLite · argon2 · JWT（access）+ httpOnly 刷新令牌 · class-validator · pino 日志 · Swagger/OpenAPI。
+
+**双运行模式**（前端 `VITE_API_MODE`）：
+- `real` — 调真实后端：登录态/权限/审计皆服务端权威。账户菜单切角色、成员/角色矩阵、审计日志均落库。
+- `mock` — 纯前端演示：localStorage + 内存 store，无需后端，便于独立预览。
+
+接口形态两端一致 —— 切换模式 UI 无需改动。
+
+## 三、后端 API（24 端点，详见 `/docs` 与 `server/openapi.json`）
+
+| 域 | 端点 | 说明 |
 |---|---|---|
-| `/` | 经营总览 | 北极星 净 LTV÷CAC · GMV/净收入趋势 · 资金路径 · 投诉率大盘 · 号池联动 · 实时订单 · 今日待办 |
-| `/brands` · `/brands/:id` | 品牌管理 / 详情 | **配置驱动接入**：费率/套餐/通道/商户号/阈值/结算规则全参数化；专属号池；LTV 曲线 |
-| `/marketplace` | 选品市场 | 面向代理的可投套餐卡片 · 透明费率 · 合规素材规范 · 一键领取追踪链接 |
-| `/agents` | 代理商 | 自助入驻 · 信用分联动 · 投诉/退款 · 黑名单 · 分层准入 |
-| `/orders` | 订单 · 订阅 | 首单/续费/退款/拒付 全生命周期状态机 · 实时订单流 |
-| `/settlement` | 清结算 | **分润瀑布** · 逆向冲账 · 账期冻结 · 三方对账 · 代理提现 · 双路径结算 |
-| `/merchants` | 商户号 · 号池 | **健康状态机** · 智能进单路由 · 阈值熔断 · 号池隔离 · 投放联动 |
-| `/risk` | 风控中心 | 事前/事中/事后三道防线 · 防作弊信号 · 实时风控事件 · 投放刹车联动 |
-| `/complaints` | 投诉工单 | 多源聚合 · 分级 SLA · 升级前拦截 · 退款联动 · 仲裁 |
-| `/compliance` | 资金合规 | **二清红线** · 直连/持牌分账双路径 · 红线对照 · 三流一致 · 税务 |
-| `/analytics` | 数据 · 归因 | 转化归因漏斗 · LTV 曲线 · 留存 cohort · 代理/品牌/渠道多视角 |
-| `/settings` | 配置中心 | 平台参数 · 风控阈值默认 · 持牌分账通道 · 数据隔离 · RBAC 与审计 |
+| 鉴权 | `POST /auth/login` `POST /auth/refresh` `GET /auth/me` `POST /auth/logout` | argon2 校验 + JWT + 刷新令牌轮转 |
+| RBAC | `GET /permissions` `GET /roles` `PATCH /roles/:id` `GET /members` `PATCH /members/:id` | 21 权限点 · 5 角色 · 服务端三级控制 |
+| 审计 | `GET /audit-logs` | 写操作统一拦截落库，append-only，可按类别筛选 |
+| 业务读 | `GET /brands /agents /merchants /orders /settlements /tickets /summary` | 受权限点保护 |
+| 业务写 | `POST /settlements/:id/clear` `/reconcile` · `/tickets/:id/refund` · `/merchants/:id/state` · `/agents/:id/status` | 资金/风控动作，落审计 |
+| 健康 | `GET /health` `GET /ready` | 存活/就绪探针（含 DB 连通） |
 
-## 计划方案对应（关键风险已内建为产品能力）
+**核心联动**（服务端事务）：工单退款 → 逆向冲账（冲减代理分润）→ 代理待结算↓/信用分↓/可能限流 → 写审计。实测验证：A-4410 信用分 712→708、结算单冲账 +10、审计落 2 行。
+
+## 四、前端模块地图（16 页）
+
+| 路由 | 模块 | 权限点 |
+|---|---|---|
+| `/` 经营总览 · `/brands(/:id)` 品牌 · `/marketplace` 选品 · `/agents` 代理 | 业务 | dashboard.view / brand.* / agent.* / market.view |
+| `/orders` 订单 · `/settlement` 清结算 · `/merchants` 号池 | 交易与资金 | order.* / settlement.* / merchant.* |
+| `/risk` 风控 · `/complaints` 工单 · `/compliance` 合规 | 风控与合规 | risk.* / ticket.* / compliance.view |
+| `/analytics` 数据归因 | 数据 | analytics.view |
+| `/members` 成员与角色 · `/audit` 操作审计 · `/settings` 配置中心 | 系统后台 | member.manage / audit.read / config.write |
+| `/login` 登录 | — | 公开 |
+
+侧边栏按权限**动态隐藏**菜单与空分组；路由级 + 操作级 + 数据级三级 RBAC。
+
+## 五、质量与测试
+
+```bash
+# 后端
+cd server && npm run build && NODE_ENV=test npm test   # 7 个 e2e：鉴权/RBAC拒绝/退款联动/健康
+# 前端
+npm run build                                           # tsc strict + vite build
+```
+
+后端：统一错误过滤器（`{code,message}`）· DTO 校验（whitelist）· pino 结构化日志 · `/health` `/ready` 探针 · OpenAPI。
+
+## 六、计划方案对应（关键风险内建为产品能力）
 
 - **二清规避** → `/compliance` 双路径 + `/settlement` 双路径结算（平台不碰资金本体）
-- **号池污染隔离 + 熔断** → `/merchants` 状态机 + 隔离视图 + 智能路由
-- **退款拒付逆向冲账 / 账期冻结** → `/settlement`
+- **号池污染隔离 + 熔断** → `/merchants` 状态机 + 智能路由
+- **退款拒付逆向冲账 / 账期冻结** → `/settlement` + `POST /tickets/:id/refund` 服务端联动
 - **投诉率反向控投放（人在环）** → `/risk` + `/complaints`
 - **个人佣金税务（灵活用工）** → `/agents` 开票方式 + `/settings`
-- **配置驱动通用底座** → `/brands/:id` 接入配置全参数化
+- **账户/RBAC/审计/后台** → 真实后端 + `/members` `/audit` `/settings`
 
-## 目录
+## 七、商业化就绪边界
 
-```
-src/
-  lib/            domain model + mock 数据 + 格式化
-  components/ui/  设计系统原语 + 自研 SVG 图表
-  components/layout/  侧边栏 / 顶栏 / 布局 / Logo
-  pages/          13 个业务页面
-```
+工程层面已尽（真后端打通、可部署化、测试、可观测）。**真正"商业 100 分"仍有不可由代码替代的线下必办项**（支付/持牌分账签约、ICP/等保、法律意见、真实风控数据源、生产部署与安全审计）——详见 [商业化就绪清单](商业化就绪清单-v5.md)。

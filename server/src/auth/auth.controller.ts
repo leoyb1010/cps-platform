@@ -29,7 +29,8 @@ export class AuthController {
       sameSite: 'lax',
       secure: this.cfg.get('NODE_ENV') === 'production',
       maxAge: days * 86400_000,
-      path: '/auth',
+      // 默认 '/'，兼容直连(localhost:3001)与 nginx /api 反代两种部署；可用 REFRESH_COOKIE_PATH 覆盖
+      path: this.cfg.get<string>('REFRESH_COOKIE_PATH') || '/',
     })
   }
 
@@ -67,7 +68,7 @@ export class AuthController {
   @ApiOperation({ summary: '登出，撤销刷新令牌' })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.revokeRefresh(req.cookies?.[REFRESH_COOKIE])
-    res.clearCookie(REFRESH_COOKIE, { path: '/auth' })
+    res.clearCookie(REFRESH_COOKIE, { path: this.cfg.get<string>('REFRESH_COOKIE_PATH') || '/' })
     return { ok: true }
   }
 }
