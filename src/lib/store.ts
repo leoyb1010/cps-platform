@@ -20,6 +20,8 @@ import {
   type Brand,
   type Tone,
 } from './data'
+import { isRealApi } from './http'
+import { bizApi } from './adminApi'
 
 export interface ActivityItem {
   id: number
@@ -121,6 +123,13 @@ function logActivity(s: StoreState, text: string, tone: Tone): ActivityItem[] {
   return [item, ...s.activity].slice(0, 40)
 }
 
+// 真实模式：把业务写动作镜像到后端（服务端为审计权威源；本地 store 仍即时更新供 UI）。
+// 失败仅告警、不阻断本地流转，保证演示连续性。
+function mirror(call: () => Promise<unknown>) {
+  if (!isRealApi) return
+  call().catch((e) => emit('mirror:error', e))
+}
+
 /* ════════════ 动作（含状态机流转 + 跨模块联动） ════════════ */
 
 // 核心联动：工单退款 → 订单冲正 → 结算逆向冲账 → 代理分润/信用分 → 风险/通知
@@ -193,6 +202,7 @@ export function resolveTicketWithRefund(ticketId: string) {
 
   commit({ ...state, complaints, orders, settlements, agents, activity })
   emit('ticket:refunded', { ticketId, amount, share, agentId })
+  mirror(() => bizApi.refundTicket(ticketId))
 }
 
 // 订单驱动的退款（无工单）：订单冲正 → 结算冲账 → 代理分润回收
@@ -302,6 +312,7 @@ export function setMerchantState(id: string, next: MerchantState, label: string)
   const activity = logActivity(state, `商户号 ${id} 人工置为「${label}」`, next === 'healthy' ? 'good' : 'alert')
   commit({ ...state, merchants, activity })
   emit('merchant:state', { id, next })
+  mirror(() => bizApi.setMerchant(id, next, label))
 }
 
 // 代理提现结算：待结算清零 → 计入累计已结
@@ -320,6 +331,7 @@ export function setAgentStatus(id: string, next: Agent['status'], label: string)
   const agents = state.agents.map((a) => (a.id === id ? { ...a, status: next } : a))
   const activity = logActivity(state, `代理 ${id} 置为「${label}」`, next === 'active' ? 'good' : 'alert')
   commit({ ...state, agents, activity })
+  if (next === 'active' || next === 'throttled' || next === 'frozen') mirror(() => bizApi.setAgent(id, next))
 }
 
 // 清结算：发起本期结算（待结算 → 已结算）
@@ -329,6 +341,7 @@ export function clearSettlement(id: string) {
   const activity = logActivity(state, `结算单 ${id} 已发起结算并完成`, 'good')
   commit({ ...state, settlements, activity })
   emit('settlement:cleared', { id, amount: s?.platformFee })
+  mirror(() => bizApi.clearSettlement(id))
 }
 
 // 对账差异核销
@@ -336,6 +349,7 @@ export function reconcileSettlement(id: string) {
   const settlements = state.settlements.map((s) => (s.id === id ? { ...s, status: 'cleared' as const, reconcileDiff: 0 } : s))
   const activity = logActivity(state, `结算单 ${id} 对账差异已人工核销`, 'good')
   commit({ ...state, settlements, activity })
+  mirror(() => bizApi.reconcile(id))
 }
 
 export function markAllRead() {

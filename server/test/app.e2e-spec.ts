@@ -1,10 +1,13 @@
+import { execSync } from 'child_process'
 import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import cookieParser = require('cookie-parser')
-import { AppModule } from '../src/app.module'
-import { AllExceptionsFilter } from '../src/common/all-exceptions.filter'
+
+// 独立测试库 + 每次重建/灌种子 → 测试与开发库隔离、顺序无关、可重复
+process.env.DATABASE_URL = 'file:./test.db'
+process.env.NODE_ENV = 'test'
 
 let app: INestApplication
 let httpServer: any
@@ -15,6 +18,12 @@ async function token(account: string): Promise<string> {
 }
 
 beforeAll(async () => {
+  // 在导入 AppModule(及其 PrismaClient)前，先把 schema 推到 test.db 并灌种子
+  const env = { ...process.env, DATABASE_URL: 'file:./test.db' }
+  execSync('npx prisma db push --skip-generate --accept-data-loss', { env, stdio: 'ignore' })
+  execSync('npx ts-node prisma/seed.ts', { env, stdio: 'ignore' })
+  const { AppModule } = await import('../src/app.module')
+  const { AllExceptionsFilter } = await import('../src/common/all-exceptions.filter')
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile()
   app = mod.createNestApplication()
   app.use(cookieParser())
@@ -56,15 +65,21 @@ describe('RBAC', () => {
 
 describe('Business 联动 + audit', () => {
   it('ticket refund cascades reversal + credit drop, and writes an audit row', async () => {
+    const su = await token('admin')
+    const before = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`)).body.find((s: any) => s.id === 'S-2405-MG').reversal
+
     const risk = await token('risk')
-    const refund = await request(httpServer).post('/tickets/T-5514/refund').set('Authorization', `Bearer ${risk}`)
+    // T-5516 属 mango → 对应 S-2405-MG
+    const refund = await request(httpServer).post('/tickets/T-5516/refund').set('Authorization', `Bearer ${risk}`)
     expect([200, 201]).toContain(refund.status)
     expect(refund.body.ok).toBe(true)
 
-    const su = await token('admin')
+    // 退款联动应冲减代理分润：S-2405-MG 的 reversal 增加
+    const after = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`)).body.find((s: any) => s.id === 'S-2405-MG').reversal
+    expect(after).toBeGreaterThan(before)
+
     const audit = await request(httpServer).get('/audit-logs?category=fund').set('Authorization', `Bearer ${su}`).expect(200)
-    expect(audit.body.length).toBeGreaterThan(0)
-    expect(audit.body.some((a: any) => /T-5514/.test(a.detail))).toBe(true)
+    expect(audit.body.some((a: any) => /T-5516/.test(a.detail))).toBe(true)
   })
 })
 
