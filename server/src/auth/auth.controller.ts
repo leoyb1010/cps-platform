@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import { IsString, MinLength } from 'class-validator'
 import { ConfigService } from '@nestjs/config'
@@ -36,6 +37,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 防爆破：每 IP 每分钟最多 10 次登录尝试
   @ApiOperation({ summary: '登录，返回 access token 与用户权限；refresh 走 httpOnly cookie' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const u = await this.auth.validate(dto.account, dto.password)

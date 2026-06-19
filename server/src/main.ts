@@ -2,15 +2,31 @@ import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import { Logger } from 'nestjs-pino'
+import helmet from 'helmet'
 import cookieParser = require('cookie-parser')
 import { writeFileSync } from 'fs'
 import { AppModule } from './app.module'
 import { AllExceptionsFilter } from './common/all-exceptions.filter'
 
+// 生产环境：禁止使用占位/弱密钥，避免令牌可被伪造
+function assertSecrets() {
+  if (process.env.NODE_ENV !== 'production') return
+  const weak = ['', 'CHANGE_ME', 'change-me-access', 'change-me-refresh', 'dev-access-secret-change-in-prod', 'dev-refresh-secret-change-in-prod']
+  for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
+    const v = process.env[k] || ''
+    if (weak.includes(v) || v.length < 24) {
+      throw new Error(`[安全] 生产环境 ${k} 未设置或过弱（需 ≥24 字符随机值，如 openssl rand -hex 32）`)
+    }
+  }
+}
+
 async function bootstrap() {
+  assertSecrets()
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   app.useLogger(app.get(Logger))
   app.use(cookieParser())
+  // 安全响应头；CSP 交给前端静态托管层，这里关掉以免误伤跨域 API
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }))
   app.setGlobalPrefix('', { exclude: [] })
   app.enableCors({
     origin: (process.env.CORS_ORIGIN || 'http://localhost:5273').split(','),
