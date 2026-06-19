@@ -16,6 +16,8 @@ import { AuditInterceptor } from './audit/audit.interceptor'
 import { MembersController } from './members/members.controller'
 import { BusinessController } from './business/business.controller'
 import { HealthController } from './common/health.controller'
+import { MetricsService } from './common/metrics.service'
+import { MetricsInterceptor } from './common/metrics.interceptor'
 
 @Module({
   imports: [
@@ -24,7 +26,7 @@ import { HealthController } from './common/health.controller'
       pinoHttp: {
         level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
         transport: process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
-        autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' },
+        autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' || req.url === '/metrics' },
       },
     }),
     JwtModule.register({}),
@@ -36,10 +38,13 @@ import { HealthController } from './common/health.controller'
     PrismaService,
     AuthService,
     AuditService,
+    MetricsService,
     // 全局：限流 → 认证 → 鉴权
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermsGuard },
+    // 拦截器：指标(先) → 审计(后)
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
 })

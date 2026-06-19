@@ -217,7 +217,7 @@
             "description": ""
           }
         },
-        "summary": "品牌列表",
+        "summary": "品牌列表（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -255,7 +255,7 @@
             "description": ""
           }
         },
-        "summary": "代理列表",
+        "summary": "代理列表（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -270,7 +270,7 @@
             "description": ""
           }
         },
-        "summary": "商户号/号池",
+        "summary": "商户号/号池（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -308,7 +308,7 @@
             "description": ""
           }
         },
-        "summary": "订单",
+        "summary": "订单（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -323,7 +323,7 @@
             "description": ""
           }
         },
-        "summary": "结算单",
+        "summary": "结算单（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -338,7 +338,7 @@
             "description": ""
           }
         },
-        "summary": "投诉工单",
+        "summary": "投诉工单（按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -702,6 +702,21 @@
           }
         },
         "summary": "就绪探针（含 DB 连通）",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "HealthController_metricsEndpoint",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Prometheus 指标（请求计数/错误/运行时长）",
         "tags": [
           "health"
         ]

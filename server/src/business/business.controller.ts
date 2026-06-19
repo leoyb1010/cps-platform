@@ -49,24 +49,41 @@ export class BusinessController {
     private audit: AuditService,
   ) {}
 
+  // 数据级 RBAC：按当前用户 scope 收窄查询条件
+  //   platform → 全量；brand:<id> → 仅该品牌相关；agent:<id> → 仅该代理相关
+  private scope(user: AuthUser, field: 'brandId' | 'agentId' | 'id-brand' | 'id-agent') {
+    if (!user || user.scopeType === 'platform' || !user.scopeId) return {}
+    if (user.scopeType === 'brand') {
+      if (field === 'brandId') return { brandId: user.scopeId }
+      if (field === 'id-brand') return { id: user.scopeId }
+      return {} // 品牌方看代理：不额外收窄（演示从简）
+    }
+    if (user.scopeType === 'agent') {
+      if (field === 'agentId') return { agentId: user.scopeId }
+      if (field === 'id-agent') return { id: user.scopeId }
+      return {}
+    }
+    return {}
+  }
+
   // ── reads ──────────────────────────────
-  @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表' })
-  brands() { return this.prisma.brand.findMany({ orderBy: { gmvMtd: 'desc' } }) }
+  @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表（按 scope 收窄）' })
+  brands(@CurrentUser() user: AuthUser) { return this.prisma.brand.findMany({ where: this.scope(user, 'id-brand'), orderBy: { gmvMtd: 'desc' } }) }
 
-  @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表' })
-  agents() { return this.prisma.agent.findMany({ orderBy: { spendMtd: 'desc' } }) }
+  @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表（按 scope 收窄）' })
+  agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: this.scope(user, 'id-agent'), orderBy: { spendMtd: 'desc' } }) }
 
-  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池' })
-  merchants() { return this.prisma.merchantAccount.findMany() }
+  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄）' })
+  merchants(@CurrentUser() user: AuthUser) { return this.prisma.merchantAccount.findMany({ where: this.scope(user, 'brandId') }) }
 
-  @Get('orders') @RequirePerms('order.read') @ApiOperation({ summary: '订单' })
-  orders() { return this.prisma.order.findMany({ orderBy: { createdAt: 'desc' }, take: 200 }) }
+  @Get('orders') @RequirePerms('order.read') @ApiOperation({ summary: '订单（按 scope 收窄）' })
+  orders(@CurrentUser() user: AuthUser) { return this.prisma.order.findMany({ where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') }, orderBy: { createdAt: 'desc' }, take: 200 }) }
 
-  @Get('settlements') @RequirePerms('settlement.read') @ApiOperation({ summary: '结算单' })
-  settlements() { return this.prisma.settlement.findMany() }
+  @Get('settlements') @RequirePerms('settlement.read') @ApiOperation({ summary: '结算单（按 scope 收窄）' })
+  settlements(@CurrentUser() user: AuthUser) { return this.prisma.settlement.findMany({ where: this.scope(user, 'brandId') }) }
 
-  @Get('tickets') @RequirePerms('ticket.read') @ApiOperation({ summary: '投诉工单' })
-  tickets() { return this.prisma.ticket.findMany() }
+  @Get('tickets') @RequirePerms('ticket.read') @ApiOperation({ summary: '投诉工单（按 scope 收窄）' })
+  tickets(@CurrentUser() user: AuthUser) { return this.prisma.ticket.findMany({ where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') } }) }
 
   @Get('summary') @RequirePerms('dashboard.view') @ApiOperation({ summary: '经营总览汇总（风险条/待办派生）' })
   async summary() {

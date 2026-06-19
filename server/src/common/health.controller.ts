@@ -1,12 +1,16 @@
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, Header } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
+import { MetricsService } from './metrics.service'
 
 @ApiTags('health')
 @Controller()
 export class HealthController {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private metrics: MetricsService,
+  ) {}
 
   @Public()
   @Get('health')
@@ -25,5 +29,13 @@ export class HealthController {
     } catch {
       return { status: 'degraded', db: 'down' }
     }
+  }
+
+  @Public()
+  @Get('metrics')
+  @Header('Content-Type', 'text/plain; version=0.0.4')
+  @ApiOperation({ summary: 'Prometheus 指标（请求计数/错误/运行时长）' })
+  metricsEndpoint() {
+    return this.metrics.render()
   }
 }

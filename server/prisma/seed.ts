@@ -70,10 +70,11 @@ async function main() {
   // users (password "demo")
   const hash = await argon2.hash('demo')
   for (const u of SEED_USERS) {
+    const scope = { scopeType: u.scopeType ?? 'platform', scopeId: u.scopeId ?? null }
     await db.user.upsert({
       where: { id: u.id },
-      update: { name: u.name, account: u.account, roleId: u.roleId },
-      create: { id: u.id, name: u.name, account: u.account, roleId: u.roleId, passwordHash: hash },
+      update: { name: u.name, account: u.account, roleId: u.roleId, ...scope },
+      create: { id: u.id, name: u.name, account: u.account, roleId: u.roleId, passwordHash: hash, ...scope },
     })
   }
   // business

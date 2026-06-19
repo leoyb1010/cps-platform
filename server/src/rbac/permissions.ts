@@ -69,9 +69,12 @@ export const ROLE_PRESETS: RolePreset[] = [
 
 // 演示账户（密码统一为 demo，真实环境由用户设置）
 export const SEED_USERS = [
-  { id: 'U-001', name: '李运营', account: 'admin', roleId: 'super' },
-  { id: 'U-002', name: '周财务', account: 'finance', roleId: 'finance' },
-  { id: 'U-003', name: '陈风控', account: 'risk', roleId: 'risk' },
-  { id: 'U-004', name: '王运营', account: 'ops', roleId: 'ops' },
-  { id: 'U-005', name: '赵审计', account: 'audit', roleId: 'audit' },
+  { id: 'U-001', name: '李运营', account: 'admin', roleId: 'super', scopeType: 'platform', scopeId: null },
+  { id: 'U-002', name: '周财务', account: 'finance', roleId: 'finance', scopeType: 'platform', scopeId: null },
+  { id: 'U-003', name: '陈风控', account: 'risk', roleId: 'risk', scopeType: 'platform', scopeId: null },
+  { id: 'U-004', name: '王运营', account: 'ops', roleId: 'ops', scopeType: 'platform', scopeId: null },
+  { id: 'U-005', name: '赵审计', account: 'audit', roleId: 'audit', scopeType: 'platform', scopeId: null },
+  // 数据级 RBAC 演示：品牌方账户只见自己品牌；代理账户只见自己
+  { id: 'U-006', name: '有道品牌方', account: 'brand', roleId: 'ops', scopeType: 'brand', scopeId: 'youdao' },
+  { id: 'U-007', name: '代理 A-2041', account: 'agent', roleId: 'ops', scopeType: 'agent', scopeId: 'A-2041' },
 ]
