@@ -1,4 +1,5 @@
-// 网易有道 CPS 平台 — 数据模型 (Prisma · 本地默认 SQLite，零依赖)
+// ⚠️ 自动同步自 schema.prisma —— 仅 datasource 不同；改模型请改两处或重新生成。
+// 网易有道 CPS 平台 — 数据模型 (Prisma · 生产 PostgreSQL)
 // 与 v4 技术方案 §9 一致：账户/RBAC/审计/组织/配置 + 核心业务实体。
 // 生产 PostgreSQL：用 prisma/schema.postgres.prisma（模型体一致，仅 datasource 不同）。
 //   npm run db:push:pg   /   npm run seed:pg   （见 package.json）
@@ -9,7 +10,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

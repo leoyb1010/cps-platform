@@ -1,0 +1,29 @@
+# PostgreSQL 生产叠加层（override）
+# 用法：  docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
+# 在默认 SQLite 编排之上，加 postgres 服务并把后端切到 PG。
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cps_pw}
+      POSTGRES_DB: cps
+    volumes:
+      - cps-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cps -d cps']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  server:
+    environment:
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgresql://cps:${POSTGRES_PASSWORD:-cps_pw}@db:5432/cps?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cps-pg:

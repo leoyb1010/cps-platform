@@ -12,6 +12,9 @@
     "prisma:push": "prisma db push --skip-generate",
     "seed": "ts-node prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
+    "generate:pg": "prisma generate --schema prisma/schema.postgres.prisma",
+    "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",
+    "migrate:pg": "prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
