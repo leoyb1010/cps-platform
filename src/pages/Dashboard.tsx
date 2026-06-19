@@ -39,7 +39,7 @@ import {
 import { money, pct, int, cx } from '../lib/format'
 
 const wan = (n: number) => '¥' + Math.round(n / 1e4).toLocaleString('zh-CN') + '万'
-const rev = (d: number) => ({ animation: `revUpSm .5s ${d}s cubic-bezier(.4,0,.2,1) both` })
+const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s cubic-bezier(.22,1,.36,1) both` })
 type Range = 'today' | 'week' | 'month' | 'quarter'
 const RANGE_LABEL: Record<Range, string> = { today: '今日', week: '本周', month: '本月', quarter: '本季' }
 
@@ -280,7 +280,7 @@ export default function Dashboard() {
               anomalies.map((o) => {
                 const t = ORDER_TYPE[o.type]
                 return (
-                  <div key={o.id} className="flex items-center gap-2.5 rounded-md px-2.5 py-[9px] hover:bg-surface-muted">
+                  <div key={o.id} className="flex items-center gap-2.5 rounded-md px-2.5 py-[9px] transition-colors hover:bg-surface-muted">
                     <span className="tnum w-[34px] text-[10.5px] text-ink-5">{o.time.slice(0, 5)}</span>
                     <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[5px] bg-ink text-[10px] text-white">{brandById(o.brandId)!.mark}</span>
                     <div className="min-w-0 flex-1"><div className="truncate text-[12px] text-ink">{o.plan}</div><div className="text-[10.5px] text-ink-5">{o.agentId} · {CHANNEL_LABEL[o.channel]}</div></div>
@@ -326,7 +326,7 @@ export default function Dashboard() {
 function ActionRow({ a, onRefund, onOpen }: { a: ActionItem; onRefund?: () => void; onOpen: () => void }) {
   const ICON: Record<string, React.ReactNode> = { reg: <AlertTriangle size={15} />, pool: <TrendingUp size={15} />, fraud: <ShieldCheck size={15} />, recon: <GlassWater size={15} /> }
   return (
-    <div className={cx('flex items-start gap-[11px] rounded-[7px] p-[9px]', a.tone === 'alert' ? 'border border-alert/20 bg-alert/[0.04]' : 'hover:bg-surface-muted')}>
+    <div className={cx('flex items-start gap-[11px] rounded-[7px] p-[9px] transition-colors', a.tone === 'alert' ? 'border border-alert/20 bg-alert/[0.04]' : 'hover:bg-surface-muted')}>
       <span className={cx('grid h-7 w-7 shrink-0 place-items-center rounded-md', TONE[a.tone].soft, TONE[a.tone].ink)}>{ICON[a.id] ?? <AlertTriangle size={15} />}</span>
       <button onClick={onOpen} className="min-w-0 flex-1 text-left">
         <div className="text-[12.5px] font-semibold text-ink">{a.title}</div>

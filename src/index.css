@@ -81,6 +81,7 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -90,6 +91,46 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
+  overscroll-behavior-y: none;
+}
+
+/* ── interaction polish: ease every interactive affordance ──────── */
+/* base smooth transitions for links/buttons/inputs and any element
+   carrying a clickable cursor (covers nav, tiles, rows, CTAs at once) */
+a,
+button,
+summary,
+[role='button'],
+.ix {
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+/* unified, on-brand keyboard focus ring (mouse clicks stay clean) */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* respect reduced-motion: kill entrances + long transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* mono tabular numerals — the instrument signature */

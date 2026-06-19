@@ -432,7 +432,7 @@ export function ThresholdBar({
     <div className="flex items-center gap-2">
       <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
-          className="h-full rounded-full transition-all"
+          className="h-full rounded-full transition-[width] duration-300 ease-out"
           style={{ width: `${pctOf}%`, background: toneVar[tone] }}
         />
         <div

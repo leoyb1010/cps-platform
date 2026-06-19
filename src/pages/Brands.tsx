@@ -80,7 +80,7 @@ export default function Brands() {
                 <Td className="pl-3">
                   <button onClick={() => nav(`/brands/${b.id}`)} className="flex items-center gap-2.5 text-left">
                     <BrandMark mark={b.mark} size={30} />
-                    <div><div className="text-[13px] font-medium text-ink hover:text-brand">{b.name}</div><div className="text-[11px] text-ink-4">{b.plans.length} 个套餐 · {b.channels.length} 条通道</div></div>
+                    <div><div className="text-[13px] font-medium text-ink transition-colors hover:text-brand">{b.name}</div><div className="text-[11px] text-ink-4">{b.plans.length} 个套餐 · {b.channels.length} 条通道</div></div>
                   </button>
                 </Td>
                 <Td><span className="text-[12px]">{b.category}</span></Td>

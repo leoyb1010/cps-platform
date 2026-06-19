@@ -224,7 +224,7 @@ export default function Merchants() {
                     <button onClick={() => setOpenId(m.id)} className="flex items-center gap-2.5 text-left">
                       <BrandMark mark={b.mark} size={26} />
                       <div>
-                        <div className="text-[12.5px] font-medium text-ink hover:text-brand">{m.id}</div>
+                        <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{m.id}</div>
                         <div className="text-[11px] text-ink-4">{m.mid}</div>
                       </div>
                     </button>

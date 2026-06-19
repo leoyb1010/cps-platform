@@ -161,7 +161,7 @@ export default function Risk() {
           {rules.map((r, i) => (
             <div key={r.name} className="flex items-center gap-3 rounded-lg border border-line p-3">
               <button onClick={() => setEditIdx(i)} className="min-w-0 flex-1 text-left">
-                <div className="text-[12.5px] font-medium text-ink hover:text-brand">{r.name}</div>
+                <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{r.name}</div>
                 <div className="mt-0.5 text-[11px] text-ink-4">{r.cond} → <span className="text-ink-3">{r.action}</span></div>
               </button>
               <button

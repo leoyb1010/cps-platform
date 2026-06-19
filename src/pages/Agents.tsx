@@ -106,7 +106,7 @@ export default function Agents() {
                       {black ? <Ban size={13} /> : a.type === '企业' ? '企' : '个'}
                     </span>
                     <div>
-                      <div className="text-[12.5px] font-medium text-ink hover:text-brand">{a.name}</div>
+                      <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{a.name}</div>
                       <div className="text-[11px] text-ink-4">{a.id} · {a.type} · {a.brandsCount} 品牌</div>
                     </div>
                   </button>

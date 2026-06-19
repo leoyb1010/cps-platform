@@ -172,7 +172,7 @@ export function Bars({
             {format(v)}
           </span>
           <div
-            className="w-full rounded-t-[4px] transition-all"
+            className="w-full rounded-t-[4px] transition-[height] duration-300 ease-out"
             style={{
               height: `${(v / max) * (height - 24)}px`,
               background: toneVar[tone],
@@ -386,7 +386,7 @@ export function CrosshairChart({
         i = k
       }
     })
-    setHi(i)
+    setHi((prev) => (prev === i ? prev : i))
   }
   const labelIdx = (i: number) => i % 2 === 0 || i === n - 1
   return (

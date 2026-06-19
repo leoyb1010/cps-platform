@@ -1,7 +1,24 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { cx } from '../../lib/format'
 import { Button, TONE } from './primitives'
+
+/* ── shared overlay behavior: Esc-to-close + body scroll lock ──── */
+function useOverlayBehavior(open: boolean, onClose: () => void) {
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [open, onClose])
+}
 
 /* ── Toast ─────────────────────────────────────── */
 type ToastTone = 'good' | 'warn' | 'alert' | 'info'
@@ -65,6 +82,7 @@ export function Drawer({
   footer?: ReactNode
   width?: number
 }) {
+  useOverlayBehavior(open, onClose)
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[90]">
@@ -105,6 +123,7 @@ export function Modal({
   footer?: ReactNode
   width?: number
 }) {
+  useOverlayBehavior(open, onClose)
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[95] grid place-items-center p-4">
