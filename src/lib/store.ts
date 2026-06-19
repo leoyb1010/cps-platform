@@ -375,8 +375,8 @@ export interface RiskSignal {
 export function selectRisk(s: StoreState): RiskSignal[] {
   const suspended = s.merchants.filter((m) => m.state === 'throttled' || m.state === 'paused').length
   const fused = s.merchants.filter((m) => m.state === 'fused').length
-  const maxComplaint = Math.max(...s.merchants.map((m) => m.complaintRate))
-  const maxEsc = Math.max(...s.merchants.map((m) => m.escalatedRate))
+  const maxComplaint = s.merchants.length ? Math.max(...s.merchants.map((m) => m.complaintRate)) : 0
+  const maxEsc = s.merchants.length ? Math.max(...s.merchants.map((m) => m.escalatedRate)) : 0
   const slaUrgent = s.complaints.filter((c) => c.status !== 'resolved' && c.slaLeftMin > 0 && c.slaLeftMin <= 30).length
   const reg = s.complaints.filter((c) => c.level === 'regulatory' && c.status !== 'resolved').length
   const diff = s.settlements.reduce((a, x) => a + x.reconcileDiff, 0)

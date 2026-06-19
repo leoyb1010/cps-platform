@@ -56,6 +56,7 @@ export default function Settlement() {
             <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>
             <Button
               variant="primary"
+              busyMs={500}
               onClick={() => {
                 const ids = settlements.filter((x) => x.status === 'pending').map((x) => x.id)
                 if (ids.length === 0) { toast({ tone: 'info', text: '本期无待结算单' }); return }

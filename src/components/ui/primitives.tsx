@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { Children, createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Loader2 } from 'lucide-react'
 import type { Tone } from '../../lib/data'
 import { cx } from '../../lib/format'
 
@@ -24,14 +25,27 @@ export function useCountUp(
     pre + n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: group }) + suf
   const [text, setText] = useState(fmt(0))
   const raf = useRef(0)
+  const fromRef = useRef(0) // current displayed value → roll from here to `to`
+  const epochRef = useRef(opts?.epoch)
   useEffect(() => {
+    // on replay (epoch change) recount from 0; on value change roll from current
+    if (opts?.epoch !== epochRef.current) {
+      fromRef.current = 0
+      epochRef.current = opts?.epoch
+    }
+    const from = fromRef.current
     const t0 = performance.now()
     const step = (t: number) => {
       const p = Math.min(1, (t - t0) / dur)
       const e = 1 - Math.pow(1 - p, 3)
-      setText(fmt(to * e))
+      const cur = from + (to - from) * e
+      fromRef.current = cur
+      setText(fmt(cur))
       if (p < 1) raf.current = requestAnimationFrame(step)
-      else setText(fmt(to))
+      else {
+        fromRef.current = to
+        setText(fmt(to))
+      }
     }
     raf.current = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf.current)
@@ -126,12 +140,14 @@ export function Card({
   className,
   pad = true,
   mark = false,
+  hover = false,
   style,
 }: {
   children: ReactNode
   className?: string
   pad?: boolean
   mark?: boolean
+  hover?: boolean
   style?: React.CSSProperties
 }) {
   return (
@@ -141,6 +157,8 @@ export function Card({
         'rounded-lg border border-line bg-surface shadow-[var(--shadow-card)]',
         (pad || mark) && 'relative',
         pad && 'p-5',
+        hover &&
+          'cursor-pointer transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]',
         className,
       )}
     >
@@ -148,6 +166,11 @@ export function Card({
       {children}
     </div>
   )
+}
+
+/* ── Skeleton (loading placeholder) ──────────────── */
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cx('animate-pulse rounded-md bg-surface-sunken', className)} />
 }
 
 export function CardTitle({
@@ -255,22 +278,36 @@ export function Button({
   variant = 'ghost',
   onClick,
   className,
+  busyMs,
+  disabled,
 }: {
   children: ReactNode
   variant?: 'primary' | 'ghost' | 'soft'
   onClick?: () => void
   className?: string
+  busyMs?: number // show a brief loading spinner for this long on click
+  disabled?: boolean
 }) {
+  const [busy, setBusy] = useState(false)
   const base =
-    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors cursor-pointer select-none'
+    'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,color,border-color,box-shadow,transform] cursor-pointer select-none active:scale-[0.98] disabled:cursor-default disabled:opacity-60'
   const v =
     variant === 'primary'
       ? 'bg-brand text-white hover:bg-brand-hover shadow-[var(--shadow-brand)]'
       : variant === 'soft'
         ? 'bg-surface-sunken text-ink-2 hover:bg-[#e6e8eb]'
         : 'border border-line text-ink-2 hover:bg-surface-muted hover:text-ink'
+  const handle = () => {
+    if (!onClick || busy) return
+    if (busyMs) {
+      setBusy(true)
+      onClick()
+      setTimeout(() => setBusy(false), busyMs)
+    } else onClick()
+  }
   return (
-    <button className={cx(base, v, className)} onClick={onClick}>
+    <button className={cx(base, v, className)} onClick={handle} disabled={disabled || busy}>
+      {busy && <Loader2 size={14} className="animate-spin" />}
       {children}
     </button>
   )
@@ -313,11 +350,14 @@ export function TableShell({
   head,
   children,
   className,
+  empty = '暂无符合条件的数据',
 }: {
   head: ReactNode
   children: ReactNode
   className?: string
+  empty?: ReactNode
 }) {
+  const isEmpty = Children.count(children) === 0
   return (
     <div className={cx('overflow-x-auto', className)}>
       <table className="w-full border-collapse text-[13px]">
@@ -326,7 +366,17 @@ export function TableShell({
             {head}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody>
+          {isEmpty ? (
+            <tr>
+              <td colSpan={99} className="px-3 py-12 text-center text-[12.5px] text-ink-4">
+                {empty}
+              </td>
+            </tr>
+          ) : (
+            children
+          )}
+        </tbody>
       </table>
     </div>
   )
@@ -392,7 +442,7 @@ export function Row({
     <tr
       onClick={onClick}
       className={cx(
-        'border-b border-line/70 transition-colors last:border-0',
+        'border-b border-line/60 transition-colors last:border-0 even:bg-surface-muted/40',
         onClick && 'cursor-pointer hover:bg-surface-muted',
         className,
       )}
@@ -407,7 +457,7 @@ export function Row({
 export function BrandMark({ mark, size = 30 }: { mark: string; size?: number }) {
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-[7px] bg-ink font-semibold text-white"
+      className="grid shrink-0 place-items-center rounded-[7px] bg-surface-sunken font-semibold text-ink-2 ring-1 ring-line"
       style={{ width: size, height: size, fontSize: size * 0.42 }}
     >
       {mark}

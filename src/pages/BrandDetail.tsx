@@ -64,7 +64,7 @@ export default function BrandDetail() {
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setEdit(true)}><Sliders size={14} /> 编辑配置</Button>
-          <Button variant="primary" onClick={() => toast({ tone: 'good', text: '订单回传已同步' })}>同步订单回传</Button>
+          <Button variant="primary" busyMs={500} onClick={() => toast({ tone: 'good', text: '订单回传已同步' })}>同步订单回传</Button>
         </div>
       </div>
 

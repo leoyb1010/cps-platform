@@ -48,7 +48,7 @@ export default function Marketplace() {
           b.plans.map((p) => {
             const agentShare = Math.round(b.feeRate * 0.72)
             return (
-              <Card key={b.id + p.name} className="flex flex-col">
+              <Card key={b.id + p.name} className="flex flex-col transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
                     <BrandMark mark={b.mark} size={34} />

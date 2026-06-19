@@ -54,7 +54,7 @@ export default function Merchants() {
   }
   const totalGmv = merchants.reduce((s, m) => s + m.gmvMtd, 0)
   const totalTx = merchants.reduce((s, m) => s + m.txCount, 0)
-  const avgClose = merchants.reduce((s, m) => s + m.close72h, 0) / merchants.length
+  const avgClose = merchants.reduce((s, m) => s + m.close72h, 0) / (merchants.length || 1)
 
   const brandsWithPools = brands.filter((b) => merchants.some((m) => m.brandId === b.id))
 
@@ -77,7 +77,7 @@ export default function Merchants() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card>
           <Stat label="健康号 / 总数" value={`${counts.healthy}`} unit={`/ ${merchants.length}`} sub={<span>整改警告 {counts.watch}</span>}>
-            <Meter value={(counts.healthy / merchants.length) * 100} tone="good" />
+            <Meter value={(counts.healthy / (merchants.length || 1)) * 100} tone="good" />
           </Stat>
         </Card>
         <Card>

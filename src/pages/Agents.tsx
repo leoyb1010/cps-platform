@@ -35,7 +35,7 @@ export default function Agents() {
   const active = agents.filter((a) => a.status === 'active')
   const totalSpend = agents.reduce((s, a) => s + a.spendMtd, 0)
   const totalPayout = agents.reduce((s, a) => s + a.payoutPending, 0)
-  const avgScore = Math.round(agents.reduce((s, a) => s + a.creditScore, 0) / agents.length)
+  const avgScore = Math.round(agents.reduce((s, a) => s + a.creditScore, 0) / (agents.length || 1))
   const list = agents.filter((a) => (f === 'all' ? true : a.status === f))
   const blacklist = agents.filter((a) => a.status === 'blacklist')
   const [review, setReview] = useState(false)

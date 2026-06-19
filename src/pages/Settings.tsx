@@ -81,7 +81,7 @@ export default function Settings() {
       <PageHeader
         title="配置中心"
         desc="平台参数、风控阈值默认值、持牌分账通道、数据隔离与权限审计。业务规则全部参数化，新品牌接入即配即生效。"
-        actions={<Button variant="primary" onClick={() => toast({ tone: 'good', text: '配置已保存' })}><Check size={14} /> 保存配置</Button>}
+        actions={<Button variant="primary" busyMs={420} onClick={() => toast({ tone: 'good', text: '配置已保存' })}><Check size={14} /> 保存配置</Button>}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

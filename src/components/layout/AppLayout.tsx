@@ -36,7 +36,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       >
         <div className="flex h-[58px] items-center justify-between border-b border-line px-[18px]">
           <LogoMark />
-          <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
+          <button aria-label="关闭菜单" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
         </div>
       <nav className="flex-1 overflow-y-auto px-3 pt-3.5 pb-5">
         {NAV.map((group) => (
@@ -105,7 +105,7 @@ function Topbar({ title, onReplay, onMenu }: { title: string; onReplay: () => vo
   const unread = activity.filter((a) => !a.read).length
   return (
     <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md md:gap-3.5 md:px-[26px]">
-      <button onClick={onMenu} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
+      <button aria-label="打开菜单" onClick={onMenu} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
       <div className="flex items-center gap-2 text-[13px]">
         <span className="text-ink-4">网易有道</span>
         <span className="text-hairtick">/</span>
@@ -121,12 +121,12 @@ function Topbar({ title, onReplay, onMenu }: { title: string; onReplay: () => vo
           <span>搜索品牌 / 代理 / 订单</span>
           <kbd className="tnum rounded-[3px] border border-line px-1.5 text-[10px] text-ink-5">⌘K</kbd>
         </button>
-        <button onClick={openPalette} className="grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand lg:hidden"><Search size={15} /></button>
-        <button onClick={onReplay} title="重播动效" className="grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
+        <button aria-label="搜索" onClick={openPalette} className="grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand lg:hidden"><Search size={15} /></button>
+        <button aria-label="重播动效" onClick={onReplay} title="重播动效" className="grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
           <RotateCcw size={15} strokeWidth={2} />
         </button>
         <div className="relative">
-          <button onClick={() => { setBellOpen((v) => !v); if (!bellOpen) markAllRead() }} className="relative grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand">
+          <button aria-label="通知" onClick={() => { setBellOpen((v) => !v); if (!bellOpen) markAllRead() }} className="relative grid h-[34px] w-[34px] place-items-center rounded-[7px] border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand">
             <Bell size={15} strokeWidth={1.8} />
             {unread > 0 && <span className="absolute top-1.5 right-1.5 h-[7px] w-[7px] rounded-full border-[1.5px] border-surface bg-brand" />}
           </button>

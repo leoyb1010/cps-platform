@@ -1,23 +1,28 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { cx } from '../../lib/format'
 import { Button, TONE } from './primitives'
 
-/* ── shared overlay behavior: Esc-to-close + body scroll lock ──── */
-function useOverlayBehavior(open: boolean, onClose: () => void) {
+/* ── shared overlay behavior: Esc-close + scroll-lock + focus mgmt ── */
+function useOverlayBehavior(open: boolean, onClose: () => void, panelRef?: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return
+    const prevActive = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
+    const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    // move focus into the dialog so keyboard + screen readers land correctly
+    const t = setTimeout(() => panelRef?.current?.focus(), 20)
     return () => {
+      clearTimeout(t)
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      document.body.style.overflow = prevOverflow
+      prevActive?.focus?.() // restore focus to the trigger
     }
-  }, [open, onClose])
+  }, [open, onClose, panelRef])
 }
 
 /* ── Toast ─────────────────────────────────────── */
@@ -82,21 +87,28 @@ export function Drawer({
   footer?: ReactNode
   width?: number
 }) {
-  useOverlayBehavior(open, onClose)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useOverlayBehavior(open, onClose, panelRef)
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[90]">
       <div className="absolute inset-0 bg-ink/35" style={{ animation: 'fadeIn .2s both' }} onClick={onClose} />
       <div
-        className="absolute top-0 right-0 flex h-full flex-col bg-surface shadow-[var(--shadow-pop)]"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="absolute top-0 right-0 flex h-full flex-col bg-surface shadow-[var(--shadow-pop)] outline-none"
         style={{ width, animation: 'drawerIn .32s cubic-bezier(.22,1,.36,1) both' }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>
-            <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
+            <h3 id={titleId} className="text-[15px] font-semibold text-ink">{title}</h3>
             {desc && <p className="mt-0.5 text-[12.5px] text-ink-3">{desc}</p>}
           </div>
-          <button onClick={onClose} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink">
+          <button aria-label="关闭" onClick={onClose} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink">
             <X size={16} />
           </button>
         </div>
@@ -123,15 +135,17 @@ export function Modal({
   footer?: ReactNode
   width?: number
 }) {
-  useOverlayBehavior(open, onClose)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useOverlayBehavior(open, onClose, panelRef)
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[95] grid place-items-center p-4">
       <div className="absolute inset-0 bg-ink/35" style={{ animation: 'fadeIn .2s both' }} onClick={onClose} />
-      <div className="relative w-full rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)]" style={{ maxWidth: width, animation: 'revUpSm .26s cubic-bezier(.22,1,.36,1) both' }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="relative w-full rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)] outline-none" style={{ maxWidth: width, animation: 'revUpSm .26s cubic-bezier(.22,1,.36,1) both' }}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-          <h3 className="text-[14.5px] font-semibold text-ink">{title}</h3>
-          <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink"><X size={16} /></button>
+          <h3 id={titleId} className="text-[14.5px] font-semibold text-ink">{title}</h3>
+          <button aria-label="关闭" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink"><X size={16} /></button>
         </div>
         <div className="px-5 py-4 text-[13px] leading-relaxed text-ink-2">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}

@@ -141,6 +141,25 @@ summary,
   letter-spacing: -0.01em;
 }
 
+/* semantic type scale (use going forward to reduce px drift) */
+.t-meta {
+  font-size: 11px;
+  line-height: 1.45;
+}
+.t-label {
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.t-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.t-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 ::selection {
   background: var(--color-brand-soft);
   color: var(--color-brand-ink);

@@ -76,7 +76,7 @@ export default function Dashboard() {
 
   const atRisk = s.merchants.filter((m) => m.state !== 'healthy').sort((a, b) => b.complaintRate - a.complaintRate).slice(0, 4)
   const liveBrands = s.brands.filter((b) => b.status === 'live').sort((a, b) => b.gmvMtd - a.gmvMtd).slice(0, 4)
-  const maxBrandGmv = Math.max(...liveBrands.map((b) => b.gmvMtd))
+  const maxBrandGmv = Math.max(1, ...liveBrands.map((b) => b.gmvMtd))
   const anomalies = s.orders.filter((o) => o.type === 'refund' || o.type === 'chargeback' || Math.abs(o.amount) >= 39).slice(0, 6)
   const agentRisk = s.agents.filter((a) => a.status !== 'active')
   const agentPending = s.agents.reduce((x, a) => x + a.payoutPending, 0)
@@ -92,7 +92,7 @@ export default function Dashboard() {
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2.5">
           <Segmented value={range} onChange={setRange} options={[{ value: 'today', label: '今日' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'quarter', label: '本季' }]} />
-          <Button variant="ghost" onClick={() => { exportCsv(range); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
+          <Button variant="ghost" busyMs={420} onClick={() => { exportCsv(range); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
           <Button variant="primary" onClick={() => nav('/settlement')}>本期结算预览 <ArrowRight size={15} /></Button>
         </div>
       </div>
@@ -116,7 +116,7 @@ export default function Dashboard() {
         />
         <div className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-4 lg:grid-cols-7">
           {risk.map((r) => (
-            <Link key={r.key} to={r.to} className="group rounded-lg border border-line px-3 py-2.5 transition-colors hover:border-line-strong hover:bg-surface-muted">
+            <Link key={r.key} to={r.to} className="group rounded-lg border border-line px-3 py-2.5 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-line-strong hover:bg-surface-muted hover:shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3"><span className="h-1.5 w-1.5 rounded-full" style={{ background: `var(--color-${HEALTH_TONE[r.health]})` }} />{r.label}</div>
               <div className={cx('tnum mt-1 text-[16px] font-semibold', TONE[HEALTH_TONE[r.health]].ink)}>{r.value}</div>
             </Link>
