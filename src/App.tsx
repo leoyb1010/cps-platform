@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from './lib/auth'
+import { useAuth, bootstrapAuth } from './lib/auth'
+import { isRealApi } from './lib/http'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -26,6 +28,21 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // 真实模式：启动时用 refresh cookie 静默恢复登录态，避免已登录用户被闪到登录页
+  const [ready, setReady] = useState(!isRealApi)
+  useEffect(() => {
+    if (isRealApi) bootstrapAuth().finally(() => setReady(true))
+  }, [])
+  if (!ready) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-canvas">
+        <div className="flex items-center gap-2 text-[13px] text-ink-4">
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-brand" />
+          正在恢复会话…
+        </div>
+      </div>
+    )
+  }
   return (
     <Routes>
       <Route path="/login" element={<Login />} />

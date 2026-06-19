@@ -1,17 +1,29 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, ShieldCheck } from 'lucide-react'
+import { ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react'
 import { Button } from '../components/ui/primitives'
 import { Field, Input } from '../components/ui/forms'
 import { login, DEMO_USERS, ROLES } from '../lib/auth'
+import { isRealApi } from '../lib/http'
 
 export default function Login() {
   const nav = useNavigate()
   const [account, setAccount] = useState('admin')
   const [pwd, setPwd] = useState('demo')
-  const submit = () => {
-    login(account.trim() || 'admin')
-    nav('/', { replace: true })
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    if (busy) return
+    setErr('')
+    setBusy(true)
+    try {
+      await login(account.trim() || 'admin', pwd || 'demo')
+      nav('/', { replace: true })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '登录失败，请重试')
+    } finally {
+      setBusy(false)
+    }
   }
   return (
     <div className="grid-bg grid min-h-screen place-items-center bg-canvas px-4">
@@ -39,14 +51,19 @@ export default function Login() {
             <Field label="密码">
               <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="demo" />
             </Field>
-            <Button variant="primary" busyMs={500} onClick={submit} className="w-full">
+            {err && (
+              <div className="flex items-center gap-1.5 rounded-md bg-brand-soft px-2.5 py-1.5 text-[12px] text-brand-ink" role="alert">
+                <AlertCircle size={13} /> {err}
+              </div>
+            )}
+            <Button variant="primary" type="submit" loading={busy} className="w-full">
               登录 <ArrowRight size={15} />
             </Button>
           </form>
 
           <div className="mt-4 border-t border-line pt-3.5">
             <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-4">
-              <ShieldCheck size={13} /> 演示账户（点击一键填入，密码任意）
+              <ShieldCheck size={13} /> 演示账户（点击一键填入，密码 demo）
             </div>
             <div className="flex flex-wrap gap-1.5">
               {DEMO_USERS.map((u) => (
@@ -65,7 +82,7 @@ export default function Login() {
         </div>
 
         <p className="mt-4 text-center text-[11px] leading-relaxed text-ink-4">
-          演示态鉴权（前端 mock）· 接口形态对齐 v4 后端契约，真实后端就绪即可切换
+          {isRealApi ? '真实后端鉴权（NestJS · JWT + 刷新令牌 · 服务端 RBAC）' : '演示态鉴权（前端 mock）· 接口形态对齐 v4 后端契约，真实后端就绪即可切换'}
         </p>
       </div>
     </div>

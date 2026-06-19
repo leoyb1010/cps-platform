@@ -279,6 +279,8 @@ export function Button({
   onClick,
   className,
   busyMs,
+  loading,
+  type = 'button',
   disabled,
 }: {
   children: ReactNode
@@ -286,6 +288,8 @@ export function Button({
   onClick?: () => void
   className?: string
   busyMs?: number // show a brief loading spinner for this long on click
+  loading?: boolean // externally-controlled loading state (e.g. async submit)
+  type?: 'button' | 'submit'
   disabled?: boolean
 }) {
   const [busy, setBusy] = useState(false)
@@ -305,9 +309,10 @@ export function Button({
       setTimeout(() => setBusy(false), busyMs)
     } else onClick()
   }
+  const showSpin = busy || loading
   return (
-    <button className={cx(base, v, className)} onClick={handle} disabled={disabled || busy}>
-      {busy && <Loader2 size={14} className="animate-spin" />}
+    <button className={cx(base, v, className)} onClick={handle} disabled={disabled || showSpin} type={type}>
+      {showSpin && <Loader2 size={14} className="animate-spin" />}
       {children}
     </button>
   )

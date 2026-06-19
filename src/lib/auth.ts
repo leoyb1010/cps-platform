@@ -1,9 +1,11 @@
 // ════════════════════════════════════════════════════════════════
-//  账户 / 鉴权 / RBAC —— 演示态(前端 mock)，接口形态对齐 v4 后端契约
-//  · 登录态持久化 localStorage · 角色→权限点 · 数据范围 scope
-//  接真实后端时：把这里的读写换成 /auth/* 与 /members /roles，逻辑不变。
+//  账户 / 鉴权 / RBAC —— 双模式
+//  · VITE_API_MODE=real：调真实后端 /auth/*（JWT + httpOnly refresh），
+//    权限点以服务端返回为准；登录态由 access token(内存) + refresh(cookie) 维持。
+//  · 否则：演示态(前端 mock + localStorage)，接口形态与后端一致。
 // ════════════════════════════════════════════════════════════════
 import { useSyncExternalStore } from 'react'
+import { http, isRealApi, setAccessToken } from './http'
 
 /* ── 权限点字典（与 v4 §4 一致，按业务域分组） ── */
 export interface PermDef {
@@ -77,6 +79,9 @@ export interface User {
   name: string
   account: string
   roleId: RoleId
+  permissions?: string[] // 真实后端模式下由服务端下发，优先于本地角色映射
+  scopeType?: string
+  scopeId?: string | null
 }
 // 演示账户（真实环境由后端校验密码哈希）
 export const DEMO_USERS: User[] = [
@@ -110,23 +115,51 @@ function persist() {
   }
 }
 
-export function login(account: string): User | null {
-  const u = DEMO_USERS.find((x) => x.account === account) ?? DEMO_USERS[0]
+function setUser(u: User | null) {
   current = u
   persist()
   emit()
+}
+
+/** 真实模式：调用 /auth/login，存 access token + 服务端用户/权限。失败抛出可读错误。 */
+export async function login(account: string, password = 'demo'): Promise<User> {
+  if (isRealApi) {
+    const r = await http.post<{ access: string; user: User }>('/auth/login', { account, password })
+    setAccessToken(r.access)
+    setUser(r.user)
+    return r.user
+  }
+  const u = DEMO_USERS.find((x) => x.account === account) ?? DEMO_USERS[0]
+  setUser(u)
   return u
 }
-export function logout() {
-  current = null
-  persist()
-  emit()
+
+export async function logout() {
+  if (isRealApi) {
+    await http.post('/auth/logout').catch(() => {})
+    setAccessToken(null)
+  }
+  setUser(null)
 }
+
+/** 真实模式：角色切换需后端改成员角色；此处演示态直接本地切换以便体验权限差异。 */
 export function switchRole(roleId: RoleId) {
   if (!current) return
-  current = { ...current, roleId, name: DEMO_USERS.find((u) => u.roleId === roleId)?.name ?? current.name }
-  persist()
-  emit()
+  setUser({ ...current, roleId, permissions: ROLES[roleId].perms, name: DEMO_USERS.find((u) => u.roleId === roleId)?.name ?? current.name })
+}
+
+/** 应用启动时：真实模式用 refresh cookie 静默换取登录态；返回是否已登录。 */
+export async function bootstrapAuth(): Promise<boolean> {
+  if (!isRealApi) return current != null
+  try {
+    const r = await http.post<{ access: string; user: User }>('/auth/refresh')
+    setAccessToken(r.access)
+    setUser(r.user)
+    return true
+  } catch {
+    setUser(null)
+    return false
+  }
 }
 
 export function useAuth() {
@@ -142,7 +175,10 @@ export function useAuth() {
 
 /* ── permission helpers ── */
 export function permsOf(u: User | null): Set<string> {
-  return new Set(u ? ROLES[u.roleId].perms : [])
+  if (!u) return new Set()
+  // 真实后端下发的权限点优先；否则回退到本地角色映射
+  if (u.permissions && u.permissions.length) return new Set(u.permissions)
+  return new Set(ROLES[u.roleId]?.perms ?? [])
 }
 export function useCan() {
   const u = useAuth()

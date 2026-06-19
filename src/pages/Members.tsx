@@ -16,16 +16,31 @@ import {
 import { Modal, useToast } from '../components/ui/overlays'
 import { Field, Input, Select } from '../components/ui/forms'
 import { DEMO_USERS, ROLES, PERMISSIONS, type RoleId } from '../lib/auth'
+import { isRealApi } from '../lib/http'
+import { adminApi, useApi } from '../lib/adminApi'
 import { cx } from '../lib/format'
 
 const ROLE_IDS = Object.keys(ROLES) as RoleId[]
 const PERM_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))]
 
+// 统一成员/角色视图（mock 用本地常量；real 用服务端数据）
+interface MView { id: string; name: string; account: string; roleId: string; roleName: string }
+interface RView { id: string; name: string; desc: string; perms: string[] }
+const LOCAL_MEMBERS: MView[] = DEMO_USERS.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: ROLES[u.roleId].name }))
+const LOCAL_ROLES: RView[] = ROLE_IDS.map((r) => ({ id: r, name: ROLES[r].name, desc: ROLES[r].desc, perms: ROLES[r].perms }))
+
 export default function Members() {
   const toast = useToast()
   const [tab, setTab] = useState<'members' | 'roles'>('members')
   const [invite, setInvite] = useState(false)
-  const [activeRole, setActiveRole] = useState<RoleId>('super')
+  const [activeRole, setActiveRole] = useState<string>('super')
+
+  const membersApi = useApi(() => adminApi.members(), [], [])
+  const rolesApi = useApi(() => adminApi.roles(), [], [])
+  const members: MView[] = isRealApi ? (membersApi.data ?? []).map((m) => ({ id: m.id, name: m.name, account: m.account, roleId: m.roleId, roleName: m.roleName })) : LOCAL_MEMBERS
+  const roles: RView[] = isRealApi ? (rolesApi.data ?? []).map((r) => ({ id: r.id, name: r.name, desc: r.description, perms: r.permissions })) : LOCAL_ROLES
+  const activeRoleObj = roles.find((r) => r.id === activeRole) ?? roles[0]
+  const cnt = (rid: string) => members.filter((m) => m.roleId === rid).length
 
   return (
     <>
@@ -36,10 +51,10 @@ export default function Members() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card mark><Stat label="成员总数" value={String(DEMO_USERS.length)} sub={<span>5 个角色</span>} /></Card>
-        <Card mark><Stat label="角色数" value={String(ROLE_IDS.length)} sub={<span>权限点 {PERMISSIONS.length} 项</span>} /></Card>
-        <Card mark><Stat label="超级管理员" value={String(DEMO_USERS.filter((u) => u.roleId === 'super').length)} sub={<span>全部权限</span>} /></Card>
-        <Card mark><Stat label="只读审计" value={String(DEMO_USERS.filter((u) => u.roleId === 'audit').length)} sub={<span className="text-good-ink">仅查看 + 导出</span>} /></Card>
+        <Card mark><Stat label="成员总数" value={String(members.length)} sub={<span>{roles.length} 个角色</span>} /></Card>
+        <Card mark><Stat label="角色数" value={String(roles.length)} sub={<span>权限点 {PERMISSIONS.length} 项</span>} /></Card>
+        <Card mark><Stat label="超级管理员" value={String(cnt('super'))} sub={<span>全部权限</span>} /></Card>
+        <Card mark><Stat label="只读审计" value={String(cnt('audit'))} sub={<span className="text-good-ink">仅查看 + 导出</span>} /></Card>
       </div>
 
       <Card className="mt-4" pad={false}>
@@ -49,8 +64,8 @@ export default function Members() {
         </div>
 
         {tab === 'members' ? (
-          <TableShell className="px-2 pb-2" head={<><Th className="pl-3">成员</Th><Th>账号</Th><Th>角色</Th><Th>数据范围</Th><Th right>状态</Th><Th right>操作</Th></>}>
-            {DEMO_USERS.map((u) => (
+          <TableShell className="px-2 pb-2" empty={isRealApi && membersApi.loading ? '正在从服务端加载成员…' : '暂无成员'} head={<><Th className="pl-3">成员</Th><Th>账号</Th><Th>角色</Th><Th>数据范围</Th><Th right>状态</Th><Th right>操作</Th></>}>
+            {members.map((u) => (
               <Row key={u.id}>
                 <Td className="pl-3">
                   <div className="flex items-center gap-2.5">
@@ -59,7 +74,7 @@ export default function Members() {
                   </div>
                 </Td>
                 <Td mono>{u.account}</Td>
-                <Td><Badge tone={u.roleId === 'super' ? 'brand' : u.roleId === 'audit' ? 'neutral' : 'info'}>{ROLES[u.roleId].name}</Badge></Td>
+                <Td><Badge tone={u.roleId === 'super' ? 'brand' : u.roleId === 'audit' ? 'neutral' : 'info'}>{u.roleName}</Badge></Td>
                 <Td><span className="text-[12px] text-ink-3">平台级</span></Td>
                 <Td right><Badge tone="good" dot>在职</Badge></Td>
                 <Td right>
@@ -72,19 +87,34 @@ export default function Members() {
           <div className="grid grid-cols-1 gap-0 px-5 pb-5 lg:grid-cols-[200px_1fr]">
             {/* role list */}
             <div className="flex flex-col gap-1 border-line pb-3 lg:border-r lg:pr-3 lg:pb-0">
-              {ROLE_IDS.map((rid) => (
+              {roles.map((r) => (
                 <button
-                  key={rid}
-                  onClick={() => setActiveRole(rid)}
-                  className={cx('rounded-lg px-3 py-2 text-left transition-colors', rid === activeRole ? 'bg-surface-sunken' : 'hover:bg-surface-muted')}
+                  key={r.id}
+                  onClick={() => setActiveRole(r.id)}
+                  className={cx('rounded-lg px-3 py-2 text-left transition-colors', r.id === activeRole ? 'bg-surface-sunken' : 'hover:bg-surface-muted')}
                 >
-                  <div className={cx('text-[13px] font-medium', rid === activeRole ? 'text-ink' : 'text-ink-2')}>{ROLES[rid].name}</div>
-                  <div className="text-[11px] text-ink-4">{ROLES[rid].desc} · {ROLES[rid].perms.length} 权限</div>
+                  <div className={cx('text-[13px] font-medium', r.id === activeRole ? 'text-ink' : 'text-ink-2')}>{r.name}</div>
+                  <div className="text-[11px] text-ink-4">{r.desc} · {r.perms.length} 权限</div>
                 </button>
               ))}
             </div>
             {/* permission matrix for active role */}
-            <RolePerms key={activeRole} roleId={activeRole} onSave={() => toast({ tone: 'good', text: `「${ROLES[activeRole].name}」权限已保存` })} />
+            {activeRoleObj && (
+              <RolePerms
+                key={activeRoleObj.id}
+                roleId={activeRoleObj.id}
+                initial={activeRoleObj.perms}
+                onSave={async (perms) => {
+                  if (isRealApi) {
+                    const r = await adminApi.updateRole(activeRoleObj.id, perms).catch((e) => ({ ok: false, detail: e?.message }))
+                    toast(r.ok ? { tone: 'good', text: `「${activeRoleObj.name}」权限已保存到服务端` } : { tone: 'alert', text: r.detail || '保存失败' })
+                    if (r.ok) rolesApi.reload()
+                  } else {
+                    toast({ tone: 'good', text: `「${activeRoleObj.name}」权限已保存` })
+                  }
+                }}
+              />
+            )}
           </div>
         )}
       </Card>
@@ -103,8 +133,9 @@ export default function Members() {
   )
 }
 
-function RolePerms({ roleId, onSave }: { roleId: RoleId; onSave: () => void }) {
-  const [granted, setGranted] = useState<Set<string>>(new Set(ROLES[roleId].perms))
+function RolePerms({ roleId, initial, onSave }: { roleId: string; initial: string[]; onSave: (perms: string[]) => void | Promise<void> }) {
+  const [granted, setGranted] = useState<Set<string>>(new Set(initial))
+  const [saving, setSaving] = useState(false)
   const readonly = roleId === 'super'
   const toggle = (key: string) => {
     if (readonly) return
@@ -114,11 +145,19 @@ function RolePerms({ roleId, onSave }: { roleId: RoleId; onSave: () => void }) {
       return n
     })
   }
+  const save = async () => {
+    setSaving(true)
+    try {
+      await onSave([...granted])
+    } finally {
+      setSaving(false)
+    }
+  }
   return (
     <div className="pt-3 lg:pt-0 lg:pl-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-[12px] text-ink-3"><ShieldCheck size={14} className="text-ink-4" /> 勾选该角色可执行的权限点</div>
-        <Button variant="primary" busyMs={420} onClick={onSave} className="!py-1"><Check size={13} /> 保存</Button>
+        <Button variant="primary" loading={saving} disabled={readonly} onClick={save} className="!py-1"><Check size={13} /> 保存</Button>
       </div>
       <div className="space-y-3">
         {PERM_GROUPS.map((g) => (
