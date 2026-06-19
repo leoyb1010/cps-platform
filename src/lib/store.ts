@@ -69,6 +69,9 @@ function load(): StoreState {
       const p = JSON.parse(raw) as StoreState
       // 基本完整性校验，缺字段则重置
       if (p.orders && p.complaints && p.settlements && p.agents && p.merchants && p.brands) {
+        // 恢复 seq 到已持久化的最大 id 之上，避免刷新后重新发号导致 key 冲突
+        const maxActivityId = (p.activity ?? []).reduce((m, a) => Math.max(m, a.id), 0)
+        if (maxActivityId >= seq) seq = maxActivityId + 1
         return { ...seed(), ...p, activity: p.activity ?? [] }
       }
     }
