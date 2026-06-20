@@ -71,3 +71,25 @@ jobs:
         run: npx prisma validate --schema prisma/schema.postgres.prisma
         env:
           DATABASE_URL: postgresql://u:p@localhost:5432/db
+
+  e2e:
+    name: 端到端 (Playwright · 真实浏览器)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 安装 Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Playwright E2E (mock 模式, webServer 自动起前端)
+        run: npm run test:e2e
+      - name: 上传报告（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -29,3 +29,7 @@ server/node_modules
 server/dist
 server/*.db
 server/*.db-journal
+test-results
+playwright-report
+/playwright/.cache
+blob-report
