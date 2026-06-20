@@ -4,8 +4,9 @@ import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat } 
 import { NAV } from './nav'
 import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
-import { useStore, markAllRead } from '../../lib/store'
+import { useStore, markAllRead, on } from '../../lib/store'
 import { useAuth, useCan, logout, switchRole, ROLES, type RoleId } from '../../lib/auth'
+import { useToast } from '../ui/overlays'
 import { CommandPalette } from './CommandPalette'
 
 function openPalette() {
@@ -236,12 +237,22 @@ const TITLES: Record<string, string> = {
 
 export default function AppLayout() {
   const loc = useLocation()
+  const toast = useToast()
   const [epoch, setEpoch] = useState(0)
   const [navOpen, setNavOpen] = useState(false)
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })
     setNavOpen(false)
   }, [loc.pathname])
+  // 真实模式：镜像写被服务端拒绝时提示用户（已自动回收服务端真值）
+  useEffect(
+    () =>
+      on('mirror:failed', (p) => {
+        const { label, message } = (p as { label?: string; message?: string }) || {}
+        toast({ tone: 'alert', text: `${label ?? '操作'}未成功：${message ?? '服务端已拒绝，已同步最新状态'}` })
+      }),
+    [toast],
+  )
   const base = '/' + (loc.pathname.split('/')[1] || '')
   const title = TITLES[base] ?? '经营总览'
   const replay = () => setEpoch((e) => e + 1)

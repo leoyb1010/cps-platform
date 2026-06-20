@@ -152,10 +152,12 @@ export function getStore() {
 /* ── 事件总线（联动 / 通知 / 审计的解耦点） ────────── */
 type Handler = (payload: unknown) => void
 const bus = new Map<string, Set<Handler>>()
-export function on(evt: string, h: Handler) {
+export function on(evt: string, h: Handler): () => void {
   if (!bus.has(evt)) bus.set(evt, new Set())
   bus.get(evt)!.add(h)
-  return () => bus.get(evt)!.delete(h)
+  return () => {
+    bus.get(evt)?.delete(h)
+  }
 }
 function emit(evt: string, payload?: unknown) {
   bus.get(evt)?.forEach((h) => h(payload))
@@ -166,11 +168,25 @@ function logActivity(s: StoreState, text: string, tone: Tone): ActivityItem[] {
   return [item, ...s.activity].slice(0, 40)
 }
 
-// 真实模式：把业务写动作镜像到后端（服务端为审计权威源；本地 store 仍即时更新供 UI）。
-// 失败仅告警、不阻断本地流转，保证演示连续性。
-function mirror(call: () => Promise<unknown>) {
+// 真实模式：把业务写动作镜像到后端（服务端为审计权威源；本地 store 乐观更新供 UI）。
+// 关键：若服务端拒绝（抛错 / {ok:false} / 403 / 409），本地乐观更新与服务端分歧——
+// 此时重新 hydrate 回收服务端真值，并经 'mirror:failed' 通知 UI 提示用户（不再静默丢弃）。
+function mirror(call: () => Promise<unknown>, label = '操作') {
   if (!isRealApi) return
-  call().catch((e) => emit('mirror:error', e))
+  call()
+    .then((r) => {
+      const rejected = r && typeof r === 'object' && 'ok' in r && (r as { ok?: boolean }).ok === false
+      if (rejected) throw new Error((r as { detail?: string }).detail || `${label}被服务端拒绝`)
+    })
+    .catch(async (e) => {
+      emit('mirror:failed', { label, message: e instanceof Error ? e.message : String(e) })
+      // 回收真值：重新拉取服务端状态覆盖乐观更新，避免 UI 与后端长期分歧
+      try {
+        await hydrateFromServer()
+      } catch {
+        /* 已尽力 */
+      }
+    })
 }
 
 /* ════════════ 动作（含状态机流转 + 跨模块联动） ════════════ */
@@ -245,7 +261,7 @@ export function resolveTicketWithRefund(ticketId: string) {
 
   commit({ ...state, complaints, orders, settlements, agents, activity })
   emit('ticket:refunded', { ticketId, amount, share, agentId })
-  mirror(() => bizApi.refundTicket(ticketId, newIdemKey()))
+  mirror(() => bizApi.refundTicket(ticketId, newIdemKey()), '工单退款')
 }
 
 // 订单驱动的退款（无工单）：订单冲正 → 结算冲账 → 代理分润回收
@@ -267,7 +283,7 @@ export function refundOrder(orderId: string) {
   const activity = logActivity({ ...state, activity: logActivity(state, `订单 ${orderId} 已退款 ¥${amount}`, 'warn') }, `逆向冲账 ¥${share} → 冲减代理分润`, 'alert')
   commit({ ...state, orders, settlements, agents, activity })
   emit('order:refunded', { orderId, amount })
-  mirror(() => bizApi.refundOrder(orderId, newIdemKey()))
+  mirror(() => bizApi.refundOrder(orderId, newIdemKey()), '订单退款')
 }
 
 // 工单：升级 / 转派 / 关闭
@@ -275,7 +291,7 @@ export function updateTicket(ticketId: string, patch: Partial<Complaint>, note?:
   const complaints = state.complaints.map((c) => (c.id === ticketId ? { ...c, ...patch } : c))
   const activity = note ? logActivity(state, note, 'info') : state.activity
   commit({ ...state, complaints, activity })
-  mirror(() => bizApi.updateTicket(ticketId, { status: patch.status, owner: patch.owner, note }))
+  mirror(() => bizApi.updateTicket(ticketId, { status: patch.status, owner: patch.owner, note }), '工单流转')
 }
 
 // 品牌入驻：新建（默认审核中）
@@ -326,14 +342,14 @@ export function updateBrandConfig(id: string, patch: Partial<Pick<Brand, 'feeRat
   const b = state.brands.find((x) => x.id === id)
   const activity = logActivity(state, `品牌「${b?.name ?? id}」配置已更新`, 'info')
   commit({ ...state, brands, activity })
-  mirror(() => bizApi.setBrandConfig(id, patch))
+  mirror(() => bizApi.setBrandConfig(id, patch), '品牌配置')
 }
 export function setBrandStatus(id: string, status: Brand['status'], label: string) {
   const brands = state.brands.map((b) => (b.id === id ? { ...b, status } : b))
   const b = state.brands.find((x) => x.id === id)
   const activity = logActivity(state, `品牌「${b?.name ?? id}」${label}`, status === 'live' ? 'good' : status === 'paused' ? 'warn' : 'info')
   commit({ ...state, brands, activity })
-  mirror(() => bizApi.setBrandStatus(id, status, label))
+  mirror(() => bizApi.setBrandStatus(id, status, label), '品牌状态')
 }
 
 // 商户号：新增录入
@@ -359,7 +375,7 @@ export function setMerchantState(id: string, next: MerchantState, label: string)
   const activity = logActivity(state, `商户号 ${id} 人工置为「${label}」`, next === 'healthy' ? 'good' : 'alert')
   commit({ ...state, merchants, activity })
   emit('merchant:state', { id, next })
-  mirror(() => bizApi.setMerchant(id, next, label))
+  mirror(() => bizApi.setMerchant(id, next, label), '号池干预')
 }
 
 // 代理提现结算：待结算清零 → 计入累计已结
@@ -371,7 +387,7 @@ export function settleAgent(id: string) {
   const activity = logActivity(state, `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款`, 'good')
   commit({ ...state, agents, activity })
   emit('agent:settled', { id, amt })
-  mirror(() => bizApi.settleAgent(id, newIdemKey()))
+  mirror(() => bizApi.settleAgent(id, newIdemKey()), '代理提现')
 }
 
 // 代理：限流 / 冻结 / 恢复
@@ -379,7 +395,7 @@ export function setAgentStatus(id: string, next: Agent['status'], label: string)
   const agents = state.agents.map((a) => (a.id === id ? { ...a, status: next } : a))
   const activity = logActivity(state, `代理 ${id} 置为「${label}」`, next === 'active' ? 'good' : 'alert')
   commit({ ...state, agents, activity })
-  if (next === 'active' || next === 'throttled' || next === 'frozen') mirror(() => bizApi.setAgent(id, next))
+  if (next === 'active' || next === 'throttled' || next === 'frozen') mirror(() => bizApi.setAgent(id, next), '代理处置')
 }
 
 // 清结算：发起本期结算（待结算 → 已结算）
@@ -389,7 +405,7 @@ export function clearSettlement(id: string) {
   const activity = logActivity(state, `结算单 ${id} 已发起结算并完成`, 'good')
   commit({ ...state, settlements, activity })
   emit('settlement:cleared', { id, amount: s?.platformFee })
-  mirror(() => bizApi.clearSettlement(id, newIdemKey()))
+  mirror(() => bizApi.clearSettlement(id, newIdemKey()), '发起结算')
 }
 
 // 对账差异核销
@@ -397,7 +413,7 @@ export function reconcileSettlement(id: string) {
   const settlements = state.settlements.map((s) => (s.id === id ? { ...s, status: 'cleared' as const, reconcileDiff: 0 } : s))
   const activity = logActivity(state, `结算单 ${id} 对账差异已人工核销`, 'good')
   commit({ ...state, settlements, activity })
-  mirror(() => bizApi.reconcile(id, newIdemKey()))
+  mirror(() => bizApi.reconcile(id, newIdemKey()), '对账核销')
 }
 
 export function markAllRead() {
