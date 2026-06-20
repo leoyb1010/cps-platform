@@ -19,6 +19,8 @@ jobs:
       - run: npm ci
       - name: TypeScript 严格检查
         run: npx tsc -p tsconfig.app.json --noEmit --noUnusedLocals
+      - name: 单元测试 (Vitest)
+        run: npm test
       - name: 生产构建
         run: npm run build
 
