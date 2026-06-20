@@ -58,7 +58,13 @@ export class AuthService {
   async rotateRefresh(raw: string, ua = '', ip = '') {
     const hash = this.sha256(raw)
     const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash } })
-    if (!rec || rec.revoked || rec.expiresAt < new Date()) throw new UnauthorizedException('登录已过期，请重新登录')
+    if (!rec || rec.expiresAt < new Date()) throw new UnauthorizedException('登录已过期，请重新登录')
+    // 重放检测：已被吊销的 refresh 又被使用 = 可能被盗用（攻击者已先轮换）。
+    // 不只是拒绝本次，而是吊销该用户全部会话族，连带作废攻击者刚换得的令牌。
+    if (rec.revoked) {
+      await this.revokeAllForUser(rec.userId)
+      throw new UnauthorizedException('检测到异常登录，已注销全部会话，请重新登录')
+    }
     await this.prisma.refreshToken.update({ where: { id: rec.id }, data: { revoked: true } })
     const next = await this.issueRefresh(rec.userId, ua, ip)
     return { userId: rec.userId, refresh: next }
