@@ -18,7 +18,8 @@ import {
 } from '../components/ui/primitives'
 import { Donut } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
-import { fundSplit, brands, SETTLE_PATH_LABEL } from '../lib/data'
+import { fundSplit, SETTLE_PATH_LABEL } from '../lib/data'
+import { useStore } from '../lib/store'
 import { pct, cx } from '../lib/format'
 import { useState } from 'react'
 
@@ -32,6 +33,7 @@ const CHANNELS = [
 
 export default function Compliance() {
   const toast = useToast()
+  const { brands } = useStore()
   const [cfg, setCfg] = useState(false)
   return (
     <>

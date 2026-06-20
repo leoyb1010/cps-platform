@@ -58,7 +58,7 @@ export const bizApi = {
   brands: <T = unknown>() => http.get<T>('/brands'),
   agents: <T = unknown>() => http.get<T>('/agents'),
   merchants: <T = unknown>() => http.get<T>('/merchants'),
-  orders: <T = unknown>() => http.get<T>('/orders'),
+  orders: <T = unknown>(cursor?: string, limit = 200) => http.get<{ items: T; nextCursor: string | null }>(`/orders?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   settlements: <T = unknown>() => http.get<T>('/settlements'),
   tickets: <T = unknown>() => http.get<T>('/tickets'),
   config: <T = unknown>() => http.get<T>('/config'),

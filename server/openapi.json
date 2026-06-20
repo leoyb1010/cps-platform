@@ -217,7 +217,7 @@
             "description": ""
           }
         },
-        "summary": "品牌列表（按 scope 收窄）",
+        "summary": "品牌列表（按 scope 收窄，排除已删除）",
         "tags": [
           "business"
         ]
@@ -255,7 +255,7 @@
             "description": ""
           }
         },
-        "summary": "代理列表（按 scope 收窄）",
+        "summary": "代理列表（按 scope 收窄，排除已删除）",
         "tags": [
           "business"
         ]
@@ -270,7 +270,7 @@
             "description": ""
           }
         },
-        "summary": "商户号/号池（按 scope 收窄）",
+        "summary": "商户号/号池（按 scope 收窄，排除已删除）",
         "tags": [
           "business"
         ]
@@ -302,13 +302,30 @@
     "/orders": {
       "get": {
         "operationId": "BusinessController_orders",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
           }
         },
-        "summary": "订单（按 scope 收窄）",
+        "summary": "订单（按 scope 收窄 · 游标分页）",
         "tags": [
           "business"
         ]
@@ -650,6 +667,30 @@
           }
         },
         "summary": "品牌接入配置（费率/账期/预留/资金路径）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/brands/{id}": {
+      "delete": {
+        "operationId": "BusinessController_removeBrand",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌软删除（下架，可追溯）",
         "tags": [
           "business"
         ]

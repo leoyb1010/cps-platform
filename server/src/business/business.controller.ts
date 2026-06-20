@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger'
 import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { PrismaService } from '../prisma.service'
@@ -68,18 +68,30 @@ export class BusinessController {
     return {}
   }
 
-  // ── reads ──────────────────────────────
-  @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表（按 scope 收窄）' })
-  brands(@CurrentUser() user: AuthUser) { return this.prisma.brand.findMany({ where: this.scope(user, 'id-brand'), orderBy: { gmvMtd: 'desc' } }) }
+  // ── reads ──（软删除：deletedAt=null 默认过滤）──
+  @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表（按 scope 收窄，排除已删除）' })
+  brands(@CurrentUser() user: AuthUser) { return this.prisma.brand.findMany({ where: { ...this.scope(user, 'id-brand'), deletedAt: null }, orderBy: { gmvMtd: 'desc' } }) }
 
-  @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表（按 scope 收窄）' })
-  agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: this.scope(user, 'id-agent'), orderBy: { spendMtd: 'desc' } }) }
+  @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表（按 scope 收窄，排除已删除）' })
+  agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: { ...this.scope(user, 'id-agent'), deletedAt: null }, orderBy: { spendMtd: 'desc' } }) }
 
-  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄）' })
-  merchants(@CurrentUser() user: AuthUser) { return this.prisma.merchantAccount.findMany({ where: this.scope(user, 'brandId') }) }
+  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄，排除已删除）' })
+  merchants(@CurrentUser() user: AuthUser) { return this.prisma.merchantAccount.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null } }) }
 
-  @Get('orders') @RequirePerms('order.read') @ApiOperation({ summary: '订单（按 scope 收窄）' })
-  orders(@CurrentUser() user: AuthUser) { return this.prisma.order.findMany({ where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') }, orderBy: { createdAt: 'desc' }, take: 200 }) }
+  // 游标分页：传 ?cursor=<id>&limit=<n>，返回 { items, nextCursor }
+  @Get('orders') @RequirePerms('order.read') @ApiOperation({ summary: '订单（按 scope 收窄 · 游标分页）' })
+  async orders(@CurrentUser() user: AuthUser, @Query('cursor') cursor?: string, @Query('limit') limit?: string) {
+    const take = Math.min(Math.max(Number(limit) || 100, 1), 500)
+    const items = await this.prisma.order.findMany({
+      where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') },
+      orderBy: { createdAt: 'desc' },
+      take: take + 1, // 多取一条判断是否还有下一页
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    })
+    const hasMore = items.length > take
+    const page = hasMore ? items.slice(0, take) : items
+    return { items: page, nextCursor: hasMore ? page[page.length - 1].id : null }
+  }
 
   @Get('settlements') @RequirePerms('settlement.read') @ApiOperation({ summary: '结算单（按 scope 收窄）' })
   settlements(@CurrentUser() user: AuthUser) { return this.prisma.settlement.findMany({ where: this.scope(user, 'brandId') }) }
@@ -228,6 +240,15 @@ export class BusinessController {
     await this.prisma.brand.update({ where: { id }, data })
     await this.audit.record({ user, action: 'brand.config', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 接入配置已更新`, before, after: data })
     return { ok: true, detail: `品牌 ${id} 配置已保存` }
+  }
+
+  // 软删除：置 deletedAt，从列表消失但保留审计可追溯（资金/合规要求）
+  @Delete('brands/:id') @RequirePerms('brand.write') @ApiOperation({ summary: '品牌软删除（下架，可追溯）' })
+  async removeBrand(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    const r = await this.prisma.brand.updateMany({ where: { id, deletedAt: null }, data: { deletedAt: new Date() } })
+    if (r.count === 0) return { ok: false, detail: '品牌不存在或已删除' }
+    await this.audit.record({ user, action: 'brand.delete', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 已软删除（下架）` })
+    return { ok: true, detail: `品牌 ${id} 已下架` }
   }
 
   // ── 号池：新增 ─────────────────────────

@@ -1,4 +1,5 @@
 import { execSync } from 'child_process'
+import { rmSync } from 'fs'
 import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
@@ -18,8 +19,16 @@ async function token(account: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  // 在导入 AppModule(及其 PrismaClient)前，先把 schema 推到 test.db 并灌种子
+  // 在导入 AppModule(及其 PrismaClient)前：删旧 test.db → 建表 → 灌种子。
+  // 删文件而非 --force-reset，保证干净态的同时避开危险操作确认；软删除/幂等键等有状态用例顺序无关、可重复。
   const env = { ...process.env, DATABASE_URL: 'file:./test.db' }
+  for (const f of ['test.db', 'test.db-journal']) {
+    try {
+      rmSync(`${__dirname}/../${f}`)
+    } catch {
+      /* 不存在则忽略 */
+    }
+  }
   execSync('npx prisma db push --skip-generate --accept-data-loss', { env, stdio: 'ignore' })
   execSync('npx ts-node prisma/seed.ts', { env, stdio: 'ignore' })
   const { AppModule } = await import('../src/app.module')
@@ -95,7 +104,7 @@ describe('资金幂等 + 并发', () => {
 
   it('同一 Idempotency-Key 提交两次（reconcile），第二次为 replay、不重复执行', async () => {
     const su = await token('admin')
-    const key = 'e2e-idem-reconcile-1'
+    const key = 'e2e-idem-reconcile-' + Math.random().toString(36).slice(2)
     const r1 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
     expect([200, 201]).toContain(r1.status)
     expect(r1.body.ok).toBe(true)
@@ -150,6 +159,32 @@ describe('业务写端点 + 审计', () => {
   it('ops 角色无 config.write → 写配置 403', async () => {
     const ops = await token('ops')
     await request(httpServer).post('/config').set('Authorization', `Bearer ${ops}`).send({ x: 1 }).expect(403)
+  })
+})
+
+describe('软删除 + 游标分页', () => {
+  it('品牌软删除后从列表消失（用专属品牌避免与其它用例耦合）', async () => {
+    const su = await token('admin')
+    // 创建一个本用例专属品牌，删它，断言它从列表消失——与其它用例完全解耦
+    const created = await request(httpServer).post('/brands').set('Authorization', `Bearer ${su}`).send({ name: '软删测试', category: '工具', feeRate: 10, period: 7, reservePct: 10, path: 'direct' })
+    const id = created.body.id as string
+    expect(id).toBeTruthy()
+    const has = (list: any[]) => list.some((b) => b.id === id)
+    expect(has((await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`)).body)).toBe(true)
+
+    await request(httpServer).delete(`/brands/${id}`).set('Authorization', `Bearer ${su}`).expect((r) => expect([200, 201]).toContain(r.status))
+    expect(has((await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`)).body)).toBe(false)
+  })
+
+  it('订单游标分页：limit + nextCursor 翻页且不重复', async () => {
+    const su = await token('admin')
+    const p1 = await request(httpServer).get('/orders?limit=3').set('Authorization', `Bearer ${su}`).expect(200)
+    expect(p1.body.items.length).toBe(3)
+    expect(p1.body.nextCursor).toBeTruthy()
+    const p2 = await request(httpServer).get(`/orders?limit=3&cursor=${p1.body.nextCursor}`).set('Authorization', `Bearer ${su}`).expect(200)
+    const ids1 = p1.body.items.map((o: any) => o.id)
+    const ids2 = p2.body.items.map((o: any) => o.id)
+    expect(ids1.some((id: string) => ids2.includes(id))).toBe(false) // 两页无交集
   })
 })
 

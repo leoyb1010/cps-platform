@@ -10,7 +10,8 @@ import {
   TONE,
 } from '../components/ui/primitives'
 import { Modal, useToast } from '../components/ui/overlays'
-import { brands, SETTLE_PATH_LABEL } from '../lib/data'
+import { SETTLE_PATH_LABEL } from '../lib/data'
+import { useStore } from '../lib/store'
 import { pct, cx } from '../lib/format'
 
 const CATS = ['全部', '工具 / 知识', '音视频 / 泛娱乐', '生活服务 / 电商']
@@ -19,6 +20,7 @@ export default function Marketplace() {
   const [cat, setCat] = useState('全部')
   const [link, setLink] = useState<{ brand: string; plan: string; url: string } | null>(null)
   const toast = useToast()
+  const { brands } = useStore()
   const live = brands.filter((b) => b.status === 'live')
   const list = cat === '全部' ? live : live.filter((b) => b.category === cat)
 

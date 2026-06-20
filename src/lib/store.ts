@@ -112,14 +112,15 @@ export async function hydrateFromServer() {
   // 每个集合独立取数：某集合无权限(403)则置空（用户本就看不到），
   // 不让单个失败拖垮整体——这同时让数据级 RBAC 在 UI 自然生效。
   const safe = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null)
-  const [brands, agents, merchants, orders, settlements, tickets] = await Promise.all([
+  const [brands, agents, merchants, ordersPage, settlements, tickets] = await Promise.all([
     safe(bizApi.brands<Partial<Brand>[]>()),
     safe(bizApi.agents<Partial<Agent>[]>()),
     safe(bizApi.merchants<Partial<MerchantAccount>[]>()),
-    safe(bizApi.orders<Partial<Order>[]>()),
+    safe(bizApi.orders<Partial<Order>[]>()), // 游标分页：{ items, nextCursor }
     safe(bizApi.settlements<Partial<Settlement>[]>()),
     safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
   ])
+  const orders = ordersPage?.items ?? null
   // 全部失败（如完全离线）：保留本地 seed，不阻断演示
   if (!brands && !agents && !merchants && !orders && !settlements && !tickets) return
   const seedB = new Map(seedBrands.map((b) => [b.id, b]))

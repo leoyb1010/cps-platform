@@ -109,6 +109,7 @@ model Brand {
   complaintRate Float @default(0)
   joinedAt   String
   createdAt  DateTime @default(now())
+  deletedAt     DateTime?
 }
 
 model Agent {
@@ -129,6 +130,7 @@ model Agent {
   brandsCount   Int      @default(0)
   invoicing     String   @default("灵活用工")
   joinedAt      String
+  deletedAt     DateTime?
 }
 
 model MerchantAccount {
@@ -146,6 +148,7 @@ model MerchantAccount {
   txCount       Int     @default(0)
   limitUsedPct  Int     @default(0)
   weight        Int     @default(50)
+  deletedAt     DateTime?
 }
 
 model Order {
