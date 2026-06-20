@@ -370,6 +370,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -377,7 +393,7 @@
             "description": ""
           }
         },
-        "summary": "发起结算（待结算→已结算）",
+        "summary": "发起结算（待结算→已结算）· 幂等",
         "tags": [
           "business"
         ]
@@ -394,6 +410,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -401,7 +433,7 @@
             "description": ""
           }
         },
-        "summary": "对账差异核销",
+        "summary": "对账差异核销 · 幂等",
         "tags": [
           "business"
         ]
@@ -418,6 +450,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -425,7 +473,7 @@
             "description": ""
           }
         },
-        "summary": "工单退款，联动逆向冲账与代理分润/信用分",
+        "summary": "工单退款，联动逆向冲账与代理分润/信用分 · 幂等",
         "tags": [
           "business"
         ]
@@ -510,6 +558,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -517,7 +581,7 @@
             "description": ""
           }
         },
-        "summary": "代理提现结算（待结算清零→计入累计已结）",
+        "summary": "代理提现结算（待结算清零→计入累计已结）· 幂等",
         "tags": [
           "business"
         ]
@@ -602,6 +666,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -609,7 +689,7 @@
             "description": ""
           }
         },
-        "summary": "订单退款（订单冲正→结算冲账→代理分润回收）",
+        "summary": "订单退款（订单冲正→结算冲账→代理分润回收）· 幂等",
         "tags": [
           "business"
         ]

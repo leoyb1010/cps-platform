@@ -83,6 +83,30 @@ describe('Business 联动 + audit', () => {
   })
 })
 
+describe('资金幂等 + 并发', () => {
+  // 注意：本块内先做并发（消费 S-2406-YD 的 pending），再做幂等（用 reconcile，状态无关）
+  it('并发 5 次结算同一 pending 单（无幂等键），仅 1 次成功（条件更新防并发）', async () => {
+    const su = await token('admin')
+    const reqs = Array.from({ length: 5 }, () => request(httpServer).post('/settlements/S-2406-YD/clear').set('Authorization', `Bearer ${su}`))
+    const results = await Promise.all(reqs)
+    const okCount = results.filter((r) => r.body.ok === true).length
+    expect(okCount).toBe(1) // 5 个并发只有一个抢到 pending→cleared
+  })
+
+  it('同一 Idempotency-Key 提交两次（reconcile），第二次为 replay、不重复执行', async () => {
+    const su = await token('admin')
+    const key = 'e2e-idem-reconcile-1'
+    const r1 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect([200, 201]).toContain(r1.status)
+    expect(r1.body.ok).toBe(true)
+    expect(r1.body.replayed).toBeUndefined()
+
+    const r2 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect(r2.body.ok).toBe(true)
+    expect(r2.body.replayed).toBe(true) // 命中首次结果，未再次执行
+  })
+})
+
 describe('数据级 RBAC (scope)', () => {
   it('品牌方账户只见自己品牌；平台管理员见全部', async () => {
     const brandTok = await token('brand')

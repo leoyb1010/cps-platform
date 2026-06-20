@@ -43,6 +43,15 @@ export const adminApi = {
 }
 
 type Ok = { ok: boolean; detail?: string }
+const idemHdr = (key?: string): Record<string, string> | undefined => (key ? { 'Idempotency-Key': key } : undefined)
+/** 生成幂等键（浏览器原生 UUID，回退到时间随机串） */
+export const newIdemKey = (): string => {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `idem-${Date.now()}-${Math.floor(Math.random() * 1e9)}`
+  }
+}
 export const bizApi = {
   // reads（业务页 real 模式取数）
   summary: <T = unknown>() => http.get<T>('/summary'),
@@ -53,16 +62,16 @@ export const bizApi = {
   settlements: <T = unknown>() => http.get<T>('/settlements'),
   tickets: <T = unknown>() => http.get<T>('/tickets'),
   config: <T = unknown>() => http.get<T>('/config'),
-  // writes（store 动作镜像）
-  clearSettlement: (id: string) => http.post<Ok>(`/settlements/${id}/clear`),
-  reconcile: (id: string) => http.post<Ok>(`/settlements/${id}/reconcile`),
-  refundTicket: (id: string) => http.post<Ok>(`/tickets/${id}/refund`),
-  refundOrder: (id: string) => http.post<Ok>(`/orders/${id}/refund`),
+  // writes（store 动作镜像）。资金类带 Idempotency-Key 防重复提交双花。
+  clearSettlement: (id: string, idem?: string) => http.post<Ok>(`/settlements/${id}/clear`, undefined, idemHdr(idem)),
+  reconcile: (id: string, idem?: string) => http.post<Ok>(`/settlements/${id}/reconcile`, undefined, idemHdr(idem)),
+  refundTicket: (id: string, idem?: string) => http.post<Ok>(`/tickets/${id}/refund`, undefined, idemHdr(idem)),
+  refundOrder: (id: string, idem?: string) => http.post<Ok>(`/orders/${id}/refund`, undefined, idemHdr(idem)),
   updateTicket: (id: string, body: { status?: string; owner?: string; note?: string }) => http.patch<Ok>(`/tickets/${id}`, body),
   setMerchant: (id: string, state: string, label?: string) => http.post<Ok>(`/merchants/${id}/state`, { state, label }),
   addMerchant: (body: { brandId: string; channel: string; weight: number }) => http.post<Ok>('/merchants', body),
   setAgent: (id: string, status: string) => http.post<Ok>(`/agents/${id}/status`, { status }),
-  settleAgent: (id: string) => http.post<Ok>(`/agents/${id}/settle`),
+  settleAgent: (id: string, idem?: string) => http.post<Ok>(`/agents/${id}/settle`, undefined, idemHdr(idem)),
   addBrand: (body: { name: string; category: string; feeRate: number; period: number; reservePct: number; path: string }) => http.post<Ok & { id?: string }>('/brands', body),
   setBrandStatus: (id: string, status: string, label?: string) => http.patch<Ok>(`/brands/${id}/status`, { status, label }),
   setBrandConfig: (id: string, body: { feeRate?: number; period?: number; reservePct?: number; path?: string }) => http.patch<Ok>(`/brands/${id}/config`, body),

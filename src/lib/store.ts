@@ -21,7 +21,7 @@ import {
   type Tone,
 } from './data'
 import { isRealApi } from './http'
-import { bizApi } from './adminApi'
+import { bizApi, newIdemKey } from './adminApi'
 
 export interface ActivityItem {
   id: number
@@ -244,7 +244,7 @@ export function resolveTicketWithRefund(ticketId: string) {
 
   commit({ ...state, complaints, orders, settlements, agents, activity })
   emit('ticket:refunded', { ticketId, amount, share, agentId })
-  mirror(() => bizApi.refundTicket(ticketId))
+  mirror(() => bizApi.refundTicket(ticketId, newIdemKey()))
 }
 
 // 订单驱动的退款（无工单）：订单冲正 → 结算冲账 → 代理分润回收
@@ -266,7 +266,7 @@ export function refundOrder(orderId: string) {
   const activity = logActivity({ ...state, activity: logActivity(state, `订单 ${orderId} 已退款 ¥${amount}`, 'warn') }, `逆向冲账 ¥${share} → 冲减代理分润`, 'alert')
   commit({ ...state, orders, settlements, agents, activity })
   emit('order:refunded', { orderId, amount })
-  mirror(() => bizApi.refundOrder(orderId))
+  mirror(() => bizApi.refundOrder(orderId, newIdemKey()))
 }
 
 // 工单：升级 / 转派 / 关闭
@@ -370,7 +370,7 @@ export function settleAgent(id: string) {
   const activity = logActivity(state, `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款`, 'good')
   commit({ ...state, agents, activity })
   emit('agent:settled', { id, amt })
-  mirror(() => bizApi.settleAgent(id))
+  mirror(() => bizApi.settleAgent(id, newIdemKey()))
 }
 
 // 代理：限流 / 冻结 / 恢复
@@ -388,7 +388,7 @@ export function clearSettlement(id: string) {
   const activity = logActivity(state, `结算单 ${id} 已发起结算并完成`, 'good')
   commit({ ...state, settlements, activity })
   emit('settlement:cleared', { id, amount: s?.platformFee })
-  mirror(() => bizApi.clearSettlement(id))
+  mirror(() => bizApi.clearSettlement(id, newIdemKey()))
 }
 
 // 对账差异核销
@@ -396,7 +396,7 @@ export function reconcileSettlement(id: string) {
   const settlements = state.settlements.map((s) => (s.id === id ? { ...s, status: 'cleared' as const, reconcileDiff: 0 } : s))
   const activity = logActivity(state, `结算单 ${id} 对账差异已人工核销`, 'good')
   commit({ ...state, settlements, activity })
-  mirror(() => bizApi.reconcile(id))
+  mirror(() => bizApi.reconcile(id, newIdemKey()))
 }
 
 export function markAllRead() {

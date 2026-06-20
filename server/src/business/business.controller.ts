@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common'
-import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { Body, Controller, Get, Headers, Param, Patch, Post } from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger'
 import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
+import { IdempotencyService } from '../common/idempotency.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 
 class StateDto {
@@ -47,6 +48,7 @@ export class BusinessController {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private idem: IdempotencyService,
   ) {}
 
   // 数据级 RBAC：按当前用户 scope 收窄查询条件
@@ -106,49 +108,59 @@ export class BusinessController {
     }
   }
 
-  // ── 清结算动作 ─────────────────────────
-  @Post('settlements/:id/clear') @RequirePerms('settlement.clear') @ApiOperation({ summary: '发起结算（待结算→已结算）' })
-  async clear(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const s = await this.prisma.settlement.findUnique({ where: { id } })
-    if (!s || s.status !== 'pending') return { ok: false, detail: '该结算单不可结算' }
-    await this.prisma.settlement.update({ where: { id }, data: { status: 'cleared' } })
-    await this.audit.record({ user, action: 'settlement.clear', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 已发起结算并完成`, after: { status: 'cleared' } })
-    return { ok: true, detail: `结算单 ${id} 已发起结算并完成` }
-  }
-
-  @Post('settlements/:id/reconcile') @RequirePerms('settlement.clear') @ApiOperation({ summary: '对账差异核销' })
-  async reconcile(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    await this.prisma.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
-    await this.audit.record({ user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
-    return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
-  }
-
-  // ── 工单退款 → 逆向冲账 → 代理分润/信用分（核心联动） ──
-  @Post('tickets/:id/refund') @RequirePerms('ticket.handle') @ApiOperation({ summary: '工单退款，联动逆向冲账与代理分润/信用分' })
-  async refundTicket(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const t = await this.prisma.ticket.findUnique({ where: { id } })
-    if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
-    const order = await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null)
-    const amount = order ? Math.abs(order.amount) || 33 : 33
-    const share = Math.round(amount * 0.3)
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.ticket.update({ where: { id }, data: { status: 'resolved', slaLeftMin: 0 } })
-      // 退款流水
-      await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
-      // 逆向冲账：冲减该品牌最近一期代理分润
-      const s = await tx.settlement.findFirst({ where: { brandId: t.brandId }, orderBy: { period: 'desc' } })
-      if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
-      // 代理：待结算↓、退款率↑、信用分↓、可能限流
-      const a = await tx.agent.findUnique({ where: { id: t.agentId } })
-      if (a) {
-        const creditScore = Math.max(400, a.creditScore - 4)
-        const status = a.status === 'active' && creditScore < 760 ? 'throttled' : a.status
-        await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1), creditScore, status } })
-      }
+  // ── 清结算动作（资金类：幂等 + 条件更新防并发） ──────────
+  @Post('settlements/:id/clear') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '发起结算（待结算→已结算）· 幂等' })
+  async clear(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const { result, replayed } = await this.idem.run(idemKey, 'settlement.clear', async () => {
+      // 条件更新：仅当仍为 pending 才置 cleared，count=0 表示已被并发结算
+      const r = await this.prisma.settlement.updateMany({ where: { id, status: 'pending' }, data: { status: 'cleared' } })
+      if (r.count === 0) return { ok: false, detail: '该结算单不可结算（不存在或已结算）' }
+      await this.audit.record({ user, action: 'settlement.clear', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 已发起结算并完成`, after: { status: 'cleared' } })
+      return { ok: true, detail: `结算单 ${id} 已发起结算并完成` }
     })
-    await this.audit.record({ user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
-    return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
+    return replayed ? { ...result, replayed: true } : result
+  }
+
+  @Post('settlements/:id/reconcile') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '对账差异核销 · 幂等' })
+  async reconcile(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const { result, replayed } = await this.idem.run(idemKey, 'settlement.reconcile', async () => {
+      await this.prisma.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
+      await this.audit.record({ user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
+      return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
+    })
+    return replayed ? { ...result, replayed: true } : result
+  }
+
+  // ── 工单退款 → 逆向冲账 → 代理分润/信用分（核心联动）· 幂等 + 事务内状态闸 ──
+  @Post('tickets/:id/refund') @RequirePerms('ticket.handle') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '工单退款，联动逆向冲账与代理分润/信用分 · 幂等' })
+  async refundTicket(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const { result, replayed } = await this.idem.run(idemKey, 'ticket.refund', async () => {
+      const t = await this.prisma.ticket.findUnique({ where: { id } })
+      if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
+      const order = await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null)
+      const amount = order ? Math.abs(order.amount) || 33 : 33
+      const share = Math.round(amount * 0.3)
+
+      // 事务内先用条件更新抢占工单（status pending/processing→resolved），抢不到则放弃副作用
+      const claimed = await this.prisma.$transaction(async (tx) => {
+        const c = await tx.ticket.updateMany({ where: { id, status: { not: 'resolved' } }, data: { status: 'resolved', slaLeftMin: 0 } })
+        if (c.count === 0) return false
+        await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
+        const s = await tx.settlement.findFirst({ where: { brandId: t.brandId }, orderBy: { period: 'desc' } })
+        if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
+        const a = await tx.agent.findUnique({ where: { id: t.agentId } })
+        if (a) {
+          const creditScore = Math.max(400, a.creditScore - 4)
+          const status = a.status === 'active' && creditScore < 760 ? 'throttled' : a.status
+          await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1), creditScore, status } })
+        }
+        return true
+      })
+      if (!claimed) return { ok: false, detail: '工单已被处理' }
+      await this.audit.record({ user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
+      return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
+    })
+    return replayed ? { ...result, replayed: true } : result
   }
 
   // ── 号池状态干预 ────────────────────────
@@ -168,14 +180,19 @@ export class BusinessController {
     return { ok: true, detail: `代理 ${id} 已更新` }
   }
 
-  @Post('agents/:id/settle') @RequirePerms('settlement.clear') @ApiOperation({ summary: '代理提现结算（待结算清零→计入累计已结）' })
-  async settleAgent(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const a = await this.prisma.agent.findUnique({ where: { id } })
-    if (!a || a.payoutPending <= 0) return { ok: false, detail: '无可结算金额' }
-    const amt = a.payoutPending
-    await this.prisma.agent.update({ where: { id }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
-    await this.audit.record({ user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
-    return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
+  @Post('agents/:id/settle') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '代理提现结算（待结算清零→计入累计已结）· 幂等' })
+  async settleAgent(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const { result, replayed } = await this.idem.run(idemKey, 'agent.settle', async () => {
+      const a = await this.prisma.agent.findUnique({ where: { id } })
+      if (!a || a.payoutPending <= 0) return { ok: false, detail: '无可结算金额' }
+      const amt = a.payoutPending
+      // 条件更新防并发重复提现：仅当 payoutPending 仍为读到的值才清零
+      const r = await this.prisma.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
+      if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
+      await this.audit.record({ user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
+      return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
+    })
+    return replayed ? { ...result, replayed: true } : result
   }
 
   // ── 品牌：创建 / 状态 / 配置 ──────────────
@@ -224,22 +241,27 @@ export class BusinessController {
     return { ok: true, detail: `商户号 ${id} 已加入号池`, id }
   }
 
-  // ── 订单退款（无工单）─────────────────────
-  @Post('orders/:id/refund') @RequirePerms('order.refund') @ApiOperation({ summary: '订单退款（订单冲正→结算冲账→代理分润回收）' })
-  async refundOrder(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    const order = await this.prisma.order.findUnique({ where: { id } })
-    if (!order || order.type === 'refund' || order.type === 'chargeback') return { ok: false, detail: '订单不存在或不可退款' }
-    const amount = Math.abs(order.amount)
-    const share = Math.round(amount * 0.3)
-    await this.prisma.$transaction(async (tx) => {
-      await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amount, plan: order.plan, mid: order.mid } })
-      const s = await tx.settlement.findFirst({ where: { brandId: order.brandId }, orderBy: { period: 'desc' } })
-      if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
-      const a = await tx.agent.findUnique({ where: { id: order.agentId } })
-      if (a) await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1) } })
+  // ── 订单退款（无工单）· 幂等 ───────────────
+  @Post('orders/:id/refund') @RequirePerms('order.refund') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '订单退款（订单冲正→结算冲账→代理分润回收）· 幂等' })
+  async refundOrder(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const { result, replayed } = await this.idem.run(idemKey, 'order.refund', async () => {
+      const amount = await this.prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id } })
+        if (!order || order.type === 'refund' || order.type === 'chargeback') return null
+        const amt = Math.abs(order.amount)
+        const share = Math.round(amt * 0.3)
+        await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
+        const s = await tx.settlement.findFirst({ where: { brandId: order.brandId }, orderBy: { period: 'desc' } })
+        if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
+        const a = await tx.agent.findUnique({ where: { id: order.agentId } })
+        if (a) await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1) } })
+        return { amt, share }
+      })
+      if (!amount) return { ok: false, detail: '订单不存在或不可退款' }
+      await this.audit.record({ user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amount.amt}，逆向冲账 ¥${amount.share}` })
+      return { ok: true, detail: `订单 ${id} 已退款，联动冲账完成`, amount: amount.amt, share: amount.share }
     })
-    await this.audit.record({ user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}` })
-    return { ok: true, detail: `订单 ${id} 已退款，联动冲账完成`, amount, share }
+    return replayed ? { ...result, replayed: true } : result
   }
 
   // ── 工单：流转（转派/升级/关闭等）──────────

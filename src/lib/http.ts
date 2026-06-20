@@ -75,6 +75,7 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
 
 export const http = {
   get: <T>(p: string) => api<T>(p),
-  post: <T>(p: string, body?: unknown) => api<T>(p, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+  post: <T>(p: string, body?: unknown, headers?: Record<string, string>) =>
+    api<T>(p, { method: 'POST', body: body ? JSON.stringify(body) : undefined, headers }),
   patch: <T>(p: string, body?: unknown) => api<T>(p, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
 }

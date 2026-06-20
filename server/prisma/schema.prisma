@@ -84,6 +84,14 @@ model Config {
   updatedAt DateTime @updatedAt
 }
 
+// 幂等键：资金类写操作以 key 唯一约束去重，重复提交返回首次结果（不双花）
+model IdempotencyKey {
+  key       String   @id
+  scope     String // 操作类型，如 settlement.clear
+  result    String // JSON 首次结果快照
+  createdAt DateTime @default(now())
+}
+
 // ── 业务实体（核心，承袭领域模型） ──────────────
 model Brand {
   id         String   @id
