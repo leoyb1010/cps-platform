@@ -24,12 +24,17 @@ export class AuthGuard implements CanActivate {
     const header: string = req.headers['authorization'] || ''
     const token = header.startsWith('Bearer ') ? header.slice(7) : null
     if (!token) throw new UnauthorizedException('未认证')
-    let payload: any
+    let payload: { sub: string; tv?: number }
     try {
-      payload = await this.jwt.verifyAsync(token, { secret: this.cfg.get('JWT_ACCESS_SECRET') })
+      // 显式 pin HS256，防算法混淆攻击
+      payload = await this.jwt.verifyAsync(token, { secret: this.cfg.get('JWT_ACCESS_SECRET'), algorithms: ['HS256'] })
     } catch {
       throw new UnauthorizedException('登录态无效或已过期')
     }
+    // token 版本校验：登出/吊销全会话/角色变更会 bump 版本，使旧 access token 立即失效
+    const currentTv = await this.auth.tokenVersionOf(payload.sub)
+    if (currentTv === null) throw new UnauthorizedException('用户不存在或已停用')
+    if ((payload.tv ?? 0) !== currentTv) throw new UnauthorizedException('登录态已失效，请重新登录')
     const user = await this.auth.toAuthUser(payload.sub)
     if (!user) throw new UnauthorizedException('用户不存在或已停用')
     req.user = user

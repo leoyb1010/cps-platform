@@ -25,6 +25,7 @@ model User {
   scopeType    String         @default("platform") // platform | brand | agent
   scopeId      String?
   status       String         @default("active") // active | disabled
+  tokenVersion Int            @default(0) // bump 使已签发 access token 即时失效（登出/吊销全会话/改角色）
   createdAt    DateTime       @default(now())
   sessions     RefreshToken[]
   audits       AuditLog[]

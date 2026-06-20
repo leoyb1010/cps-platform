@@ -1,6 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
 import type { AuthUser } from '../rbac/rbac'
+
+export interface AuditInput {
+  user?: AuthUser | null
+  action: string
+  resource: string
+  resourceId?: string
+  detail?: string
+  before?: unknown
+  after?: unknown
+  ip?: string
+  ua?: string
+}
+// 事务客户端类型（$transaction 回调里的 tx）
+type TxClient = Prisma.TransactionClient
 
 function categorize(action: string, detail: string): string {
   const s = action + ' ' + detail
@@ -16,39 +31,37 @@ export class AuditService {
   private readonly logger = new Logger(AuditService.name)
   constructor(private prisma: PrismaService) {}
 
-  async record(p: {
-    user?: AuthUser | null
-    action: string
-    resource: string
-    resourceId?: string
-    detail?: string
-    before?: unknown
-    after?: unknown
-    ip?: string
-    ua?: string
-  }) {
-    await this.prisma.auditLog
-      .create({
-        data: {
-          actorId: p.user?.id ?? null,
-          actorName: p.user?.name ?? '系统',
-          role: p.user?.roleId ?? '',
-          action: p.action,
-          resource: p.resource,
-          resourceId: p.resourceId ?? '',
-          category: categorize(p.action, p.detail ?? ''),
-          detail: p.detail ?? '',
-          before: p.before ? JSON.stringify(p.before) : null,
-          after: p.after ? JSON.stringify(p.after) : null,
-          ip: p.ip ?? '',
-          ua: p.ua ?? '',
-        },
-      })
-      .catch((e) => {
-        // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志，便于告警/补记。
-        // 高价值(fund)动作的审计丢失尤需被发现。
-        this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
-      })
+  private toData(p: AuditInput) {
+    return {
+      actorId: p.user?.id ?? null,
+      actorName: p.user?.name ?? '系统',
+      role: p.user?.roleId ?? '',
+      action: p.action,
+      resource: p.resource,
+      resourceId: p.resourceId ?? '',
+      category: categorize(p.action, p.detail ?? ''),
+      detail: p.detail ?? '',
+      before: p.before ? JSON.stringify(p.before) : null,
+      after: p.after ? JSON.stringify(p.after) : null,
+      ip: p.ip ?? '',
+      ua: p.ua ?? '',
+    }
+  }
+
+  /** best-effort（fail-open，但失败可观测）：用于非资金类、事后拦截器等场景。 */
+  async record(p: AuditInput) {
+    await this.prisma.auditLog.create({ data: this.toData(p) }).catch((e) => {
+      // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志，便于告警/补记。
+      this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
+    })
+  }
+
+  /**
+   * fail-closed：在给定事务客户端内写审计。失败会抛出 → 让整笔业务事务回滚。
+   * 用于资金类高价值动作（结算/退款/提现/冲账）：保证「无审计不放行」。
+   */
+  async recordInTx(tx: TxClient, p: AuditInput) {
+    await tx.auditLog.create({ data: this.toData(p) })
   }
 
   list(params: { category?: string; take?: number }) {

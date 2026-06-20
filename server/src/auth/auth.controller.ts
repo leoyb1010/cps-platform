@@ -44,7 +44,7 @@ export class AuthController {
     const authUser = (await this.auth.toAuthUser(u.id))!
     const raw = await this.auth.issueRefresh(u.id, req.headers['user-agent'] || '', req.ip || '')
     this.setRefreshCookie(res, raw)
-    return { access: this.auth.signAccess(authUser), user: authUser }
+    return { access: await this.auth.signAccess(authUser), user: authUser }
   }
 
   @Public()
@@ -57,7 +57,7 @@ export class AuthController {
     const authUser = await this.auth.toAuthUser(userId)
     if (!authUser) throw new UnauthorizedException('用户不存在')
     this.setRefreshCookie(res, refresh)
-    return { access: this.auth.signAccess(authUser), user: authUser }
+    return { access: await this.auth.signAccess(authUser), user: authUser }
   }
 
   @Get('me')
@@ -66,8 +66,9 @@ export class AuthController {
     return { user }
   }
 
+  @Public()
   @Post('logout')
-  @ApiOperation({ summary: '登出，撤销刷新令牌' })
+  @ApiOperation({ summary: '登出，撤销刷新令牌（公开：凭 refresh cookie，不依赖 access token）' })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     await this.auth.revokeRefresh(req.cookies?.[REFRESH_COOKIE])
     res.clearCookie(REFRESH_COOKIE, { path: this.cfg.get<string>('REFRESH_COOKIE_PATH') || '/' })

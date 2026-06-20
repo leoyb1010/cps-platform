@@ -79,6 +79,8 @@ export class MembersController {
     if (dto.status) data.status = dto.status
     if (Object.keys(data).length === 0) return { ok: false, detail: '无可更新字段' }
 
+    // 角色/状态变更后 bump token 版本：该成员旧 access token(含旧角色/权限) 立即失效
+    data.tokenVersion = { increment: 1 }
     await this.prisma.user.update({ where: { id }, data })
     return { ok: true, detail: `成员 ${id} 已更新` }
   }

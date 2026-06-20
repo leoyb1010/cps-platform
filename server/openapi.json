@@ -65,7 +65,7 @@
             "description": ""
           }
         },
-        "summary": "登出，撤销刷新令牌",
+        "summary": "登出，撤销刷新令牌（公开：凭 refresh cookie，不依赖 access token）",
         "tags": [
           "auth"
         ]

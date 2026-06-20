@@ -21,15 +21,24 @@ export class AuthService {
   async toAuthUser(userId: string): Promise<AuthUser | null> {
     const u = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: true } })
     if (!u || u.status !== 'active') return null
+    // 角色可能指向已删除/缺失的角色 → 视为无权限，避免 JSON.parse(null) 抛 500
+    const permissions = u.role ? (JSON.parse(u.role.permissions || '[]') as string[]) : []
     return {
       id: u.id,
       name: u.name,
       account: u.account,
       roleId: u.roleId,
-      permissions: JSON.parse(u.role.permissions || '[]'),
+      permissions,
       scopeType: u.scopeType,
       scopeId: u.scopeId,
     }
+  }
+
+  /** 当前用户的 token 版本（用于 access token 即时失效校验）。 */
+  async tokenVersionOf(userId: string): Promise<number | null> {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { tokenVersion: true, status: true } })
+    if (!u || u.status !== 'active') return null
+    return u.tokenVersion
   }
 
   async validate(account: string, password: string) {
@@ -40,10 +49,11 @@ export class AuthService {
     return u
   }
 
-  signAccess(user: AuthUser) {
+  async signAccess(user: AuthUser) {
+    const tv = (await this.tokenVersionOf(user.id)) ?? 0
     return this.jwt.sign(
-      { sub: user.id, name: user.name, roleId: user.roleId },
-      { secret: this.cfg.get('JWT_ACCESS_SECRET'), expiresIn: this.cfg.get('ACCESS_TTL') || '900s' },
+      { sub: user.id, name: user.name, roleId: user.roleId, tv },
+      { secret: this.cfg.get('JWT_ACCESS_SECRET'), expiresIn: this.cfg.get('ACCESS_TTL') || '900s', algorithm: 'HS256' },
     )
   }
 
@@ -72,10 +82,19 @@ export class AuthService {
 
   async revokeRefresh(raw?: string) {
     if (!raw) return
+    const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.sha256(raw) } }).catch(() => null)
     await this.prisma.refreshToken.updateMany({ where: { tokenHash: this.sha256(raw) }, data: { revoked: true } }).catch(() => {})
+    // 登出同时 bump token 版本 → 已签发的 access token 立即失效（不再等 TTL）
+    if (rec) await this.bumpTokenVersion(rec.userId)
   }
 
   async revokeAllForUser(userId: string) {
     await this.prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } })
+    await this.bumpTokenVersion(userId)
+  }
+
+  /** 自增 token 版本，使该用户所有已签发的 access token 失效。 */
+  async bumpTokenVersion(userId: string) {
+    await this.prisma.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } }).catch(() => {})
   }
 }

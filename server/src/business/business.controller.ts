@@ -142,11 +142,13 @@ export class BusinessController {
   @Post('settlements/:id/clear') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '发起结算（待结算→已结算）· 幂等' })
   async clear(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     const { result, replayed } = await this.idem.run(idemKey, 'settlement.clear', async () => {
-      // 条件更新：仅当仍为 pending 才置 cleared，count=0 表示已被并发结算
-      const r = await this.prisma.settlement.updateMany({ where: { id, status: 'pending' }, data: { status: 'cleared' } })
-      if (r.count === 0) return { ok: false, detail: '该结算单不可结算（不存在或已结算）' }
-      await this.audit.record({ user, action: 'settlement.clear', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 已发起结算并完成`, after: { status: 'cleared' } })
-      return { ok: true, detail: `结算单 ${id} 已发起结算并完成` }
+      // 资金动作：业务写 + 审计落库同事务（fail-closed）——审计失败则回滚，不放行未留痕的结算
+      return this.prisma.$transaction(async (tx) => {
+        const r = await tx.settlement.updateMany({ where: { id, status: 'pending' }, data: { status: 'cleared' } })
+        if (r.count === 0) return { ok: false, detail: '该结算单不可结算（不存在或已结算）' }
+        await this.audit.recordInTx(tx, { user, action: 'settlement.clear', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 已发起结算并完成`, after: { status: 'cleared' } })
+        return { ok: true, detail: `结算单 ${id} 已发起结算并完成` }
+      })
     })
     return replayed ? { ...result, replayed: true } : result
   }
@@ -154,9 +156,11 @@ export class BusinessController {
   @Post('settlements/:id/reconcile') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '对账差异核销 · 幂等' })
   async reconcile(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     const { result, replayed } = await this.idem.run(idemKey, 'settlement.reconcile', async () => {
-      await this.prisma.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
-      await this.audit.record({ user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
-      return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
+      return this.prisma.$transaction(async (tx) => {
+        await tx.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
+        await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
+        return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
+      })
     })
     return replayed ? { ...result, replayed: true } : result
   }
@@ -171,7 +175,7 @@ export class BusinessController {
       const amount = order ? Math.abs(order.amount) || 33 : 33
       const share = Math.round(amount * 0.3)
 
-      // 事务内先用条件更新抢占工单（status pending/processing→resolved），抢不到则放弃副作用
+      // 事务内：条件更新抢占工单 + 资金联动 + 审计同事务落库（fail-closed，审计失败则整笔回滚）
       const claimed = await this.prisma.$transaction(async (tx) => {
         const c = await tx.ticket.updateMany({ where: { id, status: { not: 'resolved' } }, data: { status: 'resolved', slaLeftMin: 0 } })
         if (c.count === 0) return false
@@ -184,10 +188,10 @@ export class BusinessController {
           const status = a.status === 'active' && creditScore < 760 ? 'throttled' : a.status
           await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1), creditScore, status } })
         }
+        await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
         return true
       })
       if (!claimed) return { ok: false, detail: '工单已被处理' }
-      await this.audit.record({ user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
       return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
     })
     return replayed ? { ...result, replayed: true } : result
@@ -216,11 +220,13 @@ export class BusinessController {
       const a = await this.prisma.agent.findUnique({ where: { id } })
       if (!a || a.payoutPending <= 0) return { ok: false, detail: '无可结算金额' }
       const amt = a.payoutPending
-      // 条件更新防并发重复提现：仅当 payoutPending 仍为读到的值才清零
-      const r = await this.prisma.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
-      if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
-      await this.audit.record({ user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
-      return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
+      // 资金动作：条件更新(防并发重复提现) + 审计同事务（fail-closed）
+      return this.prisma.$transaction(async (tx) => {
+        const r = await tx.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
+        if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
+        await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
+        return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
+      })
     })
     return replayed ? { ...result, replayed: true } : result
   }
@@ -294,10 +300,11 @@ export class BusinessController {
         if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
         const a = await tx.agent.findUnique({ where: { id: order.agentId } })
         if (a) await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1) } })
+        // 审计同事务（fail-closed）
+        await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amt}，逆向冲账 ¥${share}` })
         return { amt, share }
       })
       if (!amount) return { ok: false, detail: '订单不存在或不可退款' }
-      await this.audit.record({ user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amount.amt}，逆向冲账 ¥${amount.share}` })
       return { ok: true, detail: `订单 ${id} 已退款，联动冲账完成`, amount: amount.amt, share: amount.share }
     })
     return replayed ? { ...result, replayed: true } : result

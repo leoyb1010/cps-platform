@@ -58,6 +58,34 @@ describe('Auth', () => {
   it('/auth/me requires token (401 without)', async () => {
     await request(httpServer).get('/auth/me').expect(401)
   })
+  it('伪造算法/篡改 token 被拒（401）', async () => {
+    await request(httpServer).get('/auth/me').set('Authorization', 'Bearer not.a.jwt').expect(401)
+  })
+})
+
+describe('Auth · token 即时失效（tokenVersion）', () => {
+  it('登出后旧 access token 立即失效（不等 TTL）', async () => {
+    // 登录拿 access + refresh cookie
+    const login = await request(httpServer).post('/auth/login').send({ account: 'ops', password: 'demo' }).expect(201)
+    const access = login.body.access as string
+    const cookie = login.headers['set-cookie']
+    // 旧 token 此刻可用
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${access}`).expect(200)
+    // 登出（bump tokenVersion）
+    await request(httpServer).post('/auth/logout').set('Cookie', cookie).expect((r) => expect([200, 201]).toContain(r.status))
+    // 同一旧 access token 现在应失效
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${access}`).expect(401)
+  })
+  it('改成员角色后该成员旧 access token 失效', async () => {
+    const target = await request(httpServer).post('/auth/login').send({ account: 'audit', password: 'demo' }).expect(201)
+    const oldAccess = target.body.access as string
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${oldAccess}`).expect(200)
+    // 超管把该成员(U-005 审计)角色改为 ops → bump 其 tokenVersion
+    const su = (await request(httpServer).post('/auth/login').send({ account: 'admin', password: 'demo' })).body.access
+    await request(httpServer).patch('/members/U-005').set('Authorization', `Bearer ${su}`).send({ roleId: 'ops' }).expect((r) => expect([200, 201]).toContain(r.status))
+    // 旧 token 失效
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${oldAccess}`).expect(401)
+  })
 })
 
 describe('RBAC', () => {
