@@ -51,21 +51,39 @@ export class BusinessController {
     private idem: IdempotencyService,
   ) {}
 
-  // 数据级 RBAC：按当前用户 scope 收窄查询条件
-  //   platform → 全量；brand:<id> → 仅该品牌相关；agent:<id> → 仅该代理相关
-  private scope(user: AuthUser, field: 'brandId' | 'agentId' | 'id-brand' | 'id-agent') {
-    if (!user || user.scopeType === 'platform' || !user.scopeId) return {}
+  // 数据级 RBAC（默认拒绝）：按 scope 收窄查询条件。
+  //   platform → 全量；brand:<id> / agent:<id> → 仅自己拥有的数据。
+  // 关键安全语义：非 platform 用户访问其 scope「无法表达」的资源时，
+  //   返回不可能匹配条件（DENY），而非 {}（放行全部）——避免越权泄漏。
+  //   key 取值：'brandId'|'agentId'（按外键过滤）、'id-brand'|'id-agent'（按主键过滤）。
+  private static DENY = { id: '__scope_denied__' }
+  private scope(user: AuthUser, field: 'brandId' | 'agentId' | 'id-brand' | 'id-agent'): Record<string, unknown> {
+    if (!user || user.scopeType === 'platform') return {}
+    if (!user.scopeId) return BusinessController.DENY // 非平台但无 scopeId：保守拒绝
+
     if (user.scopeType === 'brand') {
       if (field === 'brandId') return { brandId: user.scopeId }
       if (field === 'id-brand') return { id: user.scopeId }
-      return {} // 品牌方看代理：不额外收窄（演示从简）
+      // 品牌方不拥有代理/按代理键的资源 → 拒绝
+      return BusinessController.DENY
     }
     if (user.scopeType === 'agent') {
       if (field === 'agentId') return { agentId: user.scopeId }
       if (field === 'id-agent') return { id: user.scopeId }
-      return {}
+      // 代理不拥有品牌/号池/结算（按品牌键的资源）→ 拒绝
+      return BusinessController.DENY
     }
-    return {}
+    return BusinessController.DENY
+  }
+
+  // 同时含 brandId 与 agentId 外键的资源（订单/工单）：
+  //   品牌方按 brandId 收窄、代理按 agentId 收窄、平台不收窄。单一条件，不与 DENY 合并。
+  private scopeOwned(user: AuthUser): Record<string, unknown> {
+    if (!user || user.scopeType === 'platform') return {}
+    if (!user.scopeId) return BusinessController.DENY
+    if (user.scopeType === 'brand') return { brandId: user.scopeId }
+    if (user.scopeType === 'agent') return { agentId: user.scopeId }
+    return BusinessController.DENY
   }
 
   // ── reads ──（软删除：deletedAt=null 默认过滤）──
@@ -83,7 +101,7 @@ export class BusinessController {
   async orders(@CurrentUser() user: AuthUser, @Query('cursor') cursor?: string, @Query('limit') limit?: string) {
     const take = Math.min(Math.max(Number(limit) || 100, 1), 500)
     const items = await this.prisma.order.findMany({
-      where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') },
+      where: this.scopeOwned(user),
       orderBy: { createdAt: 'desc' },
       take: take + 1, // 多取一条判断是否还有下一页
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -97,7 +115,7 @@ export class BusinessController {
   settlements(@CurrentUser() user: AuthUser) { return this.prisma.settlement.findMany({ where: this.scope(user, 'brandId') }) }
 
   @Get('tickets') @RequirePerms('ticket.read') @ApiOperation({ summary: '投诉工单（按 scope 收窄）' })
-  tickets(@CurrentUser() user: AuthUser) { return this.prisma.ticket.findMany({ where: { ...this.scope(user, 'brandId'), ...this.scope(user, 'agentId') } }) }
+  tickets(@CurrentUser() user: AuthUser) { return this.prisma.ticket.findMany({ where: this.scopeOwned(user) }) }
 
   @Get('summary') @RequirePerms('dashboard.view') @ApiOperation({ summary: '经营总览汇总（风险条/待办派生）' })
   async summary() {

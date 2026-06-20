@@ -77,4 +77,6 @@ export const SEED_USERS = [
   // 数据级 RBAC 演示：品牌方账户只见自己品牌；代理账户只见自己
   { id: 'U-006', name: '有道品牌方', account: 'brand', roleId: 'ops', scopeType: 'brand', scopeId: 'youdao' },
   { id: 'U-007', name: '代理 A-2041', account: 'agent', roleId: 'ops', scopeType: 'agent', scopeId: 'A-2041' },
+  // 品牌方+只读审计角色（有 merchant.read/settlement.read）：用于验证「即使有读权限，scope 仍收窄」
+  { id: 'U-008', name: '有道审计', account: 'brandaudit', roleId: 'audit', scopeType: 'brand', scopeId: 'youdao' },
 ]

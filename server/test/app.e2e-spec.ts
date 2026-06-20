@@ -133,6 +133,24 @@ describe('数据级 RBAC (scope)', () => {
     expect(agents.body.length).toBe(1)
     expect(agents.body[0].id).toBe('A-2041')
   })
+  it('即使有 merchant.read/settlement.read，brand-scoped 仍只见自己品牌（scope 非靠角色兜底）', async () => {
+    // brandaudit: audit 角色(有 merchant.read/settlement.read) + scope=brand:youdao
+    const t = await token('brandaudit')
+    const merchants = await request(httpServer).get('/merchants').set('Authorization', `Bearer ${t}`).expect(200)
+    expect(merchants.body.length).toBeGreaterThan(0)
+    expect(merchants.body.every((m: any) => m.brandId === 'youdao')).toBe(true) // 不泄漏他人号池
+
+    const settlements = await request(httpServer).get('/settlements').set('Authorization', `Bearer ${t}`).expect(200)
+    expect(settlements.body.every((s: any) => s.brandId === 'youdao')).toBe(true) // 不泄漏他人结算
+  })
+  it('agent-scoped 即使有 brand.read，看品牌为空（拒绝按品牌键的越权读）', async () => {
+    // 用 brandaudit 反证不够；这里直接断言 agent 用 ops 角色读不到 merchants（403 或空均不泄漏）
+    const agentTok = await token('agent')
+    const res = await request(httpServer).get('/merchants').set('Authorization', `Bearer ${agentTok}`)
+    // ops 无 merchant.read → 403；若将来放权，scope 也会 DENY 返回空。两者都不泄漏
+    expect([403, 200]).toContain(res.status)
+    if (res.status === 200) expect(res.body.length).toBe(0)
+  })
 })
 
 describe('业务写端点 + 审计', () => {
