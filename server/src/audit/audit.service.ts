@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import type { AuthUser } from '../rbac/rbac'
 
@@ -13,6 +13,7 @@ function categorize(action: string, detail: string): string {
 
 @Injectable()
 export class AuditService {
+  private readonly logger = new Logger(AuditService.name)
   constructor(private prisma: PrismaService) {}
 
   async record(p: {
@@ -43,8 +44,10 @@ export class AuditService {
           ua: p.ua ?? '',
         },
       })
-      .catch(() => {
-        /* audit must never break the main flow */
+      .catch((e) => {
+        // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志，便于告警/补记。
+        // 高价值(fund)动作的审计丢失尤需被发现。
+        this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
       })
   }
 

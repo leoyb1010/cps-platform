@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Patch, Param } from '@nestjs/common'
+import { Body, Controller, ForbiddenException, Get, Patch, Param } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { IsIn, IsOptional, IsString } from 'class-validator'
 import { PrismaService } from '../prisma.service'
-import { RequirePerms } from '../rbac/rbac'
+import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { PERMISSIONS } from '../rbac/permissions'
+
+const VALID_PERMS = new Set(PERMISSIONS.map((p) => p.key))
 
 class UpdateMemberDto {
   @IsOptional() @IsString() roleId?: string
@@ -36,10 +38,17 @@ export class MembersController {
 
   @Patch('roles/:id')
   @RequirePerms('member.manage')
-  @ApiOperation({ summary: '更新角色权限（超级管理员不可改）' })
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
+  @ApiOperation({ summary: '更新角色权限（仅超管；超级管理员角色不可改）' })
+  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @CurrentUser() user: AuthUser) {
+    // 角色/权限变更是最高信任操作：仅 super 可执行，避免 member.manage 成为提权万能键
+    if (user.roleId !== 'super') throw new ForbiddenException('仅超级管理员可修改角色权限')
     if (id === 'super') return { ok: false, detail: '超级管理员权限不可修改' }
-    await this.prisma.role.update({ where: { id }, data: { permissions: JSON.stringify(dto.permissions) } })
+    const target = await this.prisma.role.findUnique({ where: { id } })
+    if (!target) return { ok: false, detail: '角色不存在' }
+    // 仅允许已知权限点，拒绝注入未定义权限
+    const bad = dto.permissions.filter((p) => !VALID_PERMS.has(p))
+    if (bad.length) throw new ForbiddenException(`未知权限点：${bad.join(', ')}`)
+    await this.prisma.role.update({ where: { id }, data: { permissions: JSON.stringify([...new Set(dto.permissions)]) } })
     return { ok: true, detail: `角色 ${id} 权限已更新` }
   }
 
@@ -53,9 +62,24 @@ export class MembersController {
 
   @Patch('members/:id')
   @RequirePerms('member.manage')
-  @ApiOperation({ summary: '更新成员角色 / 停用' })
-  async updateMember(@Param('id') id: string, @Body() dto: UpdateMemberDto) {
-    await this.prisma.user.update({ where: { id }, data: { ...(dto.roleId ? { roleId: dto.roleId } : {}), ...(dto.status ? { status: dto.status } : {}) } })
+  @ApiOperation({ summary: '更新成员角色 / 停用（防自我提权）' })
+  async updateMember(@Param('id') id: string, @Body() dto: UpdateMemberDto, @CurrentUser() user: AuthUser) {
+    // 防自我提权 / 自我停用：不能编辑自己的成员记录
+    if (id === user.id) throw new ForbiddenException('不能修改自己的角色或状态')
+
+    const data: Record<string, unknown> = {}
+    if (dto.roleId) {
+      // 仅 super 可变更成员角色；任何人都不得通过此端点赋予 super（super 仅由种子/DBA 设定）
+      if (user.roleId !== 'super') throw new ForbiddenException('仅超级管理员可变更成员角色')
+      if (dto.roleId === 'super') throw new ForbiddenException('不可经此端点赋予超级管理员')
+      const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } })
+      if (!role) return { ok: false, detail: '目标角色不存在' }
+      data.roleId = dto.roleId
+    }
+    if (dto.status) data.status = dto.status
+    if (Object.keys(data).length === 0) return { ok: false, detail: '无可更新字段' }
+
+    await this.prisma.user.update({ where: { id }, data })
     return { ok: true, detail: `成员 ${id} 已更新` }
   }
 }

@@ -65,6 +65,13 @@ export const ROLE_PRESETS: RolePreset[] = [
     description: '全部只读 + 审计',
     permissions: ['dashboard.view', 'brand.read', 'agent.read', 'order.read', 'settlement.read', 'merchant.read', 'risk.read', 'ticket.read', 'compliance.view', 'analytics.view', 'audit.read'],
   },
+  {
+    // 团队管理员：可管理成员(读 + 停用)，但无 super 权限——用于验证「不可自我提权到 super」
+    id: 'teamadmin',
+    name: '团队管理员',
+    description: '成员只读 + 停用，但不可改角色权限',
+    permissions: ['dashboard.view', 'member.manage', 'audit.read'],
+  },
 ]
 
 // 演示账户（密码统一为 demo，真实环境由用户设置）
@@ -79,4 +86,6 @@ export const SEED_USERS = [
   { id: 'U-007', name: '代理 A-2041', account: 'agent', roleId: 'ops', scopeType: 'agent', scopeId: 'A-2041' },
   // 品牌方+只读审计角色（有 merchant.read/settlement.read）：用于验证「即使有读权限，scope 仍收窄」
   { id: 'U-008', name: '有道审计', account: 'brandaudit', roleId: 'audit', scopeType: 'brand', scopeId: 'youdao' },
+  // 团队管理员（有 member.manage 非 super）：用于验证不可自我提权
+  { id: 'U-009', name: '王管理', account: 'teamadmin', roleId: 'teamadmin', scopeType: 'platform', scopeId: null },
 ]

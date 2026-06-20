@@ -72,6 +72,40 @@ describe('RBAC', () => {
   })
 })
 
+describe('RBAC 提权防护（member.manage ≠ super）', () => {
+  it('团队管理员不能把自己改成 super（自我编辑被拒 403）', async () => {
+    const t = await token('teamadmin')
+    await request(httpServer).patch('/members/U-009').set('Authorization', `Bearer ${t}`).send({ roleId: 'super' }).expect(403)
+  })
+  it('团队管理员不能给他人赋 super（仅超管可变更角色 403）', async () => {
+    const t = await token('teamadmin')
+    await request(httpServer).patch('/members/U-004').set('Authorization', `Bearer ${t}`).send({ roleId: 'super' }).expect(403)
+  })
+  it('团队管理员不能改任意角色的权限点（仅超管 403）', async () => {
+    const t = await token('teamadmin')
+    await request(httpServer).patch('/roles/teamadmin').set('Authorization', `Bearer ${t}`).send({ permissions: ['dashboard.view', 'settlement.clear', 'config.write'] }).expect(403)
+  })
+  it('超管也不能经 API 把成员赋 super（super 仅种子设定 403）', async () => {
+    const su = await token('admin')
+    await request(httpServer).patch('/members/U-004').set('Authorization', `Bearer ${su}`).send({ roleId: 'super' }).expect(403)
+  })
+  it('超管也不能改 super 角色权限（返回 ok:false）', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).patch('/roles/super').set('Authorization', `Bearer ${su}`).send({ permissions: ['dashboard.view'] })
+    expect(r.body.ok).toBe(false)
+  })
+  it('超管改成员角色（非 super）正常生效', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).patch('/members/U-009').set('Authorization', `Bearer ${su}`).send({ roleId: 'ops' })
+    expect([200, 201]).toContain(r.status)
+    expect(r.body.ok).toBe(true)
+  })
+  it('注入未定义权限点被拒（仅超管可达，且校验权限合法 403）', async () => {
+    const su = await token('admin')
+    await request(httpServer).patch('/roles/ops').set('Authorization', `Bearer ${su}`).send({ permissions: ['dashboard.view', 'totally.fake.perm'] }).expect(403)
+  })
+})
+
 describe('Business 联动 + audit', () => {
   it('ticket refund cascades reversal + credit drop, and writes an audit row', async () => {
     const su = await token('admin')
