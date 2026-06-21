@@ -822,7 +822,7 @@
             "description": ""
           }
         },
-        "summary": "就绪探针（含 DB 连通）",
+        "summary": "就绪探针（DB 连通 + 最近审计写入时间）",
         "tags": [
           "health"
         ]
@@ -837,7 +837,7 @@
             "description": ""
           }
         },
-        "summary": "Prometheus 指标（请求计数/错误/运行时长）",
+        "summary": "Prometheus 指标（进程 + HTTP 延迟直方图 + 业务计数）",
         "tags": [
           "health"
         ]

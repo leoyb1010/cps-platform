@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
+import { MetricsService } from '../common/metrics.service'
 import type { AuthUser } from '../rbac/rbac'
 
 export interface AuditInput {
@@ -29,7 +30,10 @@ function categorize(action: string, detail: string): string {
 @Injectable()
 export class AuditService {
   private readonly logger = new Logger(AuditService.name)
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private metrics: MetricsService,
+  ) {}
 
   private toData(p: AuditInput) {
     return {
@@ -48,12 +52,24 @@ export class AuditService {
     }
   }
 
+  // 最近一次审计成功写入时间（健康探针用：若长时间无成功写入可能审计链路异常）
+  private _lastSuccessAt: Date | null = null
+  get lastSuccessAt(): Date | null {
+    return this._lastSuccessAt
+  }
+
   /** best-effort（fail-open，但失败可观测）：用于非资金类、事后拦截器等场景。 */
   async record(p: AuditInput) {
-    await this.prisma.auditLog.create({ data: this.toData(p) }).catch((e) => {
-      // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志，便于告警/补记。
-      this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
-    })
+    await this.prisma.auditLog
+      .create({ data: this.toData(p) })
+      .then(() => {
+        this._lastSuccessAt = new Date()
+      })
+      .catch((e) => {
+        // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志 + 指标计数，便于告警/补记。
+        this.metrics.recordAuditFailure()
+        this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
+      })
   }
 
   /**
@@ -62,6 +78,7 @@ export class AuditService {
    */
   async recordInTx(tx: TxClient, p: AuditInput) {
     await tx.auditLog.create({ data: this.toData(p) })
+    this._lastSuccessAt = new Date()
   }
 
   list(params: { category?: string; take?: number }) {

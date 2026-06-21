@@ -11,11 +11,14 @@ export class MetricsInterceptor implements NestInterceptor {
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const http = ctx.switchToHttp()
     const req = http.getRequest()
-    // 仅用路由模板作 key（基数有界）；未匹配路由(404)归到常量桶，
-    // 防 404 刷量把 raw URL 灌进 Map 造成内存无界增长。
+    // 仅用路由模板作 label（基数有界）；未匹配路由(404)归到常量桶，防 404 刷量撑爆标签基数。
     const route: string = req.route?.path ?? 'unmatched'
     const method: string = req.method ?? 'GET'
-    const record = (status: number) => this.metrics.observe(method, route, status, Date.now())
+    const start = process.hrtime.bigint()
+    const record = (status: number) => {
+      const seconds = Number(process.hrtime.bigint() - start) / 1e9
+      this.metrics.observeHttp(method, route, status, seconds)
+    }
     return next.handle().pipe(
       tap({
         next: () => record(http.getResponse().statusCode ?? 200),

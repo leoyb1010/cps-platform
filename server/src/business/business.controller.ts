@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { IdempotencyService } from '../common/idempotency.service'
+import { MetricsService } from '../common/metrics.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
@@ -55,6 +56,7 @@ export class BusinessController {
     private prisma: PrismaService,
     private audit: AuditService,
     private idem: IdempotencyService,
+    private metrics: MetricsService,
   ) {}
 
   // 数据级 RBAC（默认拒绝）：按 scope 收窄查询条件。
@@ -206,7 +208,12 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
         return true
       })
-      if (!claimed) return { ok: false, detail: '工单已被处理' }
+      if (!claimed) {
+        this.metrics.recordFundAction('ticket.refund', 'reject')
+        return { ok: false, detail: '工单已被处理' }
+      }
+      this.metrics.recordFundAction('ticket.refund', 'ok')
+      this.metrics.addRefundAmount(amount)
       return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
     })
     return replayed ? { ...result, replayed: true } : result
@@ -319,7 +326,12 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amt}，逆向冲账 ¥${share}` })
         return { amt, share }
       })
-      if (!amount) return { ok: false, detail: '订单不存在或不可退款' }
+      if (!amount) {
+        this.metrics.recordFundAction('order.refund', 'reject')
+        return { ok: false, detail: '订单不存在或不可退款' }
+      }
+      this.metrics.recordFundAction('order.refund', 'ok')
+      this.metrics.addRefundAmount(amount.amt)
       return { ok: true, detail: `订单 ${id} 已退款，联动冲账完成`, amount: amount.amt, share: amount.share }
     })
     return replayed ? { ...result, replayed: true } : result

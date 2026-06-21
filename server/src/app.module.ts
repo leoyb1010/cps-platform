@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
+import { randomUUID } from 'crypto'
 
 import { PrismaService } from './prisma.service'
 import { AuthService } from './auth/auth.service'
@@ -28,6 +29,12 @@ import { IdempotencyService } from './common/idempotency.service'
         level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
         transport: process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
         autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' || req.url === '/metrics' },
+        // 追踪 ID：复用入站 X-Request-Id，否则生成；写回响应头，便于「一条报错串联日志/审计」
+        genReqId: (req, res) => {
+          const incoming = (req.headers['x-request-id'] as string) || randomUUID()
+          res.setHeader('X-Request-Id', incoming)
+          return incoming
+        },
       },
     }),
     JwtModule.register({}),

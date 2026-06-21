@@ -35,6 +35,9 @@ async function bootstrap() {
   // whitelist 剥离未知字段；forbidNonWhitelisted 直接 400（防意外/恶意多余字段）；transform 启用类型转换
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   app.useGlobalFilters(new AllExceptionsFilter())
+  // 优雅停机：收到 SIGTERM/SIGINT 时触发 onModuleDestroy（Prisma 断连等），
+  // 配合 app.close() 等待在途请求完成，避免部署时截断资金事务。
+  app.enableShutdownHooks()
 
   // OpenAPI / Swagger
   const cfg = new DocumentBuilder()

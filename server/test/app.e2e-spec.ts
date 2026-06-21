@@ -302,10 +302,11 @@ describe('软删除 + 游标分页', () => {
 })
 
 describe('Observability', () => {
-  it('GET /metrics 暴露 Prometheus 文本', async () => {
+  it('GET /metrics 暴露 Prometheus 文本（prom-client：HTTP 直方图 + 进程 + 业务计数）', async () => {
     const res = await request(httpServer).get('/metrics').expect(200)
-    expect(res.text).toContain('cps_requests_total')
-    expect(res.text).toContain('cps_uptime_seconds')
+    expect(res.text).toContain('http_request_duration_seconds') // HTTP 延迟直方图
+    expect(res.text).toContain('cps_fund_actions_total') // 业务指标
+    expect(res.text).toContain('cps_process_cpu') // 默认进程指标(前缀 cps_)
   })
 })
 

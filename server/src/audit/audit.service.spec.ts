@@ -3,6 +3,7 @@ import { execSync } from 'child_process'
 import { rmSync } from 'fs'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from './audit.service'
+import { MetricsService } from '../common/metrics.service'
 
 let prisma: PrismaService
 let audit: AuditService
@@ -18,7 +19,7 @@ beforeAll(() => {
   }
   execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: 'file:./audit-test.db' }, stdio: 'ignore' })
   prisma = new PrismaService()
-  audit = new AuditService(prisma)
+  audit = new AuditService(prisma, new MetricsService())
 })
 
 afterAll(async () => {

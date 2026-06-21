@@ -22,7 +22,10 @@ function mapPrisma(code: string): { status: number; message: string } | null {
 export class AllExceptionsFilter implements ExceptionFilter {
   private logger = new Logger('Exception')
   catch(exception: unknown, host: ArgumentsHost) {
-    const res = host.switchToHttp().getResponse<Response>()
+    const ctx = host.switchToHttp()
+    const res = ctx.getResponse<Response>()
+    const req = ctx.getRequest<{ id?: string }>()
+    const requestId = req?.id // pino genReqId 注入
     let status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR
     let message = '服务器内部错误'
     if (exception instanceof HttpException) {
@@ -36,7 +39,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = mapped.message
       }
     }
-    if (status >= 500) this.logger.error(exception instanceof Error ? exception.stack : String(exception))
-    res.status(status).json({ code: status, message })
+    if (status >= 500) this.logger.error(`[req:${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`)
+    res.status(status).json({ code: status, message, ...(requestId ? { requestId } : {}) })
   }
 }
