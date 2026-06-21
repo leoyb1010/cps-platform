@@ -335,6 +335,21 @@ export function addBrand(input: NewBrandInput) {
   const activity = logActivity(state, `新品牌「${input.name}」提交入驻，进入审核`, 'info')
   commit({ ...state, brands, activity })
   emit('brand:added', { id })
+  // 真实模式：创建镜像到服务端，并以服务端返回的 id 校正本地临时 id（避免漂移/刷新丢失）
+  if (isRealApi) {
+    bizApi
+      .addBrand({ name: input.name, category: input.category, feeRate: input.feeRate, period: input.period, reservePct: input.reservePct, path: input.path })
+      .then((r) => {
+        if (r.ok && r.id) {
+          const reconciled = state.brands.map((b) => (b.id === id ? { ...b, id: r.id! } : b))
+          commit({ ...state, brands: reconciled })
+        } else throw new Error(r.detail || '品牌创建被服务端拒绝')
+      })
+      .catch(async (e) => {
+        emit('mirror:failed', { label: '新增品牌', message: e instanceof Error ? e.message : String(e) })
+        await hydrateFromServer()
+      })
+  }
   return id
 }
 export function updateBrandConfig(id: string, patch: Partial<Pick<Brand, 'feeRate' | 'period' | 'reservePct' | 'path'>>) {
@@ -364,6 +379,21 @@ export function addMerchant(input: { brandId: string; channel: 'wechat' | 'alipa
   const merchants = [m, ...state.merchants]
   const activity = logActivity(state, `新增商户号 ${id}（${b?.name ?? ''} · ${input.channel === 'alipay' ? '支付宝' : input.channel === 'bank' ? '银行分账' : '微信支付'}）`, 'good')
   commit({ ...state, merchants, activity })
+  // 真实模式：创建镜像到服务端，并以服务端 id 校正本地临时 id
+  if (isRealApi) {
+    bizApi
+      .addMerchant({ brandId: input.brandId, channel: input.channel, weight: input.weight })
+      .then((r) => {
+        if (r.ok && r.id) {
+          const reconciled = state.merchants.map((x) => (x.id === id ? { ...x, id: r.id! } : x))
+          commit({ ...state, merchants: reconciled })
+        } else throw new Error(r.detail || '商户号创建被服务端拒绝')
+      })
+      .catch(async (e) => {
+        emit('mirror:failed', { label: '新增商户号', message: e instanceof Error ? e.message : String(e) })
+        await hydrateFromServer()
+      })
+  }
   return id
 }
 
