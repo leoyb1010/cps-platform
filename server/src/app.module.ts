@@ -30,11 +30,13 @@ import { ReconciliationService } from './business/reconciliation.service'
         level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
         transport: process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
         autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' || req.url === '/metrics' },
-        // 追踪 ID：复用入站 X-Request-Id，否则生成；写回响应头，便于「一条报错串联日志/审计」
+        // 追踪 ID：复用入站 X-Request-Id（清洗 + 限长，防响应头注入/超长），否则生成；写回响应头
         genReqId: (req, res) => {
-          const incoming = (req.headers['x-request-id'] as string) || randomUUID()
-          res.setHeader('X-Request-Id', incoming)
-          return incoming
+          const raw = req.headers['x-request-id']
+          const candidate = typeof raw === 'string' ? raw.replace(/[^\w.-]/g, '').slice(0, 64) : ''
+          const id = candidate || randomUUID()
+          res.setHeader('X-Request-Id', id)
+          return id
         },
       },
     }),

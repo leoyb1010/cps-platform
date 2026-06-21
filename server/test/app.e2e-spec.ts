@@ -61,6 +61,13 @@ describe('Auth', () => {
   it('伪造算法/篡改 token 被拒（401）', async () => {
     await request(httpServer).get('/auth/me').set('Authorization', 'Bearer not.a.jwt').expect(401)
   })
+  it('X-Request-Id：正常复用，恶意(CRLF/超长)清洗 + 限长 64', async () => {
+    const normal = await request(httpServer).get('/health').set('X-Request-Id', 'my-trace-1').expect(200)
+    expect(normal.headers['x-request-id']).toBe('my-trace-1')
+    const evil = await request(httpServer).get('/health').set('X-Request-Id', 'A'.repeat(200) + ' bad;chars').expect(200)
+    expect(evil.headers['x-request-id'].length).toBeLessThanOrEqual(64)
+    expect(evil.headers['x-request-id']).not.toContain(';') // 非法字符被清洗
+  })
 })
 
 describe('Auth · token 即时失效（tokenVersion）', () => {
