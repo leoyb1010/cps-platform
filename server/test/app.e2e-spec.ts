@@ -36,7 +36,7 @@ beforeAll(async () => {
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile()
   app = mod.createNestApplication()
   app.use(cookieParser())
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   app.useGlobalFilters(new AllExceptionsFilter())
   await app.init()
   httpServer = app.getHttpServer()
@@ -175,6 +175,39 @@ describe('资金幂等 + 并发', () => {
     const r2 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
     expect(r2.body.ok).toBe(true)
     expect(r2.body.replayed).toBe(true) // 命中首次结果，未再次执行
+  })
+})
+
+describe('输入校验 + 错误映射（F1/F3/F5）', () => {
+  it('F1: 品牌配置越界(feeRate<0 / period<1 / reservePct>100) 被拒 400', async () => {
+    const su = await token('admin')
+    await request(httpServer).patch('/brands/youdao/config').set('Authorization', `Bearer ${su}`).send({ feeRate: -99 }).expect(400)
+    await request(httpServer).patch('/brands/youdao/config').set('Authorization', `Bearer ${su}`).send({ period: -1 }).expect(400)
+    await request(httpServer).patch('/brands/youdao/config').set('Authorization', `Bearer ${su}`).send({ reservePct: 200 }).expect(400)
+    // 合法值仍通过
+    const ok = await request(httpServer).patch('/brands/youdao/config').set('Authorization', `Bearer ${su}`).send({ feeRate: 40 })
+    expect([200, 201]).toContain(ok.status)
+  })
+  it('F5: 号池状态非法枚举被拒 400（不再 201）', async () => {
+    const su = await token('admin')
+    await request(httpServer).post('/merchants/M-YD-01/state').set('Authorization', `Bearer ${su}`).send({ state: 'garbage_xyz' }).expect(400)
+    const ok = await request(httpServer).post('/merchants/M-YD-01/state').set('Authorization', `Bearer ${su}`).send({ state: 'fused', label: '熔断' })
+    expect([200, 201]).toContain(ok.status)
+  })
+  it('forbidNonWhitelisted: 多余字段被拒 400', async () => {
+    const su = await token('admin')
+    await request(httpServer).post('/agents/A-2041/status').set('Authorization', `Bearer ${su}`).send({ status: 'frozen', evil: 'x' }).expect(400)
+  })
+  it('F3: 不存在的 id → 404（非 500）', async () => {
+    const su = await token('admin')
+    await request(httpServer).post('/merchants/__NOPE__/state').set('Authorization', `Bearer ${su}`).send({ state: 'fused' }).expect(404)
+    await request(httpServer).post('/agents/__NOPE__/status').set('Authorization', `Bearer ${su}`).send({ status: 'frozen' }).expect(404)
+    await request(httpServer).post('/settlements/__NOPE__/reconcile').set('Authorization', `Bearer ${su}`).expect(404)
+  })
+  it('F4: 游标分页非法 cursor → 4xx（非 500）', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).get('/orders?limit=3&cursor=__NOPE__').set('Authorization', `Bearer ${su}`)
+    expect(r.status).toBeLessThan(500)
   })
 })
 

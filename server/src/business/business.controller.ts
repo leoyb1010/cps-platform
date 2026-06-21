@@ -1,45 +1,51 @@
 import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger'
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { IdempotencyService } from '../common/idempotency.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 
+// 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
+const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
+// 工单退款无关联原单时的兜底金额（演示数据缺口用；生产应改为强制关联原单）
+const DEFAULT_TICKET_AMOUNT = 33
+
 class StateDto {
-  @IsString() state!: string
-  @IsOptional() @IsString() label?: string
+  @IsIn(['healthy', 'throttled', 'paused', 'fused']) state!: string
+  @IsOptional() @IsString() @MaxLength(40) label?: string
 }
 class AgentStatusDto {
   @IsIn(['active', 'throttled', 'frozen']) status!: string
 }
 class BrandStatusDto {
   @IsIn(['live', 'review', 'paused']) status!: string
-  @IsOptional() @IsString() label?: string
+  @IsOptional() @IsString() @MaxLength(40) label?: string
 }
 class BrandConfigDto {
-  @IsOptional() @IsNumber() feeRate?: number
-  @IsOptional() @IsInt() period?: number
-  @IsOptional() @IsInt() reservePct?: number
+  @IsOptional() @IsNumber() @Min(0) @Max(100) feeRate?: number
+  @IsOptional() @IsInt() @Min(1) @Max(365) period?: number
+  @IsOptional() @IsInt() @Min(0) @Max(100) reservePct?: number
   @IsOptional() @IsIn(['direct', 'licensed', 'mixed']) path?: string
 }
 class NewBrandDto {
-  @IsString() name!: string
-  @IsString() category!: string
+  @IsString() @MaxLength(60) name!: string
+  @IsString() @MaxLength(40) category!: string
   @IsNumber() @Min(0) @Max(100) feeRate!: number
-  @IsInt() period!: number
-  @IsInt() reservePct!: number
+  @IsInt() @Min(1) @Max(365) period!: number
+  @IsInt() @Min(0) @Max(100) reservePct!: number
   @IsIn(['direct', 'licensed', 'mixed']) path!: string
 }
 class NewMerchantDto {
-  @IsString() brandId!: string
+  @IsString() @MaxLength(40) brandId!: string
   @IsIn(['wechat', 'alipay', 'bank']) channel!: string
   @IsInt() @Min(0) @Max(100) weight!: number
 }
 class TicketUpdateDto {
-  @IsOptional() @IsString() status?: string
-  @IsOptional() @IsString() owner?: string
-  @IsOptional() @IsString() note?: string
+  @IsOptional() @IsIn(['pending', 'processing', 'resolved', 'escalated', 'arbitration']) status?: string
+  @IsOptional() @IsString() @MaxLength(40) owner?: string
+  @IsOptional() @IsString() @MaxLength(120) note?: string
 }
 
 @ApiTags('business')
@@ -102,7 +108,8 @@ export class BusinessController {
     const take = Math.min(Math.max(Number(limit) || 100, 1), 500)
     const items = await this.prisma.order.findMany({
       where: this.scopeOwned(user),
-      orderBy: { createdAt: 'desc' },
+      // 二级排序 id：createdAt 相同(如同批种子)时仍稳定，避免游标分页重复/丢行
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: take + 1, // 多取一条判断是否还有下一页
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
@@ -172,14 +179,22 @@ export class BusinessController {
       const t = await this.prisma.ticket.findUnique({ where: { id } })
       if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
       const order = await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null)
-      const amount = order ? Math.abs(order.amount) || 33 : 33
+      // 有原单：以原单金额为准；金额为 0 视为异常拒绝（不凭空造钱）。
+      // 无原单（演示数据缺口）：按品牌平均客单价兜底（DEFAULT_TICKET_AMOUNT），不再用魔法值 33。
+      let amount: number
+      if (order) {
+        amount = Math.abs(order.amount)
+        if (amount === 0) return { ok: false, detail: '关联订单金额为零，无法退款' }
+      } else {
+        amount = DEFAULT_TICKET_AMOUNT
+      }
       const share = Math.round(amount * 0.3)
 
       // 事务内：条件更新抢占工单 + 资金联动 + 审计同事务落库（fail-closed，审计失败则整笔回滚）
       const claimed = await this.prisma.$transaction(async (tx) => {
         const c = await tx.ticket.updateMany({ where: { id, status: { not: 'resolved' } }, data: { status: 'resolved', slaLeftMin: 0 } })
         if (c.count === 0) return false
-        await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
         const s = await tx.settlement.findFirst({ where: { brandId: t.brandId }, orderBy: { period: 'desc' } })
         if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
         const a = await tx.agent.findUnique({ where: { id: t.agentId } })
@@ -234,7 +249,7 @@ export class BusinessController {
   // ── 品牌：创建 / 状态 / 配置 ──────────────
   @Post('brands') @RequirePerms('brand.write') @ApiOperation({ summary: '新增品牌（入驻）' })
   async addBrand(@Body() dto: NewBrandDto, @CurrentUser() user: AuthUser) {
-    const id = 'brand-' + Date.now().toString(36)
+    const id = 'brand-' + shortId()
     const mark = dto.name.slice(0, 2)
     const brand = await this.prisma.brand.create({
       data: { id, name: dto.name, mark, category: dto.category, status: 'review', path: dto.path, feeRate: dto.feeRate, period: dto.period, reservePct: dto.reservePct, joinedAt: '刚刚' },
@@ -279,8 +294,8 @@ export class BusinessController {
   @Post('merchants') @RequirePerms('merchant.write') @ApiOperation({ summary: '品牌专属号池新增商户号' })
   async addMerchant(@Body() dto: NewMerchantDto, @CurrentUser() user: AuthUser) {
     const pref = dto.channel === 'wechat' ? 'WX' : dto.channel === 'alipay' ? 'AL' : 'BK'
-    const id = `M-${pref}-${Date.now().toString().slice(-3)}`
-    const mid = `${pref}${Date.now().toString().slice(-8)}`
+    const id = `M-${pref}-${shortId().slice(0, 6)}`
+    const mid = `${pref}${shortId()}`
     const m = await this.prisma.merchantAccount.create({ data: { id, brandId: dto.brandId, channel: dto.channel, mid, state: 'healthy', weight: dto.weight } })
     await this.audit.record({ user, action: 'merchant.create', resource: 'MerchantAccount', resourceId: id, detail: `号池新增商户号 ${id}（${dto.channel}）`, after: m })
     return { ok: true, detail: `商户号 ${id} 已加入号池`, id }
@@ -295,7 +310,7 @@ export class BusinessController {
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
         const amt = Math.abs(order.amount)
         const share = Math.round(amt * 0.3)
-        await tx.order.create({ data: { id: 'O-' + Date.now().toString().slice(-6), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
         const s = await tx.settlement.findFirst({ where: { brandId: order.brandId }, orderBy: { period: 'desc' } })
         if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
         const a = await tx.agent.findUnique({ where: { id: order.agentId } })

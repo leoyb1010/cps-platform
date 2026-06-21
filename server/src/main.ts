@@ -32,7 +32,8 @@ async function bootstrap() {
     origin: (process.env.CORS_ORIGIN || 'http://localhost:5273').split(','),
     credentials: true,
   })
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
+  // whitelist 剥离未知字段；forbidNonWhitelisted 直接 400（防意外/恶意多余字段）；transform 启用类型转换
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
   app.useGlobalFilters(new AllExceptionsFilter())
 
   // OpenAPI / Swagger
