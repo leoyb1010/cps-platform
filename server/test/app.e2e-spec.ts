@@ -238,6 +238,17 @@ describe('数据级 RBAC (scope)', () => {
     const settlements = await request(httpServer).get('/settlements').set('Authorization', `Bearer ${t}`).expect(200)
     expect(settlements.body.every((s: any) => s.brandId === 'youdao')).toBe(true) // 不泄漏他人结算
   })
+  it('PII 脱敏：非平台用户看到商户号 mid 被打码，平台用户看完整', async () => {
+    const su = await token('admin')
+    const full = await request(httpServer).get('/merchants').set('Authorization', `Bearer ${su}`).expect(200)
+    const fullMid = full.body.find((m: any) => m.brandId === 'youdao')?.mid
+    expect(fullMid).toBeTruthy()
+    expect(fullMid).not.toContain('****') // 平台看完整
+
+    const ba = await token('brandaudit') // brand-scoped
+    const masked = await request(httpServer).get('/merchants').set('Authorization', `Bearer ${ba}`).expect(200)
+    expect(masked.body.every((m: any) => m.mid.includes('****'))).toBe(true) // 品牌方看脱敏
+  })
   it('agent-scoped 即使有 brand.read，看品牌为空（拒绝按品牌键的越权读）', async () => {
     // 用 brandaudit 反证不够；这里直接断言 agent 用 ops 角色读不到 merchants（403 或空均不泄漏）
     const agentTok = await token('agent')

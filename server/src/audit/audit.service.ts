@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
+import { appendFile } from 'fs/promises'
+import { join } from 'path'
 import { PrismaService } from '../prisma.service'
 import { MetricsService } from '../common/metrics.service'
 import type { AuthUser } from '../rbac/rbac'
@@ -65,11 +67,23 @@ export class AuditService {
       .then(() => {
         this._lastSuccessAt = new Date()
       })
-      .catch((e) => {
-        // 审计不阻断主流程，但绝不静默丢失：落到可观测的错误日志 + 指标计数，便于告警/补记。
+      .catch(async (e) => {
+        // 审计不阻断主流程，但绝不静默丢失：指标计数 + 错误日志 + 旁路落盘。
+        // 旁路文件保证「即使 DB 审计表挂了」也留下可补记的线索。
         this.metrics.recordAuditFailure()
         this.logger.error(`审计写入失败(已丢失一条 ${categorize(p.action, p.detail ?? '')} 记录): action=${p.action} resource=${p.resource}:${p.resourceId ?? ''} err=${e instanceof Error ? e.message : String(e)}`)
+        await this.sidecar(p, e)
       })
+  }
+
+  /** DB 审计写入失败时的旁路落盘（append-only JSONL），保证线索不丢失。 */
+  private async sidecar(p: AuditInput, err: unknown) {
+    try {
+      const line = JSON.stringify({ at: new Date().toISOString(), ...this.toData(p), error: err instanceof Error ? err.message : String(err) }) + '\n'
+      await appendFile(join(process.cwd(), 'audit-fallback.log'), line, 'utf8')
+    } catch {
+      /* 旁路也失败：已尽力（指标+日志已记录） */
+    }
   }
 
   /**

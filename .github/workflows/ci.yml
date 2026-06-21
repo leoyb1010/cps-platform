@@ -93,3 +93,20 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  security-audit:
+    name: 依赖漏洞扫描 (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      # 前端无 high 漏洞 → 阻断
+      - name: 前端依赖审计（high 阻断）
+        run: npm audit --audit-level=high
+      # 后端现存 high 均为传递依赖且本项目不触发(multer DoS 无上传路由 / esbuild 仅 dev-server)，
+      # 不阻断但报告(见 server/SECURITY-AUDIT.md 的逐条研判); 引入新可利用漏洞时人工处理。
+      - name: 后端依赖审计（报告，不阻断）
+        working-directory: server
+        run: npm audit --audit-level=critical || true
+        continue-on-error: true

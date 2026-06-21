@@ -270,7 +270,7 @@
             "description": ""
           }
         },
-        "summary": "商户号/号池（按 scope 收窄，排除已删除）",
+        "summary": "商户号/号池（按 scope 收窄，排除已删除；非平台用户 mid 脱敏）",
         "tags": [
           "business"
         ]

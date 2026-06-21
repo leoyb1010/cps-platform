@@ -12,6 +12,8 @@ import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 // 工单退款无关联原单时的兜底金额（演示数据缺口用；生产应改为强制关联原单）
 const DEFAULT_TICKET_AMOUNT = 33
+// 商户号脱敏：保留前 2 后 2，中间打码
+const maskMid = (mid: string) => (mid && mid.length > 4 ? `${mid.slice(0, 2)}****${mid.slice(-2)}` : '****')
 
 class StateDto {
   @IsIn(['healthy', 'throttled', 'paused', 'fused']) state!: string
@@ -101,8 +103,13 @@ export class BusinessController {
   @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表（按 scope 收窄，排除已删除）' })
   agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: { ...this.scope(user, 'id-agent'), deletedAt: null }, orderBy: { spendMtd: 'desc' } }) }
 
-  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄，排除已删除）' })
-  merchants(@CurrentUser() user: AuthUser) { return this.prisma.merchantAccount.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null } }) }
+  @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄，排除已删除；非平台用户 mid 脱敏）' })
+  async merchants(@CurrentUser() user: AuthUser) {
+    const rows = await this.prisma.merchantAccount.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null } })
+    // PII 脱敏：仅平台运营/风控可见完整商户号；其它(品牌方等)展示脱敏码（《个保法》最小必要）
+    if (user.scopeType === 'platform') return rows
+    return rows.map((m) => ({ ...m, mid: maskMid(m.mid) }))
+  }
 
   // 游标分页：传 ?cursor=<id>&limit=<n>，返回 { items, nextCursor }
   @Get('orders') @RequirePerms('order.read') @ApiOperation({ summary: '订单（按 scope 收窄 · 游标分页）' })
