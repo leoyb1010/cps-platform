@@ -80,8 +80,12 @@ export const bizApi = {
 
 type ApiState<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void }
 
-/** 真实模式下取数；mock 模式直接返回 fallback（不发请求）。 */
-export function useApi<T>(fetcher: () => Promise<T>, fallback: T, deps: unknown[] = []): ApiState<T> {
+/**
+ * 真实模式下取数；mock 模式直接返回 fallback（不发请求）。
+ * 参数顺序 (fetcher, deps, fallback)：deps 放第 2 位（最常传），fallback 选填末位。
+ * deps 变化 → 自动重取（如分类筛选切换）。
+ */
+export function useApi<T>(fetcher: () => Promise<T>, deps: unknown[] = [], fallback: T | null = null): ApiState<T> {
   const [data, setData] = useState<T | null>(isRealApi ? null : fallback)
   const [loading, setLoading] = useState(isRealApi)
   const [error, setError] = useState<string | null>(null)

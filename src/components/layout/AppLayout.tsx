@@ -6,6 +6,7 @@ import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
 import { useStore, markAllRead, on } from '../../lib/store'
 import { useAuth, useCan, logout, switchRole, ROLES, type RoleId } from '../../lib/auth'
+import { isRealApi } from '../../lib/http'
 import { useToast } from '../ui/overlays'
 import { CommandPalette } from './CommandPalette'
 
@@ -181,7 +182,8 @@ function AccountMenu() {
             {!roles ? (
               <>
                 <MenuRow icon={<UserCog size={14} />} label="个人资料" onClick={() => setOpen(false)} hint={user.account} />
-                <MenuRow icon={<Repeat size={14} />} label="切换角色（演示）" onClick={() => setRoles(true)} chevron />
+                {/* 角色切换仅演示态可用；真实模式角色只能由后端变更，避免前端伪造权限 */}
+                {!isRealApi && <MenuRow icon={<Repeat size={14} />} label="切换角色（演示）" onClick={() => setRoles(true)} chevron />}
                 <div className="my-1 border-t border-line" />
                 <MenuRow icon={<LogOut size={14} />} label="退出登录" tone="alert" onClick={() => { logout(); nav('/login', { replace: true }) }} />
               </>

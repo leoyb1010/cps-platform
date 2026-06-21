@@ -50,7 +50,7 @@ export default function Audit() {
   const [cat, setCat] = useState<Cat>('all')
 
   // 真实模式：从服务端审计日志取数（落库、append-only）；mock 模式：本会话联动事件流
-  const remote = useApi(() => adminApi.audit(), [], [])
+  const remote = useApi(() => adminApi.audit(), [])
   const rows: AuditRow[] = isRealApi
     ? (remote.data ?? []).map((a) => ({
         id: a.id,

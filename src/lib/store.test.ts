@@ -1,9 +1,29 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getStore, resetStore, resolveTicketWithRefund, clearSettlement, setAgentStatus, settleAgent } from './store'
+import { getStore, resetStore, resolveTicketWithRefund, clearSettlement, setAgentStatus, settleAgent, addMerchant, addBrand } from './store'
 
 beforeEach(() => {
   localStorage.clear()
   resetStore() // 回到 seed 干净态
+})
+
+describe('store · 发号唯一性(F4 防碰撞)', () => {
+  it('连续新增多个号池 → id 全唯一（不再 slice(-2) 碰撞）', () => {
+    const brandId = getStore().brands[0].id
+    const ids = new Set<string>()
+    for (let i = 0; i < 120; i++) ids.add(addMerchant({ brandId, channel: 'wechat', weight: 10 }))
+    expect(ids.size).toBe(120) // 120 个全不重复
+  })
+  it('连续新增品牌 + 号池 → 跨实体 id 唯一', () => {
+    const allIds = new Set<string>()
+    for (let i = 0; i < 30; i++) {
+      allIds.add(addBrand({ name: 'B' + i, mark: 'B', category: '工具', path: 'direct', feeRate: 10, period: 7, reservePct: 8, planName: '月', firstPrice: 30, renewPrice: 25, channel: 'wechat' }))
+    }
+    const s = getStore()
+    // store 内所有品牌/号池 id 不重复
+    const brandIds = s.brands.map((b) => b.id)
+    expect(new Set(brandIds).size).toBe(brandIds.length)
+    expect(allIds.size).toBe(30)
+  })
 })
 
 describe('store · 工单退款核心联动', () => {

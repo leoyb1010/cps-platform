@@ -142,8 +142,13 @@ export async function logout() {
   setUser(null)
 }
 
-/** 真实模式：角色切换需后端改成员角色；此处演示态直接本地切换以便体验权限差异。 */
+/**
+ * 角色切换 —— 仅演示(mock)态可用：本地切换以便体验不同角色的权限差异。
+ * 真实模式严禁本地改角色：否则任意用户可在前端伪造 super 权限解锁管理 UI
+ * （服务端仍会 403 拦截写操作，但不应让前端信任客户端自设的权限）。真实改角色须经后端 /members。
+ */
 export function switchRole(roleId: RoleId) {
+  if (isRealApi) return // 真实模式：角色仅由后端变更，前端不可本地伪造
   if (!current) return
   setUser({ ...current, roleId, permissions: ROLES[roleId].perms, name: DEMO_USERS.find((u) => u.roleId === roleId)?.name ?? current.name })
 }

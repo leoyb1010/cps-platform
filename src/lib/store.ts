@@ -69,9 +69,17 @@ function load(): StoreState {
       const p = JSON.parse(raw) as StoreState
       // 基本完整性校验，缺字段则重置
       if (p.orders && p.complaints && p.settlements && p.agents && p.merchants && p.brands) {
-        // 恢复 seq 到已持久化的最大 id 之上，避免刷新后重新发号导致 key 冲突
-        const maxActivityId = (p.activity ?? []).reduce((m, a) => Math.max(m, a.id), 0)
-        if (maxActivityId >= seq) seq = maxActivityId + 1
+        // 恢复 seq 到「已持久化的最大发号」之上：seq 不仅给 activity，也给 订单/品牌/号池 id
+        // （'O-'+seq、'brand-'+seq、'M-..'+seq）。只看 activity 会留缺口 → 刷新后重新发号碰撞。
+        const nums = (s: string): number => {
+          const m = s.match(/(\d+)/g)
+          return m ? Math.max(...m.map(Number)) : 0
+        }
+        let maxSeq = (p.activity ?? []).reduce((mx, a) => Math.max(mx, a.id), 0)
+        for (const o of p.orders) maxSeq = Math.max(maxSeq, nums(o.id))
+        for (const b of p.brands) maxSeq = Math.max(maxSeq, nums(b.id))
+        for (const mAcc of p.merchants) maxSeq = Math.max(maxSeq, nums(mAcc.id))
+        if (maxSeq >= seq) seq = maxSeq + 1
         return { ...seed(), ...p, activity: p.activity ?? [] }
       }
     }
@@ -341,7 +349,9 @@ export function addBrand(input: NewBrandInput) {
       .addBrand({ name: input.name, category: input.category, feeRate: input.feeRate, period: input.period, reservePct: input.reservePct, path: input.path })
       .then((r) => {
         if (r.ok && r.id) {
-          const reconciled = state.brands.map((b) => (b.id === id ? { ...b, id: r.id! } : b))
+          // 若期间 hydrate 已替换 brands、临时 id 不在了 → 以服务端 id 重新插入(不丢失)；否则原地校正 id
+          const has = state.brands.some((b) => b.id === id)
+          const reconciled = has ? state.brands.map((b) => (b.id === id ? { ...b, id: r.id! } : b)) : [{ ...brand, id: r.id! }, ...state.brands]
           commit({ ...state, brands: reconciled })
         } else throw new Error(r.detail || '品牌创建被服务端拒绝')
       })
@@ -371,7 +381,8 @@ export function setBrandStatus(id: string, status: Brand['status'], label: strin
 export function addMerchant(input: { brandId: string; channel: 'wechat' | 'alipay' | 'bank'; weight: number }) {
   const b = brandById(input.brandId)
   const pref = b ? b.id.slice(0, 2).toUpperCase() : 'NW'
-  const id = `M-${pref}-${String(++seq).slice(-2)}`
+  // 用完整 seq 而非 slice(-2)：后者仅 100 种后缀，号池稍多即主键碰撞
+  const id = `M-${pref}-${++seq}`
   const m: MerchantAccount = {
     id, brandId: input.brandId, channel: input.channel, mid: `${input.channel === 'alipay' ? '20' : input.channel === 'bank' ? '62' : '15'}•••${String(seq).slice(-4)}`,
     state: 'healthy', complaintRate: 0, escalatedRate: 0, chargebackRate: 0, refundRate: 0, close72h: 100, gmvMtd: 0, txCount: 0, limitUsedPct: 0, weight: input.weight,
@@ -385,7 +396,8 @@ export function addMerchant(input: { brandId: string; channel: 'wechat' | 'alipa
       .addMerchant({ brandId: input.brandId, channel: input.channel, weight: input.weight })
       .then((r) => {
         if (r.ok && r.id) {
-          const reconciled = state.merchants.map((x) => (x.id === id ? { ...x, id: r.id! } : x))
+          const has = state.merchants.some((x) => x.id === id)
+          const reconciled = has ? state.merchants.map((x) => (x.id === id ? { ...x, id: r.id! } : x)) : [{ ...m, id: r.id! }, ...state.merchants]
           commit({ ...state, merchants: reconciled })
         } else throw new Error(r.detail || '商户号创建被服务端拒绝')
       })

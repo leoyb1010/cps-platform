@@ -35,8 +35,8 @@ export default function Members() {
   const [invite, setInvite] = useState(false)
   const [activeRole, setActiveRole] = useState<string>('super')
 
-  const membersApi = useApi(() => adminApi.members(), [], [])
-  const rolesApi = useApi(() => adminApi.roles(), [], [])
+  const membersApi = useApi(() => adminApi.members(), [])
+  const rolesApi = useApi(() => adminApi.roles(), [])
   const members: MView[] = isRealApi ? (membersApi.data ?? []).map((m) => ({ id: m.id, name: m.name, account: m.account, roleId: m.roleId, roleName: m.roleName })) : LOCAL_MEMBERS
   const roles: RView[] = isRealApi ? (rolesApi.data ?? []).map((r) => ({ id: r.id, name: r.name, desc: r.description, perms: r.permissions })) : LOCAL_ROLES
   const activeRoleObj = roles.find((r) => r.id === activeRole) ?? roles[0]
