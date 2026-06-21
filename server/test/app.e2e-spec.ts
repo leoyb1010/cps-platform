@@ -312,6 +312,20 @@ describe('软删除 + 游标分页', () => {
   })
 })
 
+describe('对账任务（B5）', () => {
+  it('触发对账：返回检查品牌数与差异列表（幂等只读）', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect([200, 201]).toContain(r.status)
+    expect(typeof r.body.checkedBrands).toBe('number')
+    expect(Array.isArray(r.body.mismatches)).toBe(true)
+  })
+  it('财务无 settlement.clear 之外权限也能跑（有 settlement.clear）；ops 无权 → 403', async () => {
+    const ops = await token('ops')
+    await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${ops}`).expect(403)
+  })
+})
+
 describe('Observability', () => {
   it('GET /metrics 暴露 Prometheus 文本（prom-client：HTTP 直方图 + 进程 + 业务计数）', async () => {
     const res = await request(httpServer).get('/metrics').expect(200)

@@ -208,6 +208,21 @@
         ]
       }
     },
+    "/reconciliation/run": {
+      "post": {
+        "operationId": "BusinessController_runReconciliation",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "触发对账（退款↔冲账核对，差异写审计）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
     "/brands": {
       "get": {
         "operationId": "BusinessController_brands",

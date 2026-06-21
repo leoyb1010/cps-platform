@@ -139,7 +139,7 @@ model MerchantAccount {
   id            String  @id
   brandId       String
   channel       String // wechat | alipay | bank
-  mid           String
+  mid           String  @unique // 商户号唯一，防重复录入
   state         String  @default("healthy")
   complaintRate Float   @default(0)
   escalatedRate Float   @default(0)

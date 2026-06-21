@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { IdempotencyService } from '../common/idempotency.service'
 import { MetricsService } from '../common/metrics.service'
+import { ReconciliationService } from './reconciliation.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
@@ -59,7 +60,14 @@ export class BusinessController {
     private audit: AuditService,
     private idem: IdempotencyService,
     private metrics: MetricsService,
+    private recon: ReconciliationService,
   ) {}
+
+  // 对账：核对退款流水↔结算冲账（定时任务亦调用同方法；此处供手动触发）
+  @Post('reconciliation/run') @RequirePerms('settlement.clear') @ApiOperation({ summary: '触发对账（退款↔冲账核对，差异写审计）' })
+  runReconciliation() {
+    return this.recon.run()
+  }
 
   // 数据级 RBAC（默认拒绝）：按 scope 收窄查询条件。
   //   platform → 全量；brand:<id> / agent:<id> → 仅自己拥有的数据。

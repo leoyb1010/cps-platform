@@ -20,6 +20,7 @@ import { HealthController } from './common/health.controller'
 import { MetricsService } from './common/metrics.service'
 import { MetricsInterceptor } from './common/metrics.interceptor'
 import { IdempotencyService } from './common/idempotency.service'
+import { ReconciliationService } from './business/reconciliation.service'
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { IdempotencyService } from './common/idempotency.service'
     AuditService,
     MetricsService,
     IdempotencyService,
+    ReconciliationService,
     // 全局：限流 → 认证 → 鉴权
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
