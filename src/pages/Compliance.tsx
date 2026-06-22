@@ -65,7 +65,7 @@ export default function Compliance() {
       </Card>
 
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card><Stat label="直连品牌占比" value={pct(50, 0)} hint="资金不过平台账户" sub={<span className="text-good-ink">合规最干净</span>} /></Card>
+        <Card><Stat label="直连品牌占比" value={pct(directSharePct, 0)} hint="资金不过平台账户" sub={<span className="text-good-ink">合规最干净</span>} /></Card>
         <Card><Stat label="持牌分账通道" value="2" unit="家" sub={<span>主通道 + 容灾</span>} /></Card>
         <Card><Stat label="自建资金池" value="0" sub={<span className="text-good-ink flex items-center gap-1"><Check size={12} /> 零二清敞口</span>} /></Card>
         <Card><Stat label="合规意见书" value="已出具" sub={<span>支付 + 税务双顾问</span>} /></Card>
