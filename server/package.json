@@ -16,7 +16,7 @@
     "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",
     "migrate:pg": "prisma migrate deploy --schema prisma/schema.postgres.prisma",
     "test": "vitest run",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run test/app.e2e-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

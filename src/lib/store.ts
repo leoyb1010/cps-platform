@@ -199,6 +199,15 @@ function mirror(call: () => Promise<unknown>, label = '操作') {
 
 /* ════════════ 动作（含状态机流转 + 跨模块联动） ════════════ */
 
+// 退款时应冲减的代理分润 = 退款金额 × 该品牌真实代理分润占比（由结算单 agentPayout/gross 派生，
+// 而非固定魔法值；无结算单时退化为 feeRate×0.6 的估算）。修正口径与品牌脱钩问题。
+function agentShareRate(brandId: string): number {
+  const s = state.settlements.find((x) => x.brandId === brandId)
+  if (s && s.gross > 0) return s.agentPayout / s.gross
+  const b = brandById(brandId)
+  return b ? (b.feeRate / 100) * 0.6 : 0.3
+}
+
 // 核心联动：工单退款 → 订单冲正 → 结算逆向冲账 → 代理分润/信用分 → 风险/通知
 export function resolveTicketWithRefund(ticketId: string) {
   const t = state.complaints.find((c) => c.id === ticketId)
@@ -206,7 +215,7 @@ export function resolveTicketWithRefund(ticketId: string) {
   const brand = brandById(t.brandId)
   const order = state.orders.find((o) => o.id === t.orderId)
   const amount = order ? Math.abs(order.amount) || 33 : 33
-  const share = Math.round(amount * 0.3) // 代理分润口径（演示）
+  const share = Math.round(amount * agentShareRate(t.brandId)) // 代理分润冲减 = 退款额 × 该品牌代理分润占比
 
   // 1) 工单 → 已解决
   const complaints = state.complaints.map((c) =>
@@ -230,7 +239,8 @@ export function resolveTicketWithRefund(ticketId: string) {
     orders = [refund, ...state.orders]
   }
 
-  // 3) 结算 → 逆向冲账（冲减该品牌最近一期代理分润）
+  // 3) 结算 → 逆向冲账（冲减该品牌最近一期代理分润）。
+  //    已结算单产生退款 → 出现对账差异，状态回到「对账中」并累加差异，使 reconciling/reversed 态可达。
   let touchedSettlement = ''
   const settlements = (() => {
     const idx = state.settlements.findIndex((s) => s.brandId === t.brandId)
@@ -238,7 +248,9 @@ export function resolveTicketWithRefund(ticketId: string) {
     const copy = state.settlements.slice()
     const s = copy[idx]
     touchedSettlement = s.id
-    copy[idx] = { ...s, reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) }
+    const status = s.status === 'cleared' ? ('reconciling' as const) : s.status
+    const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
+    copy[idx] = { ...s, reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share), status, reconcileDiff }
     return copy
   })()
 
@@ -277,14 +289,17 @@ export function refundOrder(orderId: string) {
   const order = state.orders.find((o) => o.id === orderId)
   if (!order || order.type === 'refund' || order.type === 'chargeback') return
   const amount = Math.abs(order.amount)
-  const share = Math.round(amount * 0.3)
+  const share = Math.round(amount * agentShareRate(order.brandId))
   const refund: Order = { id: 'O-' + ++seq, time: clock().slice(3), brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amount, plan: order.plan, mid: order.mid }
   const orders = [refund, ...state.orders]
   const settlements = (() => {
     const idx = state.settlements.findIndex((s) => s.brandId === order.brandId)
     if (idx < 0) return state.settlements
     const copy = state.settlements.slice()
-    copy[idx] = { ...copy[idx], reversal: copy[idx].reversal + share, agentPayout: Math.max(0, copy[idx].agentPayout - share) }
+    const s = copy[idx]
+    const status = s.status === 'cleared' ? ('reconciling' as const) : s.status
+    const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
+    copy[idx] = { ...s, reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share), status, reconcileDiff }
     return copy
   })()
   const agents = state.agents.map((a) => (a.id === order.agentId ? { ...a, payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1) } : a))

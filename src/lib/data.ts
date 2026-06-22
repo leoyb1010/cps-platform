@@ -234,14 +234,16 @@ export interface Settlement {
   id: string
   period: string
   brandId: string
-  gross: number
-  brandShare: number
-  platformFee: number
-  agentPayout: number
-  reversal: number
-  frozen: number
+  gross: number // 订单流水
+  brandShare: number // 品牌留存 = gross×(1−feeRate%)
+  platformFee: number // 平台服务费（可分配池的一部分）
+  agentPayout: number // 代理分润（可分配池的一部分）
+  reserve: number // 风险准备金 = gross×reservePct%（从池预留，覆盖退款窗口）
+  reversal: number // 逆向冲账（退款/拒付回收）
+  frozen: number // 当前在账冻结额（含未释放的准备金）
   status: SettleStatus
   reconcileDiff: number
+  // 恒等：brandShare + reserve + platformFee + agentPayout + reversal = gross
 }
 
 /* ---------- 品牌 ---------- */
@@ -459,9 +461,9 @@ export const merchants: MerchantAccount[] = [
   { id: 'M-YD-01', brandId: 'youdao', channel: 'wechat', mid: '15•••8842', state: 'healthy', complaintRate: 0.31, escalatedRate: 0.03, chargebackRate: 0.12, refundRate: 2.1, close72h: 98, gmvMtd: 4120000, txCount: 103200, limitUsedPct: 58, weight: 60 },
   { id: 'M-YD-02', brandId: 'youdao', channel: 'alipay', mid: '20•••1170', state: 'healthy', complaintRate: 0.38, escalatedRate: 0.04, chargebackRate: 0.16, refundRate: 2.4, close72h: 97, gmvMtd: 3210000, txCount: 80400, limitUsedPct: 49, weight: 40 },
   { id: 'M-YD-03', brandId: 'youdao', channel: 'wechat', mid: '15•••6093', state: 'watch', complaintRate: 0.71, escalatedRate: 0.07, chargebackRate: 0.28, refundRate: 3.6, close72h: 93, gmvMtd: 1090000, txCount: 27300, limitUsedPct: 33, weight: 12 },
-  { id: 'M-XM-01', brandId: 'ximalaya', channel: 'alipay', mid: '20•••4456', state: 'healthy', complaintRate: 0.52, escalatedRate: 0.045, chargebackRate: 0.22, refundRate: 3.0, close72h: 96, gmvMtd: 3540000, txCount: 96100, limitUsedPct: 64, weight: 55 },
+  { id: 'M-XM-01', brandId: 'ximalaya', channel: 'alipay', mid: '20•••4456', state: 'healthy', complaintRate: 0.52, escalatedRate: 0.045, chargebackRate: 0.22, refundRate: 3.0, close72h: 96, gmvMtd: 4250000, txCount: 96100, limitUsedPct: 64, weight: 55 },
   { id: 'M-XM-02', brandId: 'ximalaya', channel: 'wechat', mid: '15•••2231', state: 'throttled', complaintRate: 0.98, escalatedRate: 0.11, chargebackRate: 0.41, refundRate: 4.7, close72h: 89, gmvMtd: 1880000, txCount: 51200, limitUsedPct: 71, weight: 18 },
-  { id: 'M-MG-01', brandId: 'mango', channel: 'wechat', mid: '15•••7780', state: 'watch', complaintRate: 0.86, escalatedRate: 0.08, chargebackRate: 0.39, refundRate: 4.2, close72h: 94, gmvMtd: 2980000, txCount: 91400, limitUsedPct: 68, weight: 48 },
+  { id: 'M-MG-01', brandId: 'mango', channel: 'wechat', mid: '15•••7780', state: 'watch', complaintRate: 0.86, escalatedRate: 0.08, chargebackRate: 0.39, refundRate: 4.2, close72h: 94, gmvMtd: 3260000, txCount: 91400, limitUsedPct: 68, weight: 48 },
   { id: 'M-MG-02', brandId: 'mango', channel: 'bank', mid: '62•••0098', state: 'throttled', complaintRate: 1.07, escalatedRate: 0.09, chargebackRate: 0.52, refundRate: 5.1, close72h: 91, gmvMtd: 1610000, txCount: 49800, limitUsedPct: 55, weight: 16 },
   { id: 'M-WP-01', brandId: 'wps', channel: 'wechat', mid: '15•••3315', state: 'healthy', complaintRate: 0.33, escalatedRate: 0.025, chargebackRate: 0.13, refundRate: 1.9, close72h: 99, gmvMtd: 1980000, txCount: 61000, limitUsedPct: 44, weight: 62 },
   { id: 'M-WP-02', brandId: 'wps', channel: 'alipay', mid: '20•••9982', state: 'healthy', complaintRate: 0.41, escalatedRate: 0.035, chargebackRate: 0.17, refundRate: 2.2, close72h: 97, gmvMtd: 1280000, txCount: 39400, limitUsedPct: 37, weight: 38 },
@@ -506,6 +508,16 @@ export const orders: Order[] = [
   { id: 'O-99799', time: '14:28:52', brandId: 'keep', agentId: 'A-7799', channel: 'alipay', type: 'renew', amount: 25, plan: 'Keep 会员连续包月', mid: 'M-KP-01' },
   { id: 'O-99798', time: '14:28:36', brandId: 'youdao', agentId: 'A-5521', channel: 'alipay', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-02' },
   { id: 'O-99797', time: '14:28:20', brandId: 'ximalaya', agentId: 'A-3372', channel: 'alipay', type: 'first', amount: 18, plan: '喜马拉雅 VIP 连续包月', mid: 'M-XM-01' },
+  // 历史原始订单——被下方投诉工单引用（保证 工单→原单→退款金额 链路贯通，退款不再走兜底 33）
+  { id: 'O-98120', time: '昨天 21:14', brandId: 'mango', agentId: 'A-4410', channel: 'wechat', type: 'first', amount: 15, plan: '芒果 TV 移动会员连续包月', mid: 'M-MG-01' },
+  { id: 'O-97744', time: '昨天 20:02', brandId: 'bilibili', agentId: 'A-7180', channel: 'wechat', type: 'first', amount: 10, plan: '大会员连续包月', mid: 'M-BL-01' },
+  { id: 'O-97511', time: '昨天 19:33', brandId: 'ximalaya', agentId: 'A-6093', channel: 'alipay', type: 'first', amount: 18, plan: '喜马拉雅 VIP 连续包月', mid: 'M-XM-01' },
+  { id: 'O-96820', time: '昨天 18:20', brandId: 'youdao', agentId: 'A-2041', channel: 'wechat', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-01' },
+  { id: 'O-96233', time: '昨天 16:48', brandId: 'keep', agentId: 'A-5521', channel: 'alipay', type: 'first', amount: 12, plan: 'Keep 会员连续包月', mid: 'M-KP-01' },
+  { id: 'O-95610', time: '昨天 15:05', brandId: 'mango', agentId: 'A-4410', channel: 'wechat', type: 'first', amount: 15, plan: '芒果 TV 移动会员连续包月', mid: 'M-MG-01' },
+  { id: 'O-95004', time: '昨天 13:30', brandId: 'wps', agentId: 'A-1188', channel: 'wechat', type: 'first', amount: 12, plan: 'WPS 超级会员连续包月', mid: 'M-WP-01' },
+  { id: 'O-94320', time: '昨天 11:12', brandId: 'zhihu', agentId: 'A-3372', channel: 'alipay', type: 'first', amount: 9.9, plan: '盐选会员连续包月', mid: 'M-ZH-01' },
+  { id: 'O-93770', time: '昨天 09:45', brandId: 'youdao', agentId: 'A-5521', channel: 'wechat', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-01' },
 ]
 
 /* ---------- 投诉工单 ---------- */
@@ -525,14 +537,14 @@ export const complaints: Complaint[] = [
 /* ---------- 清结算 ---------- */
 
 export const settlements: Settlement[] = [
-  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 884100, agentPayout: 2652300, reversal: 41200, frozen: 673600, status: 'pending', reconcileDiff: 0 },
-  { id: 'S-2406-WP', period: '2026-06 上半月', brandId: 'wps', gross: 3260000, brandShare: 1956000, platformFee: 326000, agentPayout: 978000, reversal: 12800, frozen: 228200, status: 'pending', reconcileDiff: 0 },
-  { id: 'S-2405-YD', period: '2026-05 月结', brandId: 'youdao', gross: 16240000, brandShare: 9419200, platformFee: 1705200, agentPayout: 5115600, reversal: 86400, frozen: 0, status: 'cleared', reconcileDiff: 0 },
-  { id: 'S-2405-XM', period: '2026-05 月结', brandId: 'ximalaya', gross: 11860000, brandShare: 6404400, platformFee: 1067400, agentPayout: 3201800, reversal: 142600, frozen: 0, status: 'reconciling', reconcileDiff: 18400 },
-  { id: 'S-2405-MG', period: '2026-05 月结', brandId: 'mango', gross: 9240000, brandShare: 4804800, platformFee: 739200, agentPayout: 2217600, reversal: 196300, frozen: 0, status: 'reconciling', reconcileDiff: 31200 },
-  { id: 'S-2405-ZH', period: '2026-05 月结', brandId: 'zhihu', gross: 5680000, brandShare: 3180800, platformFee: 511200, agentPayout: 1533600, reversal: 74100, frozen: 0, status: 'cleared', reconcileDiff: 0 },
-  { id: 'S-2405-BL', period: '2026-05 月结', brandId: 'bilibili', gross: 2140000, brandShare: 1132200, platformFee: 192600, agentPayout: 577800, reversal: 88600, frozen: 142000, status: 'reversed', reconcileDiff: 0 },
-  { id: 'S-2405-KP', period: '2026-05 月结', brandId: 'keep', gross: 3520000, brandShare: 1980000, platformFee: 316800, agentPayout: 950400, reversal: 39200, frozen: 0, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 601188, agentPayout: 2220412, reserve: 673600, reversal: 41200, frozen: 673600, status: 'pending', reconcileDiff: 0 },
+  { id: 'S-2406-WP', period: '2026-06 上半月', brandId: 'wps', gross: 3260000, brandShare: 1956000, platformFee: 221680, agentPayout: 841320, reserve: 228200, reversal: 12800, frozen: 228200, status: 'pending', reconcileDiff: 0 },
+  { id: 'S-2405-YD', period: '2026-05 月结', brandId: 'youdao', gross: 16240000, brandShare: 9419200, platformFee: 1159536, agentPayout: 4275664, reserve: 1299200, reversal: 86400, frozen: 1299200, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2405-XM', period: '2026-05 月结', brandId: 'ximalaya', gross: 11860000, brandShare: 6404400, platformFee: 927452, agentPayout: 2962348, reserve: 1423200, reversal: 142600, frozen: 1423200, status: 'reconciling', reconcileDiff: 18400 },
+  { id: 'S-2405-MG', period: '2026-05 月结', brandId: 'mango', gross: 9240000, brandShare: 4804800, platformFee: 753984, agentPayout: 2191316, reserve: 1293600, reversal: 196300, frozen: 1293600, status: 'reconciling', reconcileDiff: 31200 },
+  { id: 'S-2405-ZH', period: '2026-05 月结', brandId: 'zhihu', gross: 5680000, brandShare: 3180800, platformFee: 424864, agentPayout: 1432236, reserve: 568000, reversal: 74100, frozen: 568000, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2405-BL', period: '2026-05 月结', brandId: 'bilibili', gross: 2140000, brandShare: 1134200, platformFee: 170986, agentPayout: 403814, reserve: 342400, reversal: 88600, frozen: 171200, status: 'reversed', reconcileDiff: 0 },
+  { id: 'S-2405-KP', period: '2026-05 月结', brandId: 'keep', gross: 3520000, brandShare: 1936000, platformFee: 269280, agentPayout: 888320, reserve: 387200, reversal: 39200, frozen: 387200, status: 'cleared', reconcileDiff: 0 },
 ]
 
 /* ---------- KPI / 大盘 ---------- */
@@ -549,8 +561,8 @@ export const kpi = {
   escalatedRate: 0.04,
   chargebackRate: 0.31,
   close72h: 96.4,
-  reserveBalance: 7340000,
-  activeSubs: 967300,
+  reserveBalance: 6044200, // = 各结算单 frozen 之和（准备金在账余额）
+  activeSubs: 797200, // = 各品牌 activeSubs 之和
   activeAgents: 186,
   liveBrands: 6,
 }
@@ -588,19 +600,34 @@ export const series = {
   ltvCurve: [40, 58, 70, 79, 86, 91, 95, 98, 100, 102, 103, 104],
 }
 
+// 资金路径分布：由各品牌 path 按 GMV 占比派生（不再写死，确保与品牌明细一致）
+const _fundByPath = (() => {
+  const g: Record<SettlePath, number> = { direct: 0, licensed: 0, mixed: 0 }
+  let tot = 0
+  for (const b of brands) { g[b.path] += b.gmvMtd; tot += b.gmvMtd }
+  return { g, tot: tot || 1 }
+})()
 export const fundSplit = [
-  { label: '直连', value: 51, tone: 'good' as Tone },
-  { label: '持牌分账', value: 34, tone: 'info' as Tone },
-  { label: '混合', value: 15, tone: 'violet' as Tone },
+  { label: '直连', value: Math.round((_fundByPath.g.direct / _fundByPath.tot) * 100), tone: 'good' as Tone },
+  { label: '持牌分账', value: Math.round((_fundByPath.g.licensed / _fundByPath.tot) * 100), tone: 'info' as Tone },
+  { label: '混合', value: Math.round((_fundByPath.g.mixed / _fundByPath.tot) * 100), tone: 'violet' as Tone },
 ]
+// 直连占比（Compliance Donut 中心值），与上面同源
+export const directSharePct = Math.round((_fundByPath.g.direct / _fundByPath.tot) * 100)
 
-export const complaintBySource = [
-  { label: '平台内', value: 38, tone: 'neutral' as Tone },
-  { label: '支付渠道', value: 27, tone: 'info' as Tone },
-  { label: '黑猫投诉', value: 18, tone: 'warn' as Tone },
-  { label: '12315', value: 11, tone: 'alert' as Tone },
-  { label: '应用商店', value: 6, tone: 'violet' as Tone },
+// 投诉来源分布：由工单明细派生
+const _complaintCounts = (() => {
+  const c: Partial<Record<ComplaintSource, number>> = {}
+  for (const t of complaints) c[t.source] = (c[t.source] ?? 0) + 1
+  return c
+})()
+const _complaintTotal = complaints.length || 1
+const _srcOrder: { src: ComplaintSource; tone: Tone }[] = [
+  { src: 'platform', tone: 'neutral' }, { src: 'channel', tone: 'info' }, { src: 'heimao', tone: 'warn' }, { src: '12315', tone: 'alert' }, { src: 'appstore', tone: 'violet' },
 ]
+export const complaintBySource = _srcOrder
+  .map(({ src, tone }) => ({ label: COMPLAINT_SOURCE[src], value: Math.round(((_complaintCounts[src] ?? 0) / _complaintTotal) * 100), tone }))
+  .filter((x) => x.value > 0)
 
 /* ---------- 查询助手 ---------- */
 

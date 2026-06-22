@@ -19,6 +19,7 @@ import { Donut } from '../components/ui/charts'
 import { Drawer, Confirm, useToast } from '../components/ui/overlays'
 import { Timeline } from '../components/ui/forms'
 import {
+  kpi,
   brandById,
   agentById,
   complaintBySource,
@@ -94,7 +95,7 @@ export default function Complaints() {
 
         <Card>
           <CardTitle title="投诉来源分布" desc="本月占比" />
-          <Donut items={complaintBySource} center={{ value: pct(0.63), label: '综合投诉率' }} size={120} />
+          <Donut items={complaintBySource} center={{ value: pct(kpi.complaintRate), label: '综合投诉率' }} size={120} />
         </Card>
       </div>
 

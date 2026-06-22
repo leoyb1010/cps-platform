@@ -15,9 +15,13 @@ const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 const DEFAULT_TICKET_AMOUNT = 33
 // 商户号脱敏：保留前 2 后 2，中间打码
 const maskMid = (mid: string) => (mid && mid.length > 4 ? `${mid.slice(0, 2)}****${mid.slice(-2)}` : '****')
+// 退款冲减代理分润的比例 = 该品牌真实代理分润占比（agentPayout/gross），由结算单派生，不再用魔法值 0.3
+const shareRateOf = (s: { agentPayout: number; gross: number } | null | undefined) =>
+  s && s.gross > 0 ? s.agentPayout / s.gross : 0.3
 
 class StateDto {
-  @IsIn(['healthy', 'throttled', 'paused', 'fused']) state!: string
+  // 与前端 MerchantState 五态一致（含 watch=整改警告），避免真实模式镜像 watch 被 400 拒绝
+  @IsIn(['healthy', 'watch', 'throttled', 'paused', 'fused']) state!: string
   @IsOptional() @IsString() @MaxLength(40) label?: string
 }
 class AgentStatusDto {
@@ -205,7 +209,7 @@ export class BusinessController {
       } else {
         amount = DEFAULT_TICKET_AMOUNT
       }
-      const share = Math.round(amount * 0.3)
+      let share = 0
 
       // 事务内：条件更新抢占工单 + 资金联动 + 审计同事务落库（fail-closed，审计失败则整笔回滚）
       const claimed = await this.prisma.$transaction(async (tx) => {
@@ -213,7 +217,13 @@ export class BusinessController {
         if (c.count === 0) return false
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
         const s = await tx.settlement.findFirst({ where: { brandId: t.brandId }, orderBy: { period: 'desc' } })
-        if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
+        // 冲减比例由该品牌真实代理分润占比派生（agentPayout/gross），不再用固定 0.3
+        share = Math.round(amount * shareRateOf(s))
+        if (s) {
+          const status = s.status === 'cleared' ? 'reconciling' : s.status
+          const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
+          await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share), status, reconcileDiff } })
+        }
         const a = await tx.agent.findUnique({ where: { id: t.agentId } })
         if (a) {
           const creditScore = Math.max(400, a.creditScore - 4)
@@ -331,10 +341,14 @@ export class BusinessController {
         const order = await tx.order.findUnique({ where: { id } })
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
         const amt = Math.abs(order.amount)
-        const share = Math.round(amt * 0.3)
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
         const s = await tx.settlement.findFirst({ where: { brandId: order.brandId }, orderBy: { period: 'desc' } })
-        if (s) await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share) } })
+        const share = Math.round(amt * shareRateOf(s)) // 代理分润占比派生，不再固定 0.3
+        if (s) {
+          const status = s.status === 'cleared' ? 'reconciling' : s.status
+          const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
+          await tx.settlement.update({ where: { id: s.id }, data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share), status, reconcileDiff } })
+        }
         const a = await tx.agent.findUnique({ where: { id: order.agentId } })
         if (a) await tx.agent.update({ where: { id: a.id }, data: { payoutPending: Math.max(0, a.payoutPending - share), refundRate: +(a.refundRate + 0.1).toFixed(1) } })
         // 审计同事务（fail-closed）

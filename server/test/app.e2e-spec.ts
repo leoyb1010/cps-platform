@@ -320,12 +320,16 @@ describe('软删除 + 游标分页', () => {
 })
 
 describe('对账任务（B5）', () => {
-  it('触发对账：返回检查品牌数与差异列表（幂等只读）', async () => {
+  it('触发对账：逐单核对资金拆分恒等式，种子数据应全部对平（ok=true）', async () => {
     const su = await token('admin')
     const r = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
     expect([200, 201]).toContain(r.status)
-    expect(typeof r.body.checkedBrands).toBe('number')
+    expect(typeof r.body.checkedSettlements).toBe('number')
+    expect(r.body.checkedSettlements).toBeGreaterThan(0)
     expect(Array.isArray(r.body.mismatches)).toBe(true)
+    // 口径修正后：种子结算单 gross == brandShare+reserve+platformFee+agentPayout+reversal，应无差异
+    expect(r.body.ok).toBe(true)
+    expect(r.body.mismatches.length).toBe(0)
   })
   it('财务无 settlement.clear 之外权限也能跑（有 settlement.clear）；ops 无权 → 403', async () => {
     const ops = await token('ops')

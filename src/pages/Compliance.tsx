@@ -18,7 +18,7 @@ import {
 } from '../components/ui/primitives'
 import { Donut } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
-import { fundSplit, SETTLE_PATH_LABEL } from '../lib/data'
+import { fundSplit, directSharePct, SETTLE_PATH_LABEL } from '../lib/data'
 import { useStore } from '../lib/store'
 import { pct, cx } from '../lib/format'
 import { useState } from 'react'
@@ -107,8 +107,8 @@ export default function Compliance() {
       {/* 资金分布 + 对比 */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
-          <CardTitle title="资金路径分布" desc="按品牌数与流水" />
-          <Donut items={fundSplit} center={{ value: pct(50, 0), label: '直连占比' }} size={120} />
+          <CardTitle title="资金路径分布" desc="按品牌流水占比" />
+          <Donut items={fundSplit} center={{ value: pct(directSharePct, 0), label: '直连占比' }} size={120} />
         </Card>
         <Card className="lg:col-span-2">
           <CardTitle title="合规红线对照" desc="哪些能做，哪些绝不能做" />

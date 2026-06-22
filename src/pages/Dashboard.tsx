@@ -33,6 +33,7 @@ import {
   brandById,
   ORDER_TYPE,
   MERCHANT_STATE,
+  MERCHANT_THRESHOLD,
   AGENT_STATUS,
   CHANNEL_LABEL,
 } from '../lib/data'
@@ -76,6 +77,12 @@ export default function Dashboard() {
 
   const atRisk = s.merchants.filter((m) => m.state !== 'healthy').sort((a, b) => b.complaintRate - a.complaintRate).slice(0, 4)
   const liveBrands = s.brands.filter((b) => b.status === 'live').sort((a, b) => b.gmvMtd - a.gmvMtd).slice(0, 4)
+  // 投诉率大盘：从号池明细派生峰值（不再硬编码 KPI 静态值，避免与风险条「最高投诉率」自相矛盾）
+  const peakComplaint = s.merchants.length ? Math.max(...s.merchants.map((m) => m.complaintRate)) : 0
+  const peakEsc = s.merchants.length ? Math.max(...s.merchants.map((m) => m.escalatedRate)) : 0
+  const peakChargeback = s.merchants.length ? Math.max(...s.merchants.map((m) => m.chargebackRate)) : 0
+  const toneOf = (v: number, red: number, amber: number): 'good' | 'warn' | 'alert' => (v >= red ? 'alert' : v >= amber ? 'warn' : 'good')
+  const complaintTone = toneOf(peakComplaint, MERCHANT_THRESHOLD.complaint, MERCHANT_THRESHOLD.complaintWarn)
   const maxBrandGmv = Math.max(1, ...liveBrands.map((b) => b.gmvMtd))
   const anomalies = s.orders.filter((o) => o.type === 'refund' || o.type === 'chargeback' || Math.abs(o.amount) >= 39).slice(0, 6)
   const agentRisk = s.agents.filter((a) => a.status !== 'active')
@@ -293,14 +300,18 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* 投诉率大盘 */}
+        {/* 投诉率大盘（峰值口径，与风险条一致） */}
         <Card style={rev(0.54)}>
-          <CardTitle title="投诉率大盘" desc="近 30 天 · 红线阈值 1.0%" right={<Badge tone="good" dot>低于阈值</Badge>} />
+          <CardTitle
+            title="投诉率大盘"
+            desc={`号池峰值 · 红线阈值 ${MERCHANT_THRESHOLD.complaint.toFixed(1)}%`}
+            right={<Badge tone={complaintTone} dot>{complaintTone === 'good' ? '全部达标' : complaintTone === 'warn' ? '逼近红线' : '触发管控'}</Badge>}
+          />
           <ComplaintChart data={series.complaint30d} />
           <div className="mt-3 grid grid-cols-3 gap-2">
-            <MiniBox v={pct(kpi.complaintRate)} k="投诉率" tone="good" />
-            <MiniBox v={pct(kpi.escalatedRate, 2)} k="升级投诉" tone="good" />
-            <MiniBox v={pct(kpi.chargebackRate, 2)} k="拒付率" tone="warn" />
+            <MiniBox v={pct(peakComplaint)} k="最高投诉率" tone={complaintTone} />
+            <MiniBox v={pct(peakEsc, 2)} k="最高升级投诉" tone={toneOf(peakEsc, MERCHANT_THRESHOLD.escalated, MERCHANT_THRESHOLD.escalatedWarn)} />
+            <MiniBox v={pct(peakChargeback, 2)} k="最高拒付率" tone={toneOf(peakChargeback, 0.7, 0.5)} />
           </div>
         </Card>
       </div>
@@ -387,7 +398,7 @@ function ComplaintChart({ data }: { data: number[] }) {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border border-line bg-surface-muted px-[11px] py-[9px]"><div className="text-[10.5px] text-ink-3">{label}</div><div className="tnum mt-0.5 text-[16px] font-semibold">{value}</div></div>
 }
-function MiniBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'warn' }) {
+function MiniBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'warn' | 'alert' }) {
   return <div className="rounded-md bg-surface-muted py-[9px] text-center"><div className={cx('tnum text-[15px] font-semibold', TONE[tone].ink)}>{v}</div><div className="mt-0.5 text-[10.5px] text-ink-5">{k}</div></div>
 }
 function QualBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'alert' | 'info' }) {

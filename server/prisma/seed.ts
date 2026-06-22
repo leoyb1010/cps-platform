@@ -36,11 +36,16 @@ const MERCHANTS = [
   { id: 'M-BL-01', brandId: 'bilibili', channel: 'wechat', mid: '15•••4409', state: 'fused', complaintRate: 1.34, escalatedRate: 0.21, chargebackRate: 0.72, refundRate: 6.3, close72h: 85, gmvMtd: 920000, txCount: 30100, limitUsedPct: 47, weight: 0 },
 ]
 
+// 结算单：严格对平 gross = brandShare + reserve + platformFee + agentPayout + reversal
 const SETTLEMENTS = [
-  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 884100, agentPayout: 2652300, reversal: 41200, frozen: 673600, status: 'pending', reconcileDiff: 0 },
-  { id: 'S-2405-XM', period: '2026-05 月结', brandId: 'ximalaya', gross: 11860000, brandShare: 6404400, platformFee: 1067400, agentPayout: 3201800, reversal: 142600, frozen: 0, status: 'reconciling', reconcileDiff: 18400 },
-  { id: 'S-2405-MG', period: '2026-05 月结', brandId: 'mango', gross: 9240000, brandShare: 4804800, platformFee: 739200, agentPayout: 2217600, reversal: 196300, frozen: 0, status: 'reconciling', reconcileDiff: 31200 },
-  { id: 'S-2405-YD', period: '2026-05 月结', brandId: 'youdao', gross: 16240000, brandShare: 9419200, platformFee: 1705200, agentPayout: 5115600, reversal: 86400, frozen: 0, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 601188, agentPayout: 2220412, reserve: 673600, reversal: 41200, frozen: 673600, status: 'pending', reconcileDiff: 0 },
+  { id: 'S-2406-WP', period: '2026-06 上半月', brandId: 'wps', gross: 3260000, brandShare: 1956000, platformFee: 221680, agentPayout: 841320, reserve: 228200, reversal: 12800, frozen: 228200, status: 'pending', reconcileDiff: 0 },
+  { id: 'S-2405-YD', period: '2026-05 月结', brandId: 'youdao', gross: 16240000, brandShare: 9419200, platformFee: 1159536, agentPayout: 4275664, reserve: 1299200, reversal: 86400, frozen: 1299200, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2405-XM', period: '2026-05 月结', brandId: 'ximalaya', gross: 11860000, brandShare: 6404400, platformFee: 927452, agentPayout: 2962348, reserve: 1423200, reversal: 142600, frozen: 1423200, status: 'reconciling', reconcileDiff: 18400 },
+  { id: 'S-2405-MG', period: '2026-05 月结', brandId: 'mango', gross: 9240000, brandShare: 4804800, platformFee: 753984, agentPayout: 2191316, reserve: 1293600, reversal: 196300, frozen: 1293600, status: 'reconciling', reconcileDiff: 31200 },
+  { id: 'S-2405-ZH', period: '2026-05 月结', brandId: 'zhihu', gross: 5680000, brandShare: 3180800, platformFee: 424864, agentPayout: 1432236, reserve: 568000, reversal: 74100, frozen: 568000, status: 'cleared', reconcileDiff: 0 },
+  { id: 'S-2405-BL', period: '2026-05 月结', brandId: 'bilibili', gross: 2140000, brandShare: 1134200, platformFee: 170986, agentPayout: 403814, reserve: 342400, reversal: 88600, frozen: 171200, status: 'reversed', reconcileDiff: 0 },
+  { id: 'S-2405-KP', period: '2026-05 月结', brandId: 'keep', gross: 3520000, brandShare: 1936000, platformFee: 269280, agentPayout: 888320, reserve: 387200, reversal: 39200, frozen: 387200, status: 'cleared', reconcileDiff: 0 },
 ]
 
 const TICKETS = [
@@ -55,6 +60,16 @@ const ORDERS = [
   { id: 'O-99810', time: '14:31', brandId: 'ximalaya', agentId: 'A-3372', channel: 'alipay', type: 'first', amount: 18, plan: '喜马拉雅 VIP 连续包月', mid: 'M-XM-02' },
   { id: 'O-99806', time: '14:30', brandId: 'mango', agentId: 'A-4410', channel: 'bank', type: 'refund', amount: -25, plan: '芒果 TV 移动会员连续包月', mid: 'M-MG-02' },
   { id: 'O-99803', time: '14:29', brandId: 'ximalaya', agentId: 'A-6093', channel: 'wechat', type: 'chargeback', amount: -33, plan: '喜马拉雅 VIP 连续包月', mid: 'M-XM-02' },
+  // 历史原始订单——被工单引用（refundTicket 据此取真实金额，不再走 DEFAULT_TICKET_AMOUNT）
+  { id: 'O-98120', time: '昨天 21:14', brandId: 'mango', agentId: 'A-4410', channel: 'wechat', type: 'first', amount: 15, plan: '芒果 TV 移动会员连续包月', mid: 'M-MG-01' },
+  { id: 'O-97744', time: '昨天 20:02', brandId: 'bilibili', agentId: 'A-7180', channel: 'wechat', type: 'first', amount: 10, plan: '大会员连续包月', mid: 'M-BL-01' },
+  { id: 'O-97511', time: '昨天 19:33', brandId: 'ximalaya', agentId: 'A-6093', channel: 'alipay', type: 'first', amount: 18, plan: '喜马拉雅 VIP 连续包月', mid: 'M-XM-01' },
+  { id: 'O-96820', time: '昨天 18:20', brandId: 'youdao', agentId: 'A-2041', channel: 'wechat', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-01' },
+  { id: 'O-96233', time: '昨天 16:48', brandId: 'keep', agentId: 'A-5521', channel: 'alipay', type: 'first', amount: 12, plan: 'Keep 会员连续包月', mid: 'M-KP-01' },
+  { id: 'O-95610', time: '昨天 15:05', brandId: 'mango', agentId: 'A-4410', channel: 'wechat', type: 'first', amount: 15, plan: '芒果 TV 移动会员连续包月', mid: 'M-MG-01' },
+  { id: 'O-95004', time: '昨天 13:30', brandId: 'wps', agentId: 'A-1188', channel: 'wechat', type: 'first', amount: 12, plan: 'WPS 超级会员连续包月', mid: 'M-WP-01' },
+  { id: 'O-94320', time: '昨天 11:12', brandId: 'zhihu', agentId: 'A-3372', channel: 'alipay', type: 'first', amount: 9.9, plan: '盐选会员连续包月', mid: 'M-ZH-01' },
+  { id: 'O-93770', time: '昨天 09:45', brandId: 'youdao', agentId: 'A-5521', channel: 'wechat', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-01' },
 ]
 
 async function main() {

@@ -173,6 +173,7 @@ model Settlement {
   brandShare    Float
   platformFee   Float
   agentPayout   Float
+  reserve       Float  @default(0)
   reversal      Float  @default(0)
   frozen        Float  @default(0)
   status        String @default("pending")

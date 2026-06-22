@@ -45,6 +45,9 @@ export default function Settlement() {
   const totalReversal = settlements.reduce((s, x) => s + x.reversal, 0)
   const totalFrozen = settlements.reduce((s, x) => s + x.frozen, 0)
   const pendingPayout = agents.filter((a) => a.payoutPending > 0).reduce((s, a) => s + a.payoutPending, 0)
+  // 对账状态由明细派生：有未核销差异则提示，避免与表内挂起差异自相矛盾
+  const diffCount = settlements.filter((s) => s.reconcileDiff > 0).length
+  const totalDiff = settlements.reduce((s, x) => s + x.reconcileDiff, 0)
 
   return (
     <>
@@ -76,8 +79,10 @@ export default function Settlement() {
           <Stat
             label="平台净收入（累计）"
             value={money(totalPlatformFee)}
-            hint="可分配池扣除代理分润后的平台留存"
-            sub={<span className="flex items-center gap-1 text-good-ink"><CircleDollarSign size={12} /> 已对账无差异</span>}
+            hint="各结算单平台服务费合计（含跨周期）"
+            sub={diffCount > 0
+              ? <span className="flex items-center gap-1 text-warn-ink"><CircleDollarSign size={12} /> {diffCount} 单待核销 · {money(totalDiff)}</span>
+              : <span className="flex items-center gap-1 text-good-ink"><CircleDollarSign size={12} /> 已对账无差异</span>}
           />
         </Card>
         <Card>
@@ -305,17 +310,17 @@ function SettlementDrawer({ s, onClose, onClear, onReconcile }: { s: SettlementT
   if (!s) return null
   const b = brandById(s.brandId)!
   const st = SETTLE_STATUS[s.status]
-  const channelFee = Math.round(s.gross * 0.006)
-  const brandKeep = s.gross - s.brandShare
+  // 可分配池 = gross − 品牌留存 = 平台费 + 代理分润 + 准备金 + 逆向冲账（严格对平）
+  const pool = s.gross - s.brandShare
   const rows: { k: string; v: number; tone?: 'good' | 'alert' | 'violet' | 'neutral'; sub?: boolean }[] = [
     { k: '订单流水 Gross', v: s.gross, sub: true },
-    { k: `品牌留存（${100 - b.feeRate}%）`, v: -brandKeep, tone: 'neutral' },
-    { k: `可分配池（${b.feeRate}%）`, v: s.brandShare, sub: true },
-    { k: '通道扣率', v: -channelFee, tone: 'neutral' },
-    { k: '平台服务费', v: s.platformFee, tone: 'good' },
-    { k: '代理分润', v: s.agentPayout, tone: 'violet', sub: true },
+    { k: `品牌留存（${100 - b.feeRate}%）`, v: -s.brandShare, tone: 'neutral' },
+    { k: `可分配池（${b.feeRate}%）`, v: pool, sub: true },
+    { k: '平台服务费', v: -s.platformFee, tone: 'good' },
+    { k: '代理分润', v: -s.agentPayout, tone: 'violet' },
+    { k: `风险准备金（${b.reservePct}%·预留）`, v: -s.reserve, tone: 'violet' },
     { k: '逆向冲账（退款拒付回收）', v: -s.reversal, tone: 'alert' },
-    { k: '账期冻结', v: -s.frozen, tone: 'violet' },
+    { k: '应结净额（代理实收）', v: s.agentPayout, sub: true },
   ]
   return (
     <Drawer
@@ -353,20 +358,22 @@ function SettlementDrawer({ s, onClose, onClear, onReconcile }: { s: SettlementT
   )
 }
 
-/* 分润瀑布 */
+/* 分润瀑布（口径与结算单一致：以有道 42% 费率、8% 准备金、平台占池 17% 为例） */
 function Waterfall() {
   const gross = 39.9
-  const platformGross = +(gross * 0.42).toFixed(2)
-  const channelFee = +(gross * 0.006).toFixed(2)
-  const platformFee = +(platformGross * 0.21).toFixed(2)
-  const agentPayout = +(platformGross - platformFee - channelFee).toFixed(2)
+  const fee = 0.42
+  const reservePct = 0.08
+  const pool = +(gross * fee).toFixed(2) // 可分配池
+  const reserve = +(gross * reservePct).toFixed(2) // 准备金（从池预留）
+  const platformFee = +(pool * 0.17).toFixed(2) // 平台占池 17%
+  const agentPayout = +(pool - reserve - platformFee).toFixed(2) // 代理实收
   const rows = [
     { label: '订单流水', v: gross, tone: 'brand' as const, w: 100 },
-    { label: '品牌留存 58%', v: -(gross - platformGross), tone: 'neutral' as const, w: 58 },
-    { label: '可分配池 42%', v: platformGross, tone: 'info' as const, w: 42, sum: true },
-    { label: '通道扣率', v: -channelFee, tone: 'warn' as const, w: 3 },
-    { label: '平台服务费', v: platformFee, tone: 'good' as const, w: 9 },
-    { label: '代理分润', v: agentPayout, tone: 'violet' as const, w: 30, sum: true },
+    { label: '品牌留存 58%', v: -(gross - pool), tone: 'neutral' as const, w: 58 },
+    { label: '可分配池 42%', v: pool, tone: 'info' as const, w: 42, sum: true },
+    { label: '平台服务费', v: -platformFee, tone: 'good' as const, w: 7 },
+    { label: '风险准备金 8%', v: -reserve, tone: 'violet' as const, w: 8 },
+    { label: '代理实收', v: agentPayout, tone: 'violet' as const, w: 27, sum: true },
   ]
   return (
     <div className="space-y-2.5">
