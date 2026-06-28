@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════
 //  后台管理 — 真实后端 API（成员 / 角色 / 权限点 / 审计）+ useApi 取数 Hook
 //  真实模式(VITE_API_MODE=real)下调后端；mock 模式直接用 fallback，不发请求。
-//  说明：业务读写的 mock 契约见 ./api.ts（L2）；服务端业务端点见 bizApi。
+//  说明：服务端业务端点见 bizApi（同文件下方）。
 // ════════════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react'
 import { http, isRealApi } from './http'

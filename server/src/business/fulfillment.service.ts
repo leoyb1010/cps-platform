@@ -10,31 +10,6 @@ import { PrismaService } from '../prisma.service'
 export class FulfillmentService {
   constructor(private prisma: PrismaService) {}
 
-  // 合约结算分成比例：从 settleParams.agentSharePct 派生（供结算生成时写快照位）。
-  // 无合约或无该字段时返回 null（调用方回退到现有 agentPayout/gross 链，不强加）。
-  contractShareRate(settleParams: string): number | null {
-    try {
-      const p = JSON.parse(settleParams || '{}')
-      if (typeof p.agentSharePct === 'number' && p.agentSharePct > 0) return +(p.agentSharePct / 100).toFixed(6)
-    } catch { /* ignore */ }
-    return null
-  }
-
-  // 找到该订单可履约的合约（active 或 fulfilling，按 createdAt 取最近一条）。
-  async matchContract(brandId: string, agentId: string, productId?: string | null) {
-    const contracts = await this.prisma.growthContract.findMany({
-      where: {
-        brandId,
-        agentId,
-        status: { in: ['active', 'fulfilling'] },
-        deletedAt: null,
-        ...(productId ? { productId } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-    return contracts[0] ?? null
-  }
-
   // 处理一笔正向订单（first/renew）：累加履约 + 推进状态 + 订阅 upsert。
   // 在调用方事务 tx 内执行，幂等由调用方保证。退款/拒付不调此方法（走逆向冲账）。
   async ingestOrder(
