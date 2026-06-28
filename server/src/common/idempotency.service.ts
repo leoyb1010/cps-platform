@@ -21,15 +21,16 @@ export class IdempotencyService {
    */
   async run<T>(key: string | undefined, scope: string, op: () => Promise<T>): Promise<{ result: T; replayed: boolean }> {
     if (!key) return { result: await op(), replayed: false }
+    const storageKey = this.storageKey(scope, key)
 
     // 已有最终结果 → 直接回放
-    const done = await this.readIfDone<T>(key)
+    const done = await this.readIfDone<T>(storageKey)
     if (done.hit) return { result: done.value as T, replayed: true }
 
     // 抢占位行：create 成功者执行 op；失败者（并发输家）去等待赢家结果
     let owns = false
     try {
-      await this.prisma.idempotencyKey.create({ data: { key, scope, result: PENDING } })
+      await this.prisma.idempotencyKey.create({ data: { key: storageKey, scope, result: PENDING } })
       owns = true
     } catch {
       owns = false
@@ -37,7 +38,7 @@ export class IdempotencyService {
 
     if (!owns) {
       // 并发输家：轮询等待赢家写入最终结果；绝不重复执行资金 op
-      const waited = await this.waitForResult<T>(key)
+      const waited = await this.waitForResult<T>(storageKey)
       if (waited.hit) return { result: waited.value as T, replayed: true }
       // 赢家失败并删除了占位行 → 该 key 可重试，但避免我们也并发重入，直接返回冲突让客户端用新键或稍后重试
       throw new ConflictException('幂等键处理中或上次失败，请稍后用同一键重试')
@@ -46,12 +47,16 @@ export class IdempotencyService {
     // 占位拥有者：执行 op；失败则删除占位行（不毒化），成功则落最终结果
     try {
       const result = await op()
-      await this.prisma.idempotencyKey.update({ where: { key }, data: { result: JSON.stringify(result) } })
+      await this.prisma.idempotencyKey.update({ where: { key: storageKey }, data: { result: JSON.stringify(result) } })
       return { result, replayed: false }
     } catch (e) {
-      await this.prisma.idempotencyKey.deleteMany({ where: { key, result: PENDING } }).catch(() => {})
+      await this.prisma.idempotencyKey.deleteMany({ where: { key: storageKey, result: PENDING } }).catch(() => {})
       throw e
     }
+  }
+
+  private storageKey(scope: string, key: string): string {
+    return `${scope}:${key}`
   }
 
   private async readIfDone<T>(key: string): Promise<{ hit: boolean; value?: T }> {

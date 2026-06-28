@@ -1142,7 +1142,7 @@
             "description": ""
           }
         },
-        "summary": "资源置换台账（内部全量）",
+        "summary": "资源置换台账（按 scope 收窄）",
         "tags": [
           "business"
         ]

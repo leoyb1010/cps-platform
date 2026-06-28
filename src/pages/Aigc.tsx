@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Sparkles, Wand2, Loader2, CheckCircle2 } from 'lucide-react'
+import { Wand2, Loader2, CheckCircle2 } from 'lucide-react'
 import {
   Card,
   CardTitle,
@@ -41,7 +41,6 @@ interface GenItem {
 }
 
 export default function Aigc() {
-  const toast = useToast()
   const [f, setF] = useState<'all' | CreativeType>('all')
   const [openId, setOpenId] = useState<string | null>(null)
   const pop = useAnchoredPopover()

@@ -486,11 +486,11 @@ export class PortalController {
 
   @Post('notifications/:id/read') @RequirePerms('portal.brand.home', 'portal.agent.home') @ApiOperation({ summary: '标记门户通知已读' })
   async readPortalNotif(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    // 仅可标记属于自己 scope 的通知
+    // 仅可标记属于自己 scope 的通知；非自己/不存在如实返回 ok:false（不沉默成功）
     const n = await this.prisma.notification.findFirst({ where: { id } })
-    if (n && (n.userId === user.id || (n.scopeType === user.scopeType && n.scopeId === user.scopeId))) {
-      await this.prisma.notification.update({ where: { id }, data: { read: true } })
-    }
+    const mine = !!n && (n.userId === user.id || (n.scopeType === user.scopeType && n.scopeId === user.scopeId))
+    if (!mine) return { ok: false }
+    await this.prisma.notification.update({ where: { id }, data: { read: true } })
     return { ok: true }
   }
 

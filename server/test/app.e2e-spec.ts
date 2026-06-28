@@ -147,6 +147,10 @@ describe('RBAC 提权防护（member.manage ≠ super）', () => {
     const su = await token('admin')
     await request(httpServer).patch('/roles/ops').set('Authorization', `Bearer ${su}`).send({ permissions: ['dashboard.view', 'totally.fake.perm'] }).expect(403)
   })
+  it('角色权限 payload 必须是数组，非数组被 400 拒绝（非 500）', async () => {
+    const su = await token('admin')
+    await request(httpServer).patch('/roles/ops').set('Authorization', `Bearer ${su}`).send({ permissions: 'dashboard.view' }).expect(400)
+  })
 })
 
 describe('Business 联动 + audit', () => {
@@ -190,6 +194,19 @@ describe('资金幂等 + 并发', () => {
     const r2 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
     expect(r2.body.ok).toBe(true)
     expect(r2.body.replayed).toBe(true) // 命中首次结果，未再次执行
+  })
+
+  it('同一 Idempotency-Key 跨不同资金动作不串结果', async () => {
+    const su = await token('admin')
+    const key = 'e2e-idem-scope-' + Math.random().toString(36).slice(2)
+    const r1 = await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect([200, 201]).toContain(r1.status)
+    expect(r1.body.ok).toBe(true)
+
+    const r2 = await request(httpServer).post('/agents/__NOPE__/settle').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect([200, 201]).toContain(r2.status)
+    expect(r2.body.ok).toBe(false)
+    expect(r2.body.replayed).toBeUndefined()
   })
 })
 
@@ -285,6 +302,45 @@ describe('数据级 RBAC (scope)', () => {
     // youdao 单品牌的 pendingPayout 必然 ≤ 全平台，且 riskyAgents 收窄到自己（通常为 0）
     expect(scopedSummary.body.pendingPayout).toBeLessThanOrEqual(platformSummary.body.pendingPayout)
     expect(scopedSummary.body.reconcileDiff).toBeLessThanOrEqual(platformSummary.body.reconcileDiff)
+  })
+  it('误授内部写权限时仍按 scope 拦截准备金/资金/号池/配置越权', async () => {
+    const su = await token('admin')
+    const roles = await request(httpServer).get('/roles').set('Authorization', `Bearer ${su}`).expect(200)
+    const audit = roles.body.find((r: any) => r.id === 'audit')
+    expect(audit).toBeTruthy()
+    await request(httpServer).patch('/roles/audit').set('Authorization', `Bearer ${su}`).send({
+      permissions: [...new Set([...audit.permissions, 'settlement.clear', 'merchant.write'])],
+    }).expect((r) => expect([200, 201]).toContain(r.status))
+
+    const ba = await token('brandaudit') // audit role + scope=brand:youdao
+    const releases = await request(httpServer).get('/reserve-releases').set('Authorization', `Bearer ${ba}`).expect(200)
+    expect(releases.body.length).toBeGreaterThan(0)
+    expect(releases.body.every((r: any) => r.settlementId === 'S-2406-YD')).toBe(true)
+
+    await request(httpServer).post('/merchants/M-XM-02/state').set('Authorization', `Bearer ${ba}`).send({ state: 'fused' }).expect(403)
+    await request(httpServer).post('/settlements/S-2405-XM/reconcile').set('Authorization', `Bearer ${ba}`).expect(403)
+    await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${ba}`).expect(403)
+    await request(httpServer).get('/config').set('Authorization', `Bearer ${ba}`).expect(403)
+  })
+
+  it('误授 contract.write 时创建归属强校验：品牌方不得单方指派他人代理（attribution 纵深防御）', async () => {
+    const su = await token('admin')
+    const roles = await request(httpServer).get('/roles').set('Authorization', `Bearer ${su}`).expect(200)
+    const audit = roles.body.find((r: any) => r.id === 'audit')
+    await request(httpServer).patch('/roles/audit').set('Authorization', `Bearer ${su}`).send({
+      permissions: [...new Set([...audit.permissions, 'contract.write'])],
+    }).expect((r) => expect([200, 201]).toContain(r.status))
+
+    const ba = await token('brandaudit') // scope=brand:youdao
+    // 越权①：为他人品牌创建 → 403
+    await request(httpServer).post('/contracts').set('Authorization', `Bearer ${ba}`)
+      .send({ brandId: 'mango', settleModel: 'cps_share' }).expect(403)
+    // 越权②：自己品牌但单方指派任意代理 → 403（assertCreateAttribution 拒绝，OR-语义短路被堵）
+    await request(httpServer).post('/contracts').set('Authorization', `Bearer ${ba}`)
+      .send({ brandId: 'youdao', agentId: 'A-2041', settleModel: 'cps_share' }).expect(403)
+    // 越权③：履约入口伪造他人代理业绩 → 403
+    await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${ba}`)
+      .send({ brandId: 'youdao', agentId: 'A-2041', type: 'first', amount: 100, plan: '年卡' }).expect(403)
   })
 
   it('订单筛选：type / dateFrom-dateTo 真实生效（createdAt 区间）', async () => {
@@ -804,6 +860,13 @@ describe('增长合约/资源置换内部 CRUD（债1，单源）', () => {
     const list = (await request(httpServer).get('/barter').set('Authorization', `Bearer ${su}`).expect(200)).body
     expect(list.find((b: any) => b.id === id)).toBeTruthy()
     await request(httpServer).patch(`/barter/${id}/status`).set('Authorization', `Bearer ${su}`).send({ status: 'active' }).expect((r) => expect([200, 201]).toContain(r.status))
+  })
+  it('内部置换：对手品牌不存在/为自身 → 拒绝（不落悬空外键，对齐门户 proposeBarter）', async () => {
+    const su = await token('admin')
+    const dangling = await request(httpServer).post('/barter').set('Authorization', `Bearer ${su}`).send({ initiatorBrandId: 'youdao', counterpartyBrandId: 'brand-不存在', resourceType: '广告位', myQuota: 100, counterpartyQuota: 100 })
+    expect(dangling.body.ok).toBe(false)
+    const self = await request(httpServer).post('/barter').set('Authorization', `Bearer ${su}`).send({ initiatorBrandId: 'youdao', counterpartyBrandId: 'youdao', resourceType: '广告位', myQuota: 100, counterpartyQuota: 100 })
+    expect(self.body.ok).toBe(false)
   })
 })
 

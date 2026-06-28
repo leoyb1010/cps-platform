@@ -33,13 +33,6 @@ import { BrandLanding } from './pages/portal/BrandLanding'
 import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentContracts, AgentTickets } from './pages/portal/AgentPortal'
 import { PortalAigc } from './pages/portal/PortalAigc'
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const user = useAuth()
-  const loc = useLocation()
-  if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
-  return <>{children}</>
-}
-
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
 function RequireScope({ allow, children }: { allow: 'platform' | 'brand' | 'agent'; children: React.ReactNode }) {
   const user = useAuth()

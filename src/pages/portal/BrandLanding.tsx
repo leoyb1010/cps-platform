@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, ExternalLink, Sparkles, Tag, ShoppingBag } from 'lucide-react'
-import { PageHeader, Card, CardTitle, Badge, Button, BrandMark } from '../../components/ui/primitives'
+import { PageHeader, Card, CardTitle, BrandMark } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
 import { EmptyState } from '../../components/ui/forms'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'

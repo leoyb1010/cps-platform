@@ -17,7 +17,7 @@ import {
   TONE,
 } from '../components/ui/primitives'
 import { Donut } from '../components/ui/charts'
-import { Modal, useToast } from '../components/ui/overlays'
+import { Modal } from '../components/ui/overlays'
 import { DocModal } from '../components/ui/DocModal'
 import { Term } from '../components/ui/Term'
 import { fundSplit, directSharePct, SETTLE_PATH_LABEL } from '../lib/data'
@@ -30,7 +30,6 @@ const CHANNEL_NOTE: Record<string, string> = {
 }
 
 export default function Compliance() {
-  const toast = useToast()
   const { brands, channelStates } = useStore()
   const [cfg, setCfg] = useState(false)
   const [opinionOpen, setOpinionOpen] = useState(false)

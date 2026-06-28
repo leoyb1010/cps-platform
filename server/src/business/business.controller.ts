@@ -161,16 +161,20 @@ export class BusinessController {
 
   // 对账：核对退款流水↔结算冲账（定时任务亦调用同方法；此处供手动触发）
   @Post('reconciliation/run') @RequirePerms('settlement.clear') @ApiOperation({ summary: '触发对账（恒等式 I + 释放守恒 II/III/IV，差异写审计）' })
-  runReconciliation() {
+  runReconciliation(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     return this.recon.run()
   }
 
   // ── 风险准备金分期释放（资金动作：幂等 + 审计 fail-closed + 条件更新防并发）──
   @Get('reserve-releases') @RequirePerms('settlement.read') @ApiOperation({ summary: '准备金释放计划台账' })
-  reserveReleases() { return this.prisma.reserveRelease.findMany({ orderBy: [{ settlementId: 'asc' }, { dueAt: 'asc' }] }) }
+  async reserveReleases(@CurrentUser() user: AuthUser) {
+    return this.prisma.reserveRelease.findMany({ where: await this.reserveScope(user), orderBy: [{ settlementId: 'asc' }, { dueAt: 'asc' }] })
+  }
 
   @Post('reserve/:rrId/release') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '释放单条到期准备金（scheduled→released，进代理可提现池）· 幂等' })
   async releaseReserve(@Param('rrId') rrId: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    await this.assertReserveOwns(user, rrId)
     const { result, replayed } = await this.idem.run(idemKey, 'reserve.release', async () => {
       const r = await this.prisma.$transaction(async (tx) => {
         const res = await this.reserve.releaseRow(tx, rrId, new Date())
@@ -188,7 +192,8 @@ export class BusinessController {
   async releaseReserveDue(@CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     const { result, replayed } = await this.idem.run(idemKey, 'reserve.release-due', async () => {
       const now = new Date()
-      const ids = await this.reserve.dueRowIds(now)
+      const rows = await this.prisma.reserveRelease.findMany({ where: { status: 'scheduled', dueAt: { lte: now }, ...(await this.reserveScope(user)) }, select: { id: true } })
+      const ids = rows.map((r) => r.id)
       let released = 0
       let amount = 0
       for (const rrId of ids) {
@@ -208,6 +213,7 @@ export class BusinessController {
 
   @Post('reserve/:rrId/freeze') @RequirePerms('settlement.clear') @ApiOperation({ summary: '冻结一条准备金释放计划（投诉超阈/高风险）' })
   async freezeReserve(@Param('rrId') rrId: string, @Body() dto: ReserveFreezeDto, @CurrentUser() user: AuthUser) {
+    await this.assertReserveOwns(user, rrId)
     const res = await this.prisma.$transaction(async (tx) => {
       const r = await this.reserve.freezeRow(tx, rrId, dto.reason ?? '人工冻结')
       if (r.ok) await this.audit.recordInTx(tx, { user, action: 'reserve.freeze', resource: 'ReserveRelease', resourceId: rrId, detail: r.detail })
@@ -253,10 +259,71 @@ export class BusinessController {
 
   // 写端点归属校验（纵深防御）：非平台用户改某行前，断言该行属于其 scope。
   //   平台用户直接放行；客户写端点在 stage 2+ 上线时强制调用，杜绝越权改他人数据。
+  //   语义：OR——任一维度命中即放行。用于「校验既存行归属」（行的 brandId/agentId 来自 DB，
+  //   品牌方天然拥有牵涉某代理的工单/订单，故只需任一维度命中）。
   private assertOwns(user: AuthUser, ownerBrandId?: string | null, ownerAgentId?: string | null) {
     if (!user || user.scopeType === 'platform') return
     if (user.scopeType === 'brand' && ownerBrandId && ownerBrandId === user.scopeId) return
     if (user.scopeType === 'agent' && ownerAgentId && ownerAgentId === user.scopeId) return
+    throw new ForbiddenException('无权操作不属于当前账户的资源')
+  }
+
+  // 创建端点归属校验（纵深防御，严格版）：归属字段来自客户 DTO 而非既存行，
+  //   故 OR 语义不够——品牌方传自己的 brandId + 任意 agentId 会被 assertOwns 放行（短路）。
+  //   这里强制：非平台创建者提供的每个维度都必须是自己（品牌方不得单方指派他人代理、
+  //   代理不得归属他人品牌），杜绝伪造他人业绩/跨租户归因。平台创建者放行。
+  private assertCreateAttribution(user: AuthUser, brandId?: string | null, agentId?: string | null) {
+    if (!user || user.scopeType === 'platform') return
+    if (user.scopeType === 'brand') {
+      if (brandId !== user.scopeId) throw new ForbiddenException('品牌方只能为自己的品牌创建')
+      if (agentId) throw new ForbiddenException('品牌方不得单方指派代理，请由代理主动接单')
+      return
+    }
+    if (user.scopeType === 'agent') {
+      if (agentId !== user.scopeId) throw new ForbiddenException('代理只能以自己的身份创建')
+      return
+    }
+    throw new ForbiddenException('无权创建不属于当前账户的资源')
+  }
+
+  private assertPlatform(user: AuthUser) {
+    if (!user || user.scopeType !== 'platform') throw new ForbiddenException('仅平台账户可执行该操作')
+  }
+
+  private async reserveScope(user: AuthUser): Promise<Record<string, unknown>> {
+    if (!user || user.scopeType === 'platform') return {}
+    if (!user.scopeId) return BusinessController.DENY
+    if (user.scopeType === 'agent') return { agentId: user.scopeId }
+    if (user.scopeType === 'brand') {
+      const settlements = await this.prisma.settlement.findMany({ where: { brandId: user.scopeId }, select: { id: true } })
+      return settlements.length ? { settlementId: { in: settlements.map((s) => s.id) } } : BusinessController.DENY
+    }
+    return BusinessController.DENY
+  }
+
+  private async assertReserveOwns(user: AuthUser, rrId: string) {
+    if (!user || user.scopeType === 'platform') return
+    const rr = await this.prisma.reserveRelease.findUnique({ where: { id: rrId } })
+    if (!rr) return
+    if (user.scopeType === 'agent') return this.assertOwns(user, null, rr.agentId)
+    if (user.scopeType === 'brand') {
+      const s = await this.prisma.settlement.findUnique({ where: { id: rr.settlementId }, select: { brandId: true } })
+      return this.assertOwns(user, s?.brandId ?? null, null)
+    }
+    throw new ForbiddenException('无权操作不属于当前账户的资源')
+  }
+
+  private barterScope(user: AuthUser): Record<string, unknown> {
+    if (!user || user.scopeType === 'platform') return { deletedAt: null }
+    if (user.scopeType === 'brand' && user.scopeId) {
+      return { deletedAt: null, OR: [{ initiatorBrandId: user.scopeId }, { counterpartyBrandId: user.scopeId }] }
+    }
+    return { ...BusinessController.DENY, deletedAt: null }
+  }
+
+  private assertBarterOwns(user: AuthUser, deal: { initiatorBrandId: string; counterpartyBrandId: string }) {
+    if (!user || user.scopeType === 'platform') return
+    if (user.scopeType === 'brand' && user.scopeId && (deal.initiatorBrandId === user.scopeId || deal.counterpartyBrandId === user.scopeId)) return
     throw new ForbiddenException('无权操作不属于当前账户的资源')
   }
 
@@ -345,6 +412,8 @@ export class BusinessController {
   // ── 清结算动作（资金类：幂等 + 条件更新防并发） ──────────
   @Post('settlements/:id/clear') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '发起结算（待结算→已结算）· 幂等' })
   async clear(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const target = await this.prisma.settlement.findUnique({ where: { id }, select: { brandId: true } })
+    if (target) this.assertOwns(user, target.brandId)
     const { result, replayed } = await this.idem.run(idemKey, 'settlement.clear', async () => {
       // 资金动作：业务写 + 审计落库同事务（fail-closed）——审计失败则回滚，不放行未留痕的结算
       return this.prisma.$transaction(async (tx) => {
@@ -359,6 +428,8 @@ export class BusinessController {
 
   @Post('settlements/:id/reconcile') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '对账差异核销 · 幂等' })
   async reconcile(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    const target = await this.prisma.settlement.findUnique({ where: { id }, select: { brandId: true } })
+    if (target) this.assertOwns(user, target.brandId)
     const { result, replayed } = await this.idem.run(idemKey, 'settlement.reconcile', async () => {
       return this.prisma.$transaction(async (tx) => {
         await tx.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
@@ -375,6 +446,7 @@ export class BusinessController {
     const { result, replayed } = await this.idem.run(idemKey, 'ticket.refund', async () => {
       const t = await this.prisma.ticket.findUnique({ where: { id } })
       if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
+      this.assertOwns(user, t.brandId, t.agentId)
       const order = await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null)
       // 有原单：以原单金额为准；金额为 0 视为异常拒绝（不凭空造钱）。
       // 无原单（演示数据缺口）：按品牌平均客单价兜底（DEFAULT_TICKET_AMOUNT），不再用魔法值 33。
@@ -415,6 +487,8 @@ export class BusinessController {
   // ── 号池状态干预 ────────────────────────
   @Post('merchants/:id/state') @RequirePerms('merchant.write') @ApiOperation({ summary: '商户号状态机人工干预' })
   async setMerchant(@Param('id') id: string, @Body() dto: StateDto, @CurrentUser() user: AuthUser) {
+    const m = await this.prisma.merchantAccount.findUnique({ where: { id }, select: { brandId: true } })
+    if (m) this.assertOwns(user, m.brandId)
     const weight = dto.state === 'fused' ? 0 : dto.state === 'paused' ? 8 : undefined
     await this.prisma.merchantAccount.update({ where: { id }, data: { state: dto.state, ...(weight !== undefined ? { weight } : {}) } })
     await this.audit.record({ user, action: 'merchant.state', resource: 'MerchantAccount', resourceId: id, detail: `商户号 ${id} 置为「${dto.label ?? dto.state}」` })
@@ -424,6 +498,7 @@ export class BusinessController {
   // ── 代理处置 ───────────────────────────
   @Post('agents/:id/status') @RequirePerms('agent.write') @ApiOperation({ summary: '代理限流/冻结/恢复' })
   async setAgent(@Param('id') id: string, @Body() dto: AgentStatusDto, @CurrentUser() user: AuthUser) {
+    this.assertOwns(user, null, id)
     await this.prisma.agent.update({ where: { id }, data: { status: dto.status } })
     await this.audit.record({ user, action: 'agent.status', resource: 'Agent', resourceId: id, detail: `代理 ${id} 置为 ${dto.status}` })
     return { ok: true, detail: `代理 ${id} 已更新` }
@@ -431,6 +506,7 @@ export class BusinessController {
 
   @Post('agents/:id/settle') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '代理提现结算（待结算清零→计入累计已结）· 幂等' })
   async settleAgent(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    this.assertOwns(user, null, id)
     const { result, replayed } = await this.idem.run(idemKey, 'agent.settle', async () => {
       const a = await this.prisma.agent.findUnique({ where: { id } })
       if (!a || a.payoutPending <= 0) return { ok: false, detail: '无可结算金额' }
@@ -449,6 +525,7 @@ export class BusinessController {
   // ── 品牌：创建 / 状态 / 配置 ──────────────
   @Post('brands') @RequirePerms('brand.write') @ApiOperation({ summary: '新增品牌（入驻）' })
   async addBrand(@Body() dto: NewBrandDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const id = 'brand-' + shortId()
     const mark = dto.name.slice(0, 2)
     const brand = await this.prisma.brand.create({
@@ -462,6 +539,7 @@ export class BusinessController {
   async setBrandStatus(@Param('id') id: string, @Body() dto: BrandStatusDto, @CurrentUser() user: AuthUser) {
     const before = await this.prisma.brand.findUnique({ where: { id } })
     if (!before) return { ok: false, detail: '品牌不存在' }
+    this.assertOwns(user, before.id)
     await this.prisma.brand.update({ where: { id }, data: { status: dto.status } })
     await this.audit.record({ user, action: 'brand.status', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 置为「${dto.label ?? dto.status}」`, before: { status: before.status }, after: { status: dto.status } })
     return { ok: true, detail: `品牌 ${id} 已更新为 ${dto.label ?? dto.status}` }
@@ -471,6 +549,7 @@ export class BusinessController {
   async setBrandConfig(@Param('id') id: string, @Body() dto: BrandConfigDto, @CurrentUser() user: AuthUser) {
     const before = await this.prisma.brand.findUnique({ where: { id } })
     if (!before) return { ok: false, detail: '品牌不存在' }
+    this.assertOwns(user, before.id)
     const data: Record<string, unknown> = {}
     if (dto.feeRate !== undefined) data.feeRate = dto.feeRate
     if (dto.period !== undefined) data.period = dto.period
@@ -484,6 +563,7 @@ export class BusinessController {
   // 软删除：置 deletedAt，从列表消失但保留审计可追溯（资金/合规要求）
   @Delete('brands/:id') @RequirePerms('brand.write') @ApiOperation({ summary: '品牌软删除（下架，可追溯）' })
   async removeBrand(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    this.assertOwns(user, id)
     const r = await this.prisma.brand.updateMany({ where: { id, deletedAt: null }, data: { deletedAt: new Date() } })
     if (r.count === 0) return { ok: false, detail: '品牌不存在或已删除' }
     await this.audit.record({ user, action: 'brand.delete', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 已软删除（下架）` })
@@ -493,6 +573,7 @@ export class BusinessController {
   // ── 号池：新增 ─────────────────────────
   @Post('merchants') @RequirePerms('merchant.write') @ApiOperation({ summary: '品牌专属号池新增商户号' })
   async addMerchant(@Body() dto: NewMerchantDto, @CurrentUser() user: AuthUser) {
+    this.assertOwns(user, dto.brandId)
     const pref = dto.channel === 'wechat' ? 'WX' : dto.channel === 'alipay' ? 'AL' : 'BK'
     const id = `M-${pref}-${shortId().slice(0, 6)}`
     const mid = `${pref}${shortId()}`
@@ -508,6 +589,7 @@ export class BusinessController {
       const amount = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({ where: { id } })
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
+        this.assertOwns(user, order.brandId, order.agentId)
         const existingRefund = await tx.order.findFirst({ where: { brandId: order.brandId, agentId: order.agentId, plan: order.plan, type: 'refund', amount: -Math.abs(order.amount) } })
         if (existingRefund) return null
         const amt = Math.abs(order.amount)
@@ -538,6 +620,7 @@ export class BusinessController {
   async updateTicket(@Param('id') id: string, @Body() dto: TicketUpdateDto, @CurrentUser() user: AuthUser) {
     const before = await this.prisma.ticket.findUnique({ where: { id } })
     if (!before) return { ok: false, detail: '工单不存在' }
+    this.assertOwns(user, before.brandId, before.agentId)
     const data: Record<string, unknown> = {}
     if (dto.status !== undefined) data.status = dto.status
     if (dto.owner !== undefined) data.owner = dto.owner
@@ -548,7 +631,8 @@ export class BusinessController {
 
   // ── 平台配置中心 ───────────────────────
   @Get('config') @RequirePerms('dashboard.view') @ApiOperation({ summary: '读取平台配置（键值）' })
-  async getConfig() {
+  async getConfig(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const rows = await this.prisma.config.findMany()
     return rows.reduce<Record<string, unknown>>((acc, r) => {
       try {
@@ -562,6 +646,7 @@ export class BusinessController {
 
   @Post('config') @RequirePerms('config.write') @ApiOperation({ summary: '写入平台配置（键值，upsert）' })
   async setConfig(@Body() body: Record<string, unknown>, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const ALLOWED_KEYS = ['platformFeeRate', 'defaultSharePct', 'complaintThreshold', 'escalatedThreshold', 'chargebackThreshold', 'slaDefaultMin', 'reserveDefaultPct', 'autoReconcile', 'channelWeChat', 'channelAlipay', 'channelBank', 'channelApple', 'channelGoogle', 'channelStripe', 'channelPaypal']
     const entries = Object.entries(body || {}).filter(([k]) => ALLOWED_KEYS.includes(k))
     for (const [key, value] of entries) {
@@ -587,6 +672,7 @@ export class BusinessController {
   async reviewProduct(@Param('id') id: string, @Body() dto: ProductReviewDto, @CurrentUser() user: AuthUser) {
     const p = await this.prisma.product.findFirst({ where: { id, deletedAt: null } })
     if (!p) return { ok: false, detail: '商品不存在' }
+    this.assertOwns(user, p.brandId)
     if (p.status !== 'pending') return { ok: false, detail: '仅待审商品可审核' }
     const next = dto.action === 'approve' ? 'live' : 'draft'
     await this.prisma.product.update({ where: { id }, data: { status: next, reviewNote: dto.action === 'reject' ? (dto.note ?? '未通过') : '' } })
@@ -600,6 +686,7 @@ export class BusinessController {
 
   @Post('bundle-rules') @RequirePerms('product.write') @ApiOperation({ summary: '新增组合优惠规则' })
   async addBundleRule(@Body() dto: BundleRuleDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     // 校验参数边界（S3 防投毒）：discountPct ∈ [0,100]、minItems ≥ 1、fixedPrice ≥ 0
     const p = (dto.params ?? {}) as { minItems?: number; discountPct?: number; fixedPrice?: number }
     if (p.discountPct != null && (p.discountPct < 0 || p.discountPct > 100)) return { ok: false, detail: '折扣需在 0-100 之间' }
@@ -613,6 +700,7 @@ export class BusinessController {
 
   @Patch('bundle-rules/:id') @RequirePerms('product.write') @ApiOperation({ summary: '启停组合优惠规则' })
   async toggleBundleRule(@Param('id') id: string, @Body() body: ToggleActiveDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     await this.prisma.bundleRule.update({ where: { id }, data: { active: !!body.active } })
     await this.audit.record({ user, action: 'bundlerule.toggle', resource: 'BundleRule', resourceId: id, detail: `规则 ${id} ${body.active ? '启用' : '停用'}` })
     return { ok: true }
@@ -626,6 +714,7 @@ export class BusinessController {
 
   @Post('contracts') @RequirePerms('contract.write') @ApiOperation({ summary: '创建增长合约（内部）' })
   async addContract(@Body() dto: NewContractDto, @CurrentUser() user: AuthUser) {
+    this.assertCreateAttribution(user, dto.brandId, dto.agentId ?? null)
     const id = 'GC-' + randomUUID().slice(0, 6)
     await this.prisma.growthContract.create({
       data: {
@@ -646,17 +735,26 @@ export class BusinessController {
 
   @Patch('contracts/:id/status') @RequirePerms('contract.write') @ApiOperation({ summary: '增长合约状态流转（内部）' })
   async setContractStatus(@Param('id') id: string, @Body() dto: ContractStatusDto, @CurrentUser() user: AuthUser) {
+    const contract = await this.prisma.growthContract.findFirst({ where: { id, deletedAt: null } })
+    if (!contract) return { ok: false, detail: '合约不存在' }
+    this.assertOwns(user, contract.brandId, contract.agentId)
     await this.prisma.growthContract.update({ where: { id }, data: { status: dto.status } })
     await this.audit.record({ user, action: 'contract.status', resource: 'GrowthContract', resourceId: id, detail: `合约 ${id} → ${dto.status}` })
     return { ok: true }
   }
 
   // ── 资源置换（内部 CRUD）──
-  @Get('barter') @RequirePerms('barter.view') @ApiOperation({ summary: '资源置换台账（内部全量）' })
-  barter() { return this.prisma.barterDeal.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' } }) }
+  @Get('barter') @RequirePerms('barter.view') @ApiOperation({ summary: '资源置换台账（按 scope 收窄）' })
+  barter(@CurrentUser() user: AuthUser) { return this.prisma.barterDeal.findMany({ where: this.barterScope(user), orderBy: { createdAt: 'desc' } }) }
 
   @Post('barter') @RequirePerms('barter.write') @ApiOperation({ summary: '创建资源置换单（内部）' })
   async addBarter(@Body() dto: NewBarterDto, @CurrentUser() user: AuthUser) {
+    this.assertOwns(user, dto.initiatorBrandId)
+    // 数据完整性（对齐门户 proposeBarter）：对手品牌必须存在且未删除、且非自身——
+    //   否则会落悬空外键，污染门户 OR-scope 视图。
+    if (dto.counterpartyBrandId === dto.initiatorBrandId) return { ok: false, detail: '对手品牌不能是自己' }
+    const cp = await this.prisma.brand.findFirst({ where: { id: dto.counterpartyBrandId, deletedAt: null } })
+    if (!cp) return { ok: false, detail: '对手品牌不存在或已删除' }
     const id = 'BD-' + randomUUID().slice(0, 6)
     await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: dto.initiatorBrandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: dto.myQuota, counterpartyQuota: dto.counterpartyQuota, ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
     await this.audit.record({ user, action: 'barter.create', resource: 'BarterDeal', resourceId: id, detail: `置换单 ${id}` })
@@ -665,6 +763,9 @@ export class BusinessController {
 
   @Patch('barter/:id/status') @RequirePerms('barter.write') @ApiOperation({ summary: '资源置换状态流转（内部）' })
   async setBarterStatus(@Param('id') id: string, @Body() dto: BarterStatusDto, @CurrentUser() user: AuthUser) {
+    const deal = await this.prisma.barterDeal.findFirst({ where: { id, deletedAt: null } })
+    if (!deal) return { ok: false, detail: '置换单不存在' }
+    this.assertBarterOwns(user, deal)
     await this.prisma.barterDeal.update({ where: { id }, data: { status: dto.status } })
     await this.audit.record({ user, action: 'barter.status', resource: 'BarterDeal', resourceId: id, detail: `置换 ${id} → ${dto.status}` })
     return { ok: true }
@@ -701,6 +802,7 @@ export class BusinessController {
   // 这是 achievedGmv 唯一被推进的入口；绝不触碰结算恒等式五项。
   @Post('fulfillment/ingest') @RequirePerms('contract.write') @ApiOperation({ summary: '正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）' })
   async ingest(@Body() dto: OrderIngestDto, @CurrentUser() user: AuthUser) {
+    this.assertCreateAttribution(user, dto.brandId, dto.agentId)
     const id = 'O-' + randomUUID().slice(0, 6)
     const res = await this.prisma.$transaction(async (tx) => {
       await tx.order.create({
@@ -755,7 +857,8 @@ export class BusinessController {
 
   // ── 订阅超市套餐台账（内部）：用户在超市生成的 Bundle，运营可见 + 受理 ──
   @Get('bundles') @RequirePerms('product.read') @ApiOperation({ summary: '套餐台账（内部全量，附商品/品牌名）' })
-  async bundles() {
+  async bundles(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const rows = await this.prisma.bundle.findMany({ orderBy: { createdAt: 'desc' }, take: 200 })
     // 富化：一次取齐所有套餐涉及的商品 + 品牌名（避免前端 N 次回查）
     const allPids = [...new Set(rows.flatMap((b) => { try { return JSON.parse(b.productIds) as string[] } catch { return [] } }))]
@@ -778,6 +881,7 @@ export class BusinessController {
   //       并发安全：幂等 + 事务内 quoted→ordered 条件认领（先认领再开单，杜绝双重履约）。
   @Post('bundles/:id/fulfill') @RequirePerms('contract.write') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '受理套餐 → 按商品拆单履约（服务端权威分摊，不动结算恒等式）· 幂等' })
   async fulfillBundle(@Param('id') id: string, @Body() dto: FulfillBundleDto, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    this.assertPlatform(user)
     const bundle = await this.prisma.bundle.findUnique({ where: { id } })
     if (!bundle) return { ok: false, detail: '套餐不存在' }
     // 红线：仅「已支付」套餐可受理履约——否则会为没人付钱的订阅凭空开单、虚增 GMV/推进合约。

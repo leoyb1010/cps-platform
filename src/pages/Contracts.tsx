@@ -30,7 +30,7 @@ import { Field, Input, Select, CheckGroup } from '../components/ui/forms'
 import { Wizard } from '../components/ui/Wizard'
 import { useStore } from '../lib/store'
 import { useApi, bizApi } from '../lib/adminApi'
-import { money, pct, cx } from '../lib/format'
+import { money, pct } from '../lib/format'
 
 export default function Contracts() {
   const toast = useToast()

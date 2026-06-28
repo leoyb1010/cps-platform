@@ -1,6 +1,6 @@
 import { Body, Controller, ForbiddenException, Get, Patch, Param, Post } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
 import { randomUUID } from 'crypto'
 import * as argon2 from 'argon2'
 import { PrismaService } from '../prisma.service'
@@ -15,7 +15,7 @@ class UpdateMemberDto {
 }
 
 class UpdateRoleDto {
-  @IsString({ each: true }) permissions!: string[]
+  @IsArray() @IsString({ each: true }) permissions!: string[]
 }
 
 class CreateMemberDto {
