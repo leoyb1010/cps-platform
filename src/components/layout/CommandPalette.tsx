@@ -41,8 +41,8 @@ export function CommandPalette() {
   const hits = useMemo<Hit[]>(() => {
     const all: Hit[] = [
       ...s.brands.map((b) => ({ label: b.name, sub: `品牌 · ${b.category}`, to: `/brands/${b.id}`, icon: <Package size={15} />, kw: b.name + b.id + b.category })),
-      ...s.agents.map((a) => ({ label: a.name, sub: `代理 · ${a.id} · 信用分 ${a.creditScore}`, to: '/agents', icon: <Users size={15} />, kw: a.name + a.id })),
-      ...s.merchants.map((m) => ({ label: m.id, sub: `商户号 · ${CHANNEL_LABEL[m.channel]} · ${m.mid}`, to: '/merchants', icon: <CreditCard size={15} />, kw: m.id + m.mid })),
+      ...s.agents.map((a) => ({ label: a.name, sub: `代理 · ${a.id}，信用分 ${a.creditScore}`, to: '/agents', icon: <Users size={15} />, kw: a.name + a.id })),
+      ...s.merchants.map((m) => ({ label: m.id, sub: `商户号 · ${CHANNEL_LABEL[m.channel]}，${m.mid}`, to: '/merchants', icon: <CreditCard size={15} />, kw: m.id + m.mid })),
       ...s.complaints.map((c) => ({ label: c.id, sub: `工单 · ${c.reason}`, to: '/complaints', icon: <MessageSquareWarning size={15} />, kw: c.id + c.reason })),
       ...s.orders.slice(0, 12).map((o) => ({ label: o.id, sub: `订单 · ${o.plan}`, to: '/orders', icon: <Receipt size={15} />, kw: o.id + o.plan })),
     ]

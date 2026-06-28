@@ -26,7 +26,7 @@ import {
   series,
   type SettlePath,
 } from '../lib/data'
-import { useStore, updateBrandConfig } from '../lib/store'
+import { useStore, updateBrandConfig, triggerOrderSync } from '../lib/store'
 import { money, int, pct } from '../lib/format'
 
 export default function BrandDetail() {
@@ -51,7 +51,7 @@ export default function BrandDetail() {
 
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <BrandMark mark={b.mark} size={46} />
+          <BrandMark brand={b.id} mark={b.mark} size={46} />
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-[21px] font-semibold tracking-tight text-ink">{b.name}</h1>
@@ -64,7 +64,7 @@ export default function BrandDetail() {
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setEdit(true)}><Sliders size={14} /> 编辑配置</Button>
-          <Button variant="primary" busyMs={500} onClick={() => toast({ tone: 'good', text: '订单回传已同步' })}>同步订单回传</Button>
+          <Button variant="primary" busyMs={500} onClick={() => { triggerOrderSync(b.id); toast({ tone: 'good', text: `${b.name} 订单回传同步完成` }) }}>同步订单回传</Button>
         </div>
       </div>
 

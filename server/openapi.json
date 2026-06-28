@@ -172,6 +172,29 @@
         "tags": [
           "rbac"
         ]
+      },
+      "post": {
+        "operationId": "MembersController_createMember",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "邀请制建号（含客户账户）：仅超管，强校验角色↔scope 匹配 + scopeId 存在",
+        "tags": [
+          "rbac"
+        ]
       }
     },
     "/members/{id}": {
@@ -217,7 +240,128 @@
             "description": ""
           }
         },
-        "summary": "触发对账（退款↔冲账核对，差异写审计）",
+        "summary": "触发对账（恒等式 I + 释放守恒 II/III/IV，差异写审计）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/reserve-releases": {
+      "get": {
+        "operationId": "BusinessController_reserveReleases",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "准备金释放计划台账",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/reserve/{rrId}/release": {
+      "post": {
+        "operationId": "BusinessController_releaseReserve",
+        "parameters": [
+          {
+            "name": "rrId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "释放单条到期准备金（scheduled→released，进代理可提现池）· 幂等",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/reserve/release-due": {
+      "post": {
+        "operationId": "BusinessController_releaseReserveDue",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "批量释放所有到期准备金（端点先行，定时任务亦调用）· 幂等",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/reserve/{rrId}/freeze": {
+      "post": {
+        "operationId": "BusinessController_freezeReserve",
+        "parameters": [
+          {
+            "name": "rrId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveFreezeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "冻结一条准备金释放计划（投诉超阈/高风险）",
         "tags": [
           "business"
         ]
@@ -317,30 +461,13 @@
     "/orders": {
       "get": {
         "operationId": "BusinessController_orders",
-        "parameters": [
-          {
-            "name": "cursor",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": true,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": ""
           }
         },
-        "summary": "订单（按 scope 收窄 · 游标分页）",
+        "summary": "订单（按 scope 收窄 · 游标分页 · 可选筛选）",
         "tags": [
           "business"
         ]
@@ -355,7 +482,7 @@
             "description": ""
           }
         },
-        "summary": "结算单（按 scope 收窄）",
+        "summary": "结算单（按 scope 收窄 · 可选筛选）",
         "tags": [
           "business"
         ]
@@ -385,7 +512,7 @@
             "description": ""
           }
         },
-        "summary": "经营总览汇总（风险条/待办派生）",
+        "summary": "经营总览汇总（风险条/待办派生 · 按 scope 收窄）",
         "tags": [
           "business"
         ]
@@ -813,6 +940,1050 @@
         ]
       }
     },
+    "/products": {
+      "get": {
+        "operationId": "BusinessController_products",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "全平台订阅商品列表（审核视角，按 scope 收窄；含品牌名以免依赖前端 mock）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/products/{id}/review": {
+      "post": {
+        "operationId": "BusinessController_reviewProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductReviewDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "审核商品（approve: pending→live；reject: pending→draft + note）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/bundle-rules": {
+      "get": {
+        "operationId": "BusinessController_bundleRules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "组合优惠规则列表",
+        "tags": [
+          "business"
+        ]
+      },
+      "post": {
+        "operationId": "BusinessController_addBundleRule",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleRuleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "新增组合优惠规则",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/bundle-rules/{id}": {
+      "patch": {
+        "operationId": "BusinessController_toggleBundleRule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "启停组合优惠规则",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/contracts": {
+      "get": {
+        "operationId": "BusinessController_contracts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "增长合约列表（内部全量，按 scope 收窄）",
+        "tags": [
+          "business"
+        ]
+      },
+      "post": {
+        "operationId": "BusinessController_addContract",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewContractDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "创建增长合约（内部）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/contracts/{id}/status": {
+      "patch": {
+        "operationId": "BusinessController_setContractStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "增长合约状态流转（内部）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/barter": {
+      "get": {
+        "operationId": "BusinessController_barter",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "资源置换台账（内部全量）",
+        "tags": [
+          "business"
+        ]
+      },
+      "post": {
+        "operationId": "BusinessController_addBarter",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBarterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "创建资源置换单（内部）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/barter/{id}/status": {
+      "patch": {
+        "operationId": "BusinessController_setBarterStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarterStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "资源置换状态流转（内部）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/notifications": {
+      "get": {
+        "operationId": "BusinessController_notifications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "当前账户通知（平台账户见 platform 广播 + 精确投递）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/notifications/{id}/read": {
+      "post": {
+        "operationId": "BusinessController_readNotif",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "标记通知已读（仅自己 scope）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/notifications/read-all": {
+      "post": {
+        "operationId": "BusinessController_readAllNotif",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "全部已读",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/fulfillment/ingest": {
+      "post": {
+        "operationId": "BusinessController_ingest",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderIngestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/complaints/ingest": {
+      "post": {
+        "operationId": "BusinessController_ingestComplaint",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComplaintIngestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "外部投诉接入：支付宝/12315/黑猫等平台工单 → 落 Ticket（按 orderId 反查归属，不碰资金）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/bundles": {
+      "get": {
+        "operationId": "BusinessController_bundles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "套餐台账（内部全量，附商品/品牌名）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/bundles/{id}/fulfill": {
+      "post": {
+        "operationId": "BusinessController_fulfillBundle",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FulfillBundleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "受理套餐 → 按商品拆单履约（服务端权威分摊，不动结算恒等式）· 幂等",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/portal/summary": {
+      "get": {
+        "operationId": "PortalController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/orders": {
+      "get": {
+        "operationId": "PortalController_brandOrders",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/settlements": {
+      "get": {
+        "operationId": "PortalController_brandSettlements",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/onboarding": {
+      "get": {
+        "operationId": "PortalController_brandOnboarding",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/tickets": {
+      "get": {
+        "operationId": "PortalController_brandTickets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/tickets/{id}/reply": {
+      "post": {
+        "operationId": "PortalController_brandReplyTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketReplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/tickets": {
+      "get": {
+        "operationId": "PortalController_agentTickets",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/tickets/{id}/reply": {
+      "post": {
+        "operationId": "PortalController_agentReplyTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketReplyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/barter": {
+      "get": {
+        "operationId": "PortalController_brandBarter",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/contracts": {
+      "get": {
+        "operationId": "PortalController_contracts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalController_proposeContract",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalContractDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌发起增长合约（挂单，待代理接单）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/market/brands": {
+      "get": {
+        "operationId": "PortalController_marketBrands",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/payouts": {
+      "get": {
+        "operationId": "PortalController_agentPayouts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/credit": {
+      "get": {
+        "operationId": "PortalController_agentCredit",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/plans": {
+      "get": {
+        "operationId": "PortalController_agentPlans",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/contracts/{id}/claim": {
+      "post": {
+        "operationId": "PortalController_claimContract",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/products": {
+      "get": {
+        "operationId": "PortalController_brandProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-我的订阅商品",
+        "tags": [
+          "portal"
+        ]
+      },
+      "post": {
+        "operationId": "PortalController_addBrandProduct",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌上架商品（草稿）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/products/{id}/submit": {
+      "post": {
+        "operationId": "PortalController_submitProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "提交商品审核（draft→pending）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/barter": {
+      "post": {
+        "operationId": "PortalController_proposeBarter",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalBarterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌发起资源置换",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/barter/{id}/respond": {
+      "post": {
+        "operationId": "PortalController_respondBarter",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "对手品牌应答置换（accept/reject，仅对手方）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/claims": {
+      "post": {
+        "operationId": "PortalController_createClaim",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalClaimDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "代理领取投放（生成追踪链接）",
+        "tags": [
+          "portal"
+        ]
+      },
+      "get": {
+        "operationId": "PortalController_agentClaims",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "代理-我领取的投放",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/agent/payout-requests": {
+      "post": {
+        "operationId": "PortalController_requestPayout",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "代理发起提现申请",
+        "tags": [
+          "portal"
+        ]
+      },
+      "get": {
+        "operationId": "PortalController_agentPayoutRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "代理-我的提现申请",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/notifications": {
+      "get": {
+        "operationId": "PortalController_portalNotifications",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "门户通知（按 scopeType+scopeId 收窄）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/notifications/{id}/read": {
+      "post": {
+        "operationId": "PortalController_readPortalNotif",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "标记门户通知已读",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/market/products": {
+      "get": {
+        "operationId": "MarketController_products",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "订阅超市：浏览所有已上架商品",
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/market/rules": {
+      "get": {
+        "operationId": "MarketController_rules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "订阅超市：当前生效的满件折扣阶梯（仅门槛 + 折扣）",
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/market/quote": {
+      "post": {
+        "operationId": "MarketController_quote",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "订阅超市：组合算价（服务端权威，含互斥校验 + 组合优惠）",
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/market/bundle": {
+      "post": {
+        "operationId": "MarketController_createBundle",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BundleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "订阅超市：确认组合 → 生成套餐（quoted）",
+        "tags": [
+          "market"
+        ]
+      }
+    },
+    "/market/bundle/{id}/pay": {
+      "post": {
+        "operationId": "MarketController_payBundle",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "订阅超市：模拟支付套餐（quoted→paid，不收金额，不碰结算）",
+        "tags": [
+          "market"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_health",
@@ -884,7 +2055,15 @@
         "type": "object",
         "properties": {}
       },
+      "CreateMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
       "UpdateMemberDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ReserveFreezeDto": {
         "type": "object",
         "properties": {}
       },
@@ -913,6 +2092,78 @@
         "properties": {}
       },
       "TicketUpdateDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ProductReviewDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BundleRuleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "NewContractDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ContractStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "NewBarterDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BarterStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "OrderIngestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ComplaintIngestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "FulfillBundleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "TicketReplyDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PortalProductDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PortalContractDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PortalBarterDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PortalClaimDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PayoutRequestDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "QuoteDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BundleDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PayDto": {
         "type": "object",
         "properties": {}
       }

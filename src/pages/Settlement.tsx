@@ -30,15 +30,20 @@ import {
   AGENT_STATUS,
 } from '../lib/data'
 import { useStore, clearSettlement, reconcileSettlement, settleAgent } from '../lib/store'
-import { Drawer, useToast } from '../components/ui/overlays'
+import { useViewMode } from '../lib/prefs'
+import { useToast } from '../components/ui/overlays'
+import { DetailPopover, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
+import { Term } from '../components/ui/Term'
 import { type Settlement as SettlementT } from '../lib/data'
 import { money, yuan, cx } from '../lib/format'
 
 export default function Settlement() {
   const { settlements, agents } = useStore()
+  const expert = useViewMode() === 'expert'
   const toast = useToast()
   const [tab, setTab] = useState<'brand' | 'agent'>('brand')
   const [openId, setOpenId] = useState<string | null>(null)
+  const pop = useAnchoredPopover()
   const activeS = settlements.find((s) => s.id === openId) ?? null
 
   const totalPlatformFee = settlements.reduce((s, x) => s + x.platformFee, 0)
@@ -53,7 +58,7 @@ export default function Settlement() {
     <>
       <PageHeader
         title="清结算"
-        desc="分润分层计算（品牌费率 → 平台费 → 代理分润）· 退款拒付逆向冲账 · 账期冻结覆盖风险窗口 · 三方逐笔对账。"
+        desc="分润分层计算（品牌费率 → 平台费 → 代理分润）。退款拒付逆向冲账，账期冻结覆盖风险窗口，三方逐笔对账。"
         actions={
           <>
             <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>
@@ -94,7 +99,7 @@ export default function Settlement() {
         </Card>
         <Card>
           <Stat
-            label="逆向冲账（累计）"
+            label={<><Term k="reversal">逆向冲账</Term>（累计）</>}
             value={money(totalReversal)}
             deltaTone="alert"
             hint="退款/拒付反向扣减已结/未结分润"
@@ -111,7 +116,8 @@ export default function Settlement() {
         </Card>
       </div>
 
-      {/* 分润瀑布 + 资金路径 */}
+      {/* 分润瀑布 + 资金路径（口径说明，专家视图展开） */}
+      {expert && (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardTitle title="一笔订单的分润流" desc="以网易有道 ¥39.9 续费单为例 · 品牌费率 42%" />
@@ -135,6 +141,7 @@ export default function Settlement() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* 品牌 / 代理结算切换 */}
       <Card className="mt-4" pad={false}>
@@ -177,8 +184,8 @@ export default function Settlement() {
               return (
                 <Row key={s.id}>
                   <Td className="pl-3">
-                    <button onClick={() => setOpenId(s.id)} className="flex items-center gap-2.5 text-left">
-                      <BrandMark mark={b.mark} size={26} />
+                    <button onClick={(e) => { setOpenId(s.id); pop.openAt(e) }} className="flex items-center gap-2.5 text-left">
+                      <BrandMark brand={b.id} mark={b.mark} size={26} />
                       <div>
                         <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{s.id}</div>
                         <div className="text-[11px] text-ink-4">{b.name}</div>
@@ -298,7 +305,8 @@ export default function Settlement() {
 
       <SettlementDrawer
         s={activeS}
-        onClose={() => setOpenId(null)}
+        anchor={pop.anchorRect}
+        onClose={() => { setOpenId(null); pop.close() }}
         onClear={() => { if (activeS) { clearSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 已结算` }); setOpenId(null) } }}
         onReconcile={() => { if (activeS) { reconcileSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 差异已核销` }) } }}
       />
@@ -306,7 +314,7 @@ export default function Settlement() {
   )
 }
 
-function SettlementDrawer({ s, onClose, onClear, onReconcile }: { s: SettlementT | null; onClose: () => void; onClear: () => void; onReconcile: () => void }) {
+function SettlementDrawer({ s, anchor, onClose, onClear, onReconcile }: { s: SettlementT | null; anchor: AnchorRect | null; onClose: () => void; onClear: () => void; onReconcile: () => void }) {
   if (!s) return null
   const b = brandById(s.brandId)!
   const st = SETTLE_STATUS[s.status]
@@ -323,9 +331,10 @@ function SettlementDrawer({ s, onClose, onClear, onReconcile }: { s: SettlementT
     { k: '应结净额（代理实收）', v: s.agentPayout, sub: true },
   ]
   return (
-    <Drawer
-      open={!!s}
+    <DetailPopover
+      anchor={anchor}
       onClose={onClose}
+      width={420}
       title={<span className="tnum">{s.id}</span>}
       desc={<span>{b.name} · {s.period}</span>}
       footer={
@@ -354,7 +363,7 @@ function SettlementDrawer({ s, onClose, onClear, onReconcile }: { s: SettlementT
       <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">
         资金路径 {b.path === 'direct' ? '直连：钱由品牌商户号结算给平台，再结算给代理' : b.path === 'licensed' ? '持牌分账：持牌机构按分账指令清分给三方' : '混合：核心直连、长尾走持牌分账'} · 账期 T+{b.period}
       </div>
-    </Drawer>
+    </DetailPopover>
   )
 }
 
@@ -421,7 +430,7 @@ function InfoCard({ icon, tone, title, body }: { icon: React.ReactNode; tone: 'i
     <Card>
       <div className="flex items-center gap-2.5">
         <span className={cx('grid h-8 w-8 place-items-center rounded-lg', TONE[tone].soft, TONE[tone].ink)}>{icon}</span>
-        <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
+        <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
       </div>
       <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink-3">{body}</p>
     </Card>

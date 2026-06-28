@@ -1,0 +1,34 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+coverage/
+.vite/
+logs/
+artifacts/
+server/data/
+server/exports/
+prototype-top.png
+autopilot-ui.png
+fixed-frame-*.png
+video-frame-*.png
+visual-style-library-ui.png
+xhs-*-success.png
+mps-vs-nvidia-*.json
+
+# iOS / SwiftPM build products
+AgentStudioMobile/.build-*/
+AgentStudioMobile/**/.build/
+AgentStudioMobile/**/.swiftpm/
+AgentStudioMobile/**/*.xcuserdata/
+AgentStudioMobile/**/*.xcuserstate
+AgentStudioMobile/DerivedData/
+
+# Xcode derived data / render-dump (never commit build output)
+AgentStudioMobile/build/

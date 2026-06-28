@@ -1,0 +1,57 @@
+<svg width="100%" viewBox="0 0 680 620" role="img" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif">
+<title>批判版战略图:四个提议的判决、资产价值倒置、推荐方向</title>
+<desc>左侧列出四个方向及判决(联合会员反对、资源置换反对、素材外包有条件、Token方向对打法改);中间是资产价值倒置——以为的主业流量采买门槛最低,真正护城河是清结算与风控中台;右侧是推荐方向,把中台开放成SaaS与API。</desc>
+<style>
+.t{font-size:14px;fill:#2C2C2A}.ts{font-size:12px;fill:#5F5E5A}.th{font-size:14px;font-weight:500;fill:#2C2C2A}
+.r-red{fill:#FCEBEB;stroke:#A32D2D;stroke-width:.5}.r-amber{fill:#FAEEDA;stroke:#854F0B;stroke-width:.5}
+.r-teal{fill:#E1F5EE;stroke:#0F6E56;stroke-width:.5}.r-purple{fill:#EEEDFE;stroke:#534AB7;stroke-width:.5}
+.r-gray{fill:#F1EFE8;stroke:#5F5E5A;stroke-width:.5}
+.tt-red{fill:#791F1F}.tt-amber{fill:#633806}.tt-teal{fill:#085041}.tt-purple{fill:#3C3489}.tt-gray{fill:#444441}
+.st-red{fill:#A32D2D}.st-amber{fill:#854F0B}.st-teal{fill:#0F6E56}.st-purple{fill:#534AB7}.st-gray{fill:#5F5E5A}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<text class="th" x="40" y="28">① 你的四个提议 → 我的判决</text>
+<rect class="r-red" x="40" y="44" width="180" height="58" rx="8"/>
+<text class="th tt-red" x="54" y="66">联合会员</text><text class="ts st-red" x="54" y="86">反对 · 投诉与跑路重灾区</text>
+<rect class="r-red" x="40" y="114" width="180" height="58" rx="8"/>
+<text class="th tt-red" x="54" y="136">资源置换</text><text class="ts st-red" x="54" y="156">反对 · 是销售手段非产品</text>
+<rect class="r-amber" x="40" y="184" width="180" height="58" rx="8"/>
+<text class="th tt-amber" x="54" y="206">素材制作</text><text class="ts st-amber" x="54" y="226">有条件 · 别做成乙方</text>
+<rect class="r-teal" x="40" y="254" width="180" height="58" rx="8"/>
+<text class="th tt-teal" x="54" y="276">Token / 积分</text><text class="ts st-teal" x="54" y="296">方向对 · 但别抄 liblib</text>
+
+<line x1="228" y1="180" x2="270" y2="180" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<text class="th" x="300" y="28">② 资产价值倒置(与直觉相反)</text>
+<rect class="r-purple" x="300" y="44" width="340" height="46" rx="8"/>
+<text class="th tt-purple" x="316" y="64">清结算 + 风控中台</text><text class="ts st-purple" x="316" y="82">最值钱,却最被低估 · 真护城河</text>
+<rect class="r-purple" x="312" y="100" width="328" height="40" rx="8"/>
+<text class="t tt-purple" x="328" y="118">金融级资金安全</text><text class="ts st-purple" x="328" y="133">幂等 / 并发 / 审计闭环</text>
+<rect class="r-gray" x="324" y="150" width="316" height="40" rx="8"/>
+<text class="t tt-gray" x="340" y="168">订阅品牌商务关系网</text><text class="ts st-gray" x="340" y="183">有道 / 芒果 / 知乎…</text>
+<rect class="r-gray" x="336" y="200" width="304" height="40" rx="8"/>
+<text class="t tt-gray" x="352" y="218">CPS 投流执行 know-how</text><text class="ts st-gray" x="352" y="233">业务逻辑全,但=主业</text>
+<rect class="r-red" x="348" y="250" width="292" height="46" rx="8"/>
+<text class="th tt-red" x="364" y="270">流量采买能力</text><text class="ts st-red" x="364" y="288">以为的主业,其实门槛最低</text>
+
+<text class="ts st-purple" x="276" y="120">难</text><text class="ts st-red" x="276" y="270">易</text>
+<line x1="284" y1="60" x2="284" y2="284" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts st-gray" x="300" y="312">越往上越难复制 = 越值钱;越往下越红海</text>
+
+<line x1="340" y1="334" x2="340" y2="364" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<text class="th" x="40" y="392">③ 真正推荐的方向(你没提的那个)</text>
+<rect class="r-teal" x="40" y="408" width="600" height="60" rx="8"/>
+<text class="th tt-teal" x="56" y="432">把「清结算 + 风控」中台开放成 SaaS / API</text>
+<text class="ts st-teal" x="56" y="452">做订阅经济与分销结算的基础设施 · 复用现有壁垒 · 不碰 C 端舆情 · 软件零边际成本</text>
+<rect class="r-gray" x="40" y="482" width="192" height="62" rx="8"/>
+<text class="t tt-gray" x="56" y="504">卖给 CPS 同行</text><text class="ts st-gray" x="56" y="522">从运动员变裁判</text><text class="ts st-gray" x="56" y="538">+ 卖装备的</text>
+<rect class="r-gray" x="244" y="482" width="192" height="62" rx="8"/>
+<text class="t tt-gray" x="260" y="504">卖给分销订阅品牌</text><text class="ts st-gray" x="260" y="522">多级代理自动分账</text><text class="ts st-gray" x="260" y="538">教育 / SaaS / 知识付费</text>
+<rect class="r-gray" x="448" y="482" width="192" height="62" rx="8"/>
+<text class="t tt-gray" x="464" y="504">卖给新消费平台</text><text class="ts st-gray" x="464" y="522">联合会员 / 本地生活</text><text class="ts st-gray" x="464" y="538">替他们做合规清分</text>
+<rect class="r-amber" x="40" y="560" width="600" height="44" rx="8"/>
+<text class="th tt-amber" x="56" y="580">生死线(投入前必须先验证)</text>
+<text class="ts st-amber" x="56" y="597">① 清结算持牌强监管的合规成本 ② 中台跨行业的可迁移性 — 否则沦为项目制</text>
+</svg>

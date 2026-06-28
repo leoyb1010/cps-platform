@@ -14,6 +14,7 @@ export interface RemoteMember {
   roleName: string
   status: string
   scopeType: string
+  scopeId: string | null
 }
 export interface RemoteRole {
   id: string
@@ -38,7 +39,8 @@ export const adminApi = {
   members: () => http.get<RemoteMember[]>('/members'),
   roles: () => http.get<RemoteRole[]>('/roles'),
   updateRole: (id: string, permissions: string[]) => http.patch<{ ok: boolean; detail?: string }>(`/roles/${id}`, { permissions }),
-  updateMember: (id: string, body: { roleId?: string; status?: string }) => http.patch<{ ok: boolean; detail?: string }>(`/members/${id}`, body),
+  updateMember: (id: string, body: { roleId?: string; status?: string; scopeType?: string; scopeId?: string }) => http.patch<{ ok: boolean; detail?: string }>(`/members/${id}`, body),
+  createMember: (body: { name: string; account: string; roleId: string; scopeType: string; scopeId?: string }) => http.post<{ ok: boolean; detail?: string; id?: string; tempPassword?: string }>('/members', body),
   audit: (category?: string) => http.get<RemoteAudit[]>(`/audit-logs${category && category !== 'all' ? `?category=${category}` : ''}`),
 }
 
@@ -58,8 +60,25 @@ export const bizApi = {
   brands: <T = unknown>() => http.get<T>('/brands'),
   agents: <T = unknown>() => http.get<T>('/agents'),
   merchants: <T = unknown>() => http.get<T>('/merchants'),
-  orders: <T = unknown>(cursor?: string, limit = 200) => http.get<{ items: T; nextCursor: string | null }>(`/orders?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
-  settlements: <T = unknown>() => http.get<T>('/settlements'),
+  orders: <T = unknown>(cursor?: string, limit = 200, filters?: { type?: string; brandId?: string; agentId?: string; dateFrom?: string; dateTo?: string }) => {
+    const q = new URLSearchParams({ limit: String(limit) })
+    if (cursor) q.set('cursor', cursor)
+    if (filters?.type) q.set('type', filters.type)
+    if (filters?.brandId) q.set('brandId', filters.brandId)
+    if (filters?.agentId) q.set('agentId', filters.agentId)
+    if (filters?.dateFrom) q.set('dateFrom', filters.dateFrom)
+    if (filters?.dateTo) q.set('dateTo', filters.dateTo)
+    return http.get<{ items: T; nextCursor: string | null }>(`/orders?${q.toString()}`)
+  },
+  settlements: <T = unknown>(filters?: { period?: string; periods?: string[]; status?: string; brandId?: string }) => {
+    const q = new URLSearchParams()
+    if (filters?.period) q.set('period', filters.period)
+    if (filters?.periods) filters.periods.forEach((p) => q.append('periods', p))
+    if (filters?.status) q.set('status', filters.status)
+    if (filters?.brandId) q.set('brandId', filters.brandId)
+    const qs = q.toString()
+    return http.get<T>(`/settlements${qs ? `?${qs}` : ''}`)
+  },
   tickets: <T = unknown>() => http.get<T>('/tickets'),
   config: <T = unknown>() => http.get<T>('/config'),
   // writes（store 动作镜像）。资金类带 Idempotency-Key 防重复提交双花。
@@ -68,6 +87,8 @@ export const bizApi = {
   refundTicket: (id: string, idem?: string) => http.post<Ok>(`/tickets/${id}/refund`, undefined, idemHdr(idem)),
   refundOrder: (id: string, idem?: string) => http.post<Ok>(`/orders/${id}/refund`, undefined, idemHdr(idem)),
   updateTicket: (id: string, body: { status?: string; owner?: string; note?: string }) => http.patch<Ok>(`/tickets/${id}`, body),
+  // 外部投诉接入（支付宝/12315/黑猫等 → 落 Ticket，按 orderId 反查归属）
+  ingestComplaint: (body: { source: string; reason: string; level?: string; orderId?: string; brandId?: string; agentId?: string; externalRef?: string }) => http.post<Ok & { ticketId?: string; brandId?: string; agentId?: string; slaLeftMin?: number }>('/complaints/ingest', body),
   setMerchant: (id: string, state: string, label?: string) => http.post<Ok>(`/merchants/${id}/state`, { state, label }),
   addMerchant: (body: { brandId: string; channel: string; weight: number }) => http.post<Ok & { id?: string }>('/merchants', body),
   setAgent: (id: string, status: string) => http.post<Ok>(`/agents/${id}/status`, { status }),
@@ -76,6 +97,27 @@ export const bizApi = {
   setBrandStatus: (id: string, status: string, label?: string) => http.patch<Ok>(`/brands/${id}/status`, { status, label }),
   setBrandConfig: (id: string, body: { feeRate?: number; period?: number; reservePct?: number; path?: string }) => http.patch<Ok>(`/brands/${id}/config`, body),
   setConfig: (body: Record<string, unknown>) => http.post<Ok>('/config', body),
+  // 订阅商品审核 + 组合优惠规则（内部）
+  products: <T = unknown>() => http.get<T>('/products'),
+  reviewProduct: (id: string, action: 'approve' | 'reject', note?: string) => http.post<Ok>(`/products/${id}/review`, { action, note }),
+  bundleRules: <T = unknown>() => http.get<T>('/bundle-rules'),
+  addBundleRule: (body: { name: string; kind: string; params?: Record<string, unknown>; active?: boolean }) => http.post<Ok & { id?: string }>('/bundle-rules', body),
+  toggleBundleRule: (id: string, active: boolean) => http.post<Ok>(`/bundle-rules/${id}`, { active }),
+  // 订阅超市套餐台账 + 受理拆单履约（内部）
+  bundles: <T = unknown>() => http.get<T>('/bundles'),
+  fulfillBundle: (id: string, body: { agentId: string; type?: string; channel?: string }) =>
+    http.post<Ok & { bundleId?: string; orderIds?: string[]; totalAllocated?: number; matched?: { orderId: string; productId: string; brandId: string; amount: number; matchedContractId: string | null }[] }>(`/bundles/${id}/fulfill`, body),
+  // 增长合约 + 资源置换（内部 CRUD，收敛单源）
+  contracts: <T = unknown>() => http.get<T>('/contracts'),
+  addContract: (body: { brandId: string; agentId?: string; productId?: string; settleModel: string; ltvWindow?: string; targetGmv?: number; settleParams?: Record<string, unknown>; userLimit?: Record<string, unknown>; complaintLiability?: string; reservePct?: number; reserveReleaseRule?: Record<string, unknown>; breachRule?: string }) => http.post<Ok & { id?: string }>('/contracts', body),
+  setContractStatus: (id: string, status: string) => http.patch<Ok>(`/contracts/${id}/status`, { status }),
+  barter: <T = unknown>() => http.get<T>('/barter'),
+  addBarter: (body: { initiatorBrandId: string; counterpartyBrandId: string; resourceType: string; myQuota: number; counterpartyQuota: number; invoiceStatus?: string; terms?: Record<string, unknown> }) => http.post<Ok & { id?: string }>('/barter', body),
+  setBarterStatus: (id: string, status: string) => http.patch<Ok>(`/barter/${id}/status`, { status }),
+  // 通知
+  notifications: <T = unknown[]>() => http.get<T>('/notifications'),
+  readNotif: (id: string) => http.post<Ok>(`/notifications/${id}/read`),
+  readAllNotif: () => http.post<Ok>('/notifications/read-all'),
 }
 
 type ApiState<T> = { data: T | null; loading: boolean; error: string | null; reload: () => void }

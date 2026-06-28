@@ -15,10 +15,11 @@ import {
   TONE,
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
-import { Drawer, Modal, useToast } from '../components/ui/overlays'
-import { Steps } from '../components/ui/forms'
+import { Modal, useToast } from '../components/ui/overlays'
+import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
+import { Steps, EmptyState } from '../components/ui/forms'
 import { AGENT_STATUS, type Agent, type AgentStatus } from '../lib/data'
-import { useStore, setAgentStatus } from '../lib/store'
+import { useStore, setAgentStatus, approveAgent, rejectAgent, type PendingAgent } from '../lib/store'
 import { money, int, pct, cx } from '../lib/format'
 
 function scoreTone(s: number) {
@@ -26,10 +27,11 @@ function scoreTone(s: number) {
 }
 
 export default function Agents() {
-  const { agents } = useStore()
+  const { agents, pendingAgents } = useStore()
   const toast = useToast()
   const [f, setF] = useState<'all' | AgentStatus>('all')
   const [openId, setOpenId] = useState<string | null>(null)
+  const pop = useAnchoredPopover()
   const activeAgent = agents.find((a) => a.id === openId) ?? null
 
   const active = agents.filter((a) => a.status === 'active')
@@ -45,11 +47,11 @@ export default function Agents() {
     <>
       <PageHeader
         title="代理商"
-        desc="开放自助入驻（KYC/KYB）· 信用分联动分润与结算优先级 · 分层准入：新代理小流量起步，跑出健康数据再放量 · 黑名单锁主体/设备/收款账户防换马甲。"
+        desc="开放自助入驻（KYC/KYB）。信用分联动分润与结算优先级，分层准入：新代理小流量起步，跑出健康数据再放量，黑名单锁主体/设备/收款账户防换马甲。"
         actions={
           <>
             <Button variant="ghost" onClick={() => setBlOpen(true)}><ShieldX size={14} /> 黑名单库</Button>
-            <Button variant="primary" onClick={() => setReview(true)}><UserPlus size={14} /> 审核入驻申请</Button>
+            <Button variant="primary" onClick={() => setReview(true)}><UserPlus size={14} /> 审核入驻申请{pendingAgents.length > 0 && <span className="ml-1 tnum">({pendingAgents.length})</span>}</Button>
           </>
         }
       />
@@ -63,7 +65,7 @@ export default function Agents() {
 
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">
-          <CardTitle title="代理列表" desc="信用分 · 投诉率 · 退款率联动准入与结算" />
+          <CardTitle title="代理列表" desc="信用分、投诉率、退款率联动准入与结算" />
           <Segmented
             value={f}
             onChange={setF}
@@ -101,13 +103,13 @@ export default function Agents() {
             return (
               <Row key={a.id} className={black ? 'opacity-70' : ''}>
                 <Td className="pl-3">
-                  <button onClick={() => setOpenId(a.id)} className="flex items-center gap-2.5 text-left">
+                  <button onClick={(e) => { setOpenId(a.id); pop.openAt(e) }} className="flex items-center gap-2.5 text-left">
                     <span className={cx('grid h-7 w-7 place-items-center rounded-full text-[11px] font-medium', black ? 'bg-surface-sunken text-ink-3' : 'bg-ink text-white')}>
                       {black ? <Ban size={13} /> : a.type === '企业' ? '企' : '个'}
                     </span>
                     <div>
                       <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{a.name}</div>
-                      <div className="text-[11px] text-ink-4">{a.id} · {a.type} · {a.brandsCount} 品牌</div>
+                      <div className="text-[11px] text-ink-4">{a.id} · {a.type}，{a.brandsCount} 品牌</div>
                     </div>
                   </button>
                 </Td>
@@ -164,9 +166,9 @@ export default function Agents() {
         <Card>
           <CardTitle title="分数联动" />
           <ul className="space-y-2 text-[12.5px] text-ink-2">
-            <li className="flex gap-2"><span className="text-good-ink">高分</span> 更高分润 · 更多优质套餐 · 更快结算（T+ 更短）</li>
-            <li className="flex gap-2"><span className="text-warn-ink">中分</span> 维持额度 · 加密监控 · 提示降客诉</li>
-            <li className="flex gap-2"><span className="text-alert-ink">低分</span> 限流 · 提高保证金 · 暂停结算</li>
+            <li className="flex gap-2"><span className="text-good-ink">高分</span> 更高分润、更多优质套餐 · 更快结算（T+ 更短）</li>
+            <li className="flex gap-2"><span className="text-warn-ink">中分</span> 维持额度 · 加密监控，提示降客诉</li>
+            <li className="flex gap-2"><span className="text-alert-ink">低分</span> 限流 · 提高保证金，暂停结算</li>
             <li className="flex gap-2"><span className="text-ink-3">清退</span> 主体/设备/收款账户入黑名单库</li>
           </ul>
         </Card>
@@ -174,9 +176,9 @@ export default function Agents() {
           <CardTitle title="分层准入" />
           <div className="space-y-2.5">
             {[
-              { t: 'L1 新代理', d: '低额度 · 高频审核 · 小流量', tone: 'neutral' as const },
+              { t: 'L1 新代理', d: '低额度 · 高频审核，小流量', tone: 'neutral' as const },
               { t: 'L2 成长', d: '健康数据达标后放开额度', tone: 'info' as const },
-              { t: 'L3 核心', d: '优质套餐 · 快速结算 · 专属支持', tone: 'good' as const },
+              { t: 'L3 核心', d: '优质套餐 · 快速结算，专属支持', tone: 'good' as const },
             ].map((x) => (
               <div key={x.t} className={cx('rounded-lg p-2.5', TONE[x.tone].soft)}>
                 <div className={cx('text-[12.5px] font-medium', TONE[x.tone].ink)}>{x.t}</div>
@@ -189,13 +191,14 @@ export default function Agents() {
 
       <AgentDrawer
         agent={activeAgent}
-        onClose={() => setOpenId(null)}
+        anchor={pop.anchorRect}
+        onClose={() => { setOpenId(null); pop.close() }}
         onLimit={() => { if (activeAgent) { setAgentStatus(activeAgent.id, 'throttled', '限流'); toast({ tone: 'warn', text: `${activeAgent.name} 已限流` }) } }}
         onFreeze={() => { if (activeAgent) { setAgentStatus(activeAgent.id, 'frozen', '冻结结算'); toast({ tone: 'alert', text: `${activeAgent.name} 已冻结结算` }) } }}
         onResume={() => { if (activeAgent) { setAgentStatus(activeAgent.id, 'active', '恢复正常'); toast({ tone: 'good', text: `${activeAgent.name} 已恢复` }) } }}
       />
 
-      <ReviewModal open={review} onClose={() => setReview(false)} onDecide={(ok) => { setReview(false); toast({ tone: ok ? 'good' : 'warn', text: ok ? '入驻通过 · 已置为 L1 分层（小流量起步）' : '入驻已驳回' }) }} />
+      {review && <ReviewModal queue={pendingAgents} onClose={() => setReview(false)} onToast={(t) => toast(t)} />}
 
       <Modal open={blOpen} onClose={() => setBlOpen(false)} title="黑名单库" width={480} footer={<Button variant="ghost" onClick={() => setBlOpen(false)}>关闭</Button>}>
         <div className="mb-3 text-[12px] text-ink-3">清退主体锁定 主体 / 设备 / 收款账户 三要素，防换马甲重入。</div>
@@ -214,29 +217,39 @@ export default function Agents() {
   )
 }
 
-function ReviewModal({ open, onClose, onDecide }: { open: boolean; onClose: () => void; onDecide: (ok: boolean) => void }) {
+function ReviewModal({ queue, onClose, onToast }: { queue: PendingAgent[]; onClose: () => void; onToast: (t: { tone: 'good' | 'warn'; text: string }) => void }) {
+  const p = queue[0] // 逐条审核：每次处理队首，处理后队列自动前移
+  if (!p) {
+    return (
+      <Modal open onClose={onClose} width={520} title="入驻审核 · KYC / KYB" footer={<Button variant="primary" onClick={onClose}>完成</Button>}>
+        <EmptyState title="没有待审入驻申请" desc="新的代理入驻申请会出现在这里，逐条核验 KYC/KYB 后准入。" />
+      </Modal>
+    )
+  }
+  const approve = () => { approveAgent(p.id); onToast({ tone: 'good', text: `${p.name} 入驻通过 · 已置为 L1 分层（小流量起步）` }); if (queue.length <= 1) onClose() }
+  const reject = () => { rejectAgent(p.id); onToast({ tone: 'warn', text: `${p.name} 入驻已驳回` }); if (queue.length <= 1) onClose() }
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       width={520}
-      title="入驻审核 · KYC / KYB"
-      footer={<><Button variant="ghost" onClick={() => onDecide(false)}>驳回</Button><button onClick={() => onDecide(true)} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">通过并准入 L1</button></>}
+      title={`入驻审核 · KYC / KYB${queue.length > 1 ? `（待审 ${queue.length}）` : ''}`}
+      footer={<><Button variant="ghost" onClick={reject}>驳回</Button><button onClick={approve} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">通过并准入 L1</button></>}
     >
       <div className="mb-4"><Steps steps={['资料核验', '风险初评', '准入分层']} current={2} /></div>
       <div className="rounded-lg border border-line bg-surface-muted p-3.5">
-        <div className="flex items-center justify-between"><span className="text-[13px] font-semibold text-ink">极速增长 文化传媒</span><Badge tone="warn" dot>待审</Badge></div>
-        <div className="mt-1 text-[11.5px] text-ink-4">企业 · 申请于 今天</div>
+        <div className="flex items-center justify-between"><span className="text-[13px] font-semibold text-ink">{p.name}</span><Badge tone="warn" dot>待审</Badge></div>
+        <div className="mt-1 text-[11.5px] text-ink-4">{p.type} · {p.invoicing}，申请于 {p.appliedAt}</div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-3 text-[12.5px]">
-        <KV k="营业执照" v="已上传 · 一致" ok />
-        <KV k="法人实名" v="已核验" ok />
-        <KV k="对公账户" v="已绑定" ok />
-        <KV k="历史风险" v="无命中" ok />
+        <KV k="营业执照" v={p.kyc.license ? '已上传 · 一致' : '缺失'} ok={p.kyc.license} />
+        <KV k="法人实名" v={p.kyc.legal ? '已核验' : '未核验'} ok={p.kyc.legal} />
+        <KV k="对公账户" v={p.kyc.bankAccount ? '已绑定' : '未绑定'} ok={p.kyc.bankAccount} />
+        <KV k="历史风险" v={p.kyc.riskHit ? '命中风险' : '无命中'} ok={!p.kyc.riskHit} />
         <KV k="经营范围" v="与所投会员匹配" ok />
         <KV k="初始信用分" v="700（L1）" />
       </div>
-      <div className="mt-3 rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">分层准入：通过后置为 L1（低额度 · 高频审核 · 小流量起步），跑出健康数据再放量。</div>
+      <div className="mt-3 rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">分层准入：通过后置为 L1（低额度 · 高频审核，小流量起步），跑出健康数据再放量。通过即在代理列表生成正式账户。</div>
     </Modal>
   )
 }
@@ -244,7 +257,7 @@ function KV({ k, v, ok }: { k: string; v: string; ok?: boolean }) {
   return <div className="rounded-lg border border-line p-2.5"><div className="text-[11px] text-ink-4">{k}</div><div className={cx('mt-0.5 font-medium', ok ? 'text-good-ink' : 'text-ink')}>{v}</div></div>
 }
 
-function AgentDrawer({ agent, onClose, onLimit, onFreeze, onResume }: { agent: Agent | null; onClose: () => void; onLimit: () => void; onFreeze: () => void; onResume: () => void }) {
+function AgentDrawer({ agent, anchor, onClose, onLimit, onFreeze, onResume }: { agent: Agent | null; anchor: AnchorRect | null; onClose: () => void; onLimit: () => void; onFreeze: () => void; onResume: () => void }) {
   if (!agent) return null
   const st = AGENT_STATUS[agent.status]
   const stone = scoreTone(agent.creditScore)
@@ -257,11 +270,12 @@ function AgentDrawer({ agent, onClose, onLimit, onFreeze, onResume }: { agent: A
     { k: '结算纠纷', s: 90 },
   ]
   return (
-    <Drawer
-      open={!!agent}
+    <DetailPopover
+      anchor={anchor}
       onClose={onClose}
+      width={400}
       title={agent.name}
-      desc={<span className="tnum">{agent.id} · {agent.type} · {agent.invoicing}</span>}
+      desc={<span className="tnum">{agent.id} · {agent.type}，{agent.invoicing}</span>}
       footer={
         agent.status === 'blacklist' ? <Button variant="ghost" onClick={onClose}>关闭</Button> : (
           <>
@@ -301,10 +315,6 @@ function AgentDrawer({ agent, onClose, onLimit, onFreeze, onResume }: { agent: A
           ))}
         </div>
       </div>
-    </Drawer>
+    </DetailPopover>
   )
-}
-
-function Info({ k, v }: { k: string; v: React.ReactNode }) {
-  return <div className="rounded-lg border border-line p-2.5"><div className="text-[11px] text-ink-4">{k}</div><div className="mt-0.5 font-medium text-ink">{v}</div></div>
 }

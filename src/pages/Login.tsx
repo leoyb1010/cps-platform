@@ -34,7 +34,7 @@ export default function Login() {
         <div className="mb-7 flex flex-col items-center gap-3">
           <img src="./youdao-logo.png" alt="网易有道" className="h-7 w-auto" />
           <div className="text-center">
-            <div className="text-[15px] font-semibold text-ink">CPS 会员联运清结算平台</div>
+            <div className="text-[15px] font-semibold text-ink">订阅增长交易与风险清结算平台</div>
             <div className="mt-0.5 text-[12px] text-ink-4">请登录后进入控制台</div>
           </div>
         </div>
@@ -84,7 +84,7 @@ export default function Login() {
         </div>
 
         <p className="mt-4 text-center text-[11px] leading-relaxed text-ink-4">
-          {isRealApi ? '真实后端鉴权（NestJS · JWT + 刷新令牌 · 服务端 RBAC）' : '演示态鉴权（前端 mock）· 接口形态对齐 v4 后端契约，真实后端就绪即可切换'}
+          {isRealApi ? '真实后端鉴权（NestJS · JWT + 刷新令牌，服务端 RBAC）' : '演示态鉴权（前端 mock）· 接口形态对齐 v4 后端契约，真实后端就绪即可切换'}
         </p>
       </div>
     </div>

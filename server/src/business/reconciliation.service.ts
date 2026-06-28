@@ -9,10 +9,18 @@ export interface ReconItem {
   allocated: number // brandShare + reserve + platformFee + agentPayout + reversal
   diff: number // gross − allocated（应为 0）
 }
+// 准备金释放守恒不符项（守恒式 II/III/IV）
+export interface ReserveItem {
+  settlementId: string
+  kind: 'frozen_mismatch' | 'plan_sum_mismatch' | 'released_sum_mismatch'
+  detail: string
+  diff: number
+}
 export interface ReconResult {
   ok: boolean
   checkedSettlements: number
   mismatches: ReconItem[]
+  reserveMismatches: ReserveItem[]
 }
 
 /**
@@ -36,7 +44,9 @@ export class ReconciliationService {
 
   async run(): Promise<ReconResult> {
     const settlements = await this.prisma.settlement.findMany()
+    const releases = await this.prisma.reserveRelease.findMany()
 
+    // ── 恒等式 I（计提，静态）：gross = brandShare + reserve + platformFee + agentPayout + reversal ──
     const mismatches: ReconItem[] = []
     for (const s of settlements) {
       const allocated = s.brandShare + s.reserve + s.platformFee + s.agentPayout + s.reversal
@@ -47,16 +57,52 @@ export class ReconciliationService {
       }
     }
 
-    if (mismatches.length > 0) {
-      this.logger.warn(`对账发现 ${mismatches.length} 张结算单拆分不平: ${JSON.stringify(mismatches)}`)
+    // ── 释放守恒（与 I 正交，不改 I 的任何一项）──
+    //   II  frozen          == reserve − reserveReleased − reserveClawedBack
+    //   III reserve         == reserveReleased + reserveClawedBack + Σ(未释放计划行 amount)   （计划完整性）
+    //   IV  reserveReleased == Σ(released 行 releasedAmount)                                  （释放对账）
+    const byS = new Map<string, typeof releases>()
+    for (const r of releases) {
+      const arr = byS.get(r.settlementId) ?? []
+      arr.push(r)
+      byS.set(r.settlementId, arr)
+    }
+    const reserveMismatches: ReserveItem[] = []
+    const near = (a: number, b: number) => Math.abs(Math.round(a - b)) <= 1 // 1 元容差
+    for (const s of settlements) {
+      const rows = byS.get(s.id) ?? []
+      // II
+      const frozenExpected = s.reserve - s.reserveReleased - s.reserveClawedBack
+      if (!near(s.frozen, frozenExpected)) {
+        reserveMismatches.push({ settlementId: s.id, kind: 'frozen_mismatch', detail: `frozen ${Math.round(s.frozen)} ≠ reserve−released−clawed ${Math.round(frozenExpected)}`, diff: Math.round(s.frozen - frozenExpected) })
+      }
+      // 仅当该结算单确有释放计划时才校验 III/IV（无计划=未启用分期释放，跳过）
+      if (rows.length > 0) {
+        // III：未释放（scheduled|frozen）的计划额之和 + 已释放 + 已追偿 == reserve
+        const pending = rows.filter((r) => r.status === 'scheduled' || r.status === 'frozen').reduce((a, r) => a + r.amount, 0)
+        const planTotal = pending + s.reserveReleased + s.reserveClawedBack
+        if (!near(planTotal, s.reserve)) {
+          reserveMismatches.push({ settlementId: s.id, kind: 'plan_sum_mismatch', detail: `计划合计 ${Math.round(planTotal)} ≠ reserve ${Math.round(s.reserve)}`, diff: Math.round(planTotal - s.reserve) })
+        }
+        // IV：已释放行的 releasedAmount 之和 == reserveReleased
+        const releasedSum = rows.filter((r) => r.status === 'released').reduce((a, r) => a + r.releasedAmount, 0)
+        if (!near(releasedSum, s.reserveReleased)) {
+          reserveMismatches.push({ settlementId: s.id, kind: 'released_sum_mismatch', detail: `released 之和 ${Math.round(releasedSum)} ≠ reserveReleased ${Math.round(s.reserveReleased)}`, diff: Math.round(releasedSum - s.reserveReleased) })
+        }
+      }
+    }
+
+    const totalBad = mismatches.length + reserveMismatches.length
+    if (totalBad > 0) {
+      this.logger.warn(`对账异常：拆分不平 ${mismatches.length} 张、释放守恒不符 ${reserveMismatches.length} 项: ${JSON.stringify({ mismatches, reserveMismatches })}`)
       await this.audit.record({
         action: 'reconcile.run',
         resource: 'Reconciliation',
         resourceId: '-',
-        detail: `逐单对账：${mismatches.length} 张结算单资金拆分不平（gross ≠ 各项之和）`,
-        after: { mismatches },
+        detail: `逐单对账：拆分不平 ${mismatches.length} 张、准备金释放守恒不符 ${reserveMismatches.length} 项`,
+        after: { mismatches, reserveMismatches },
       })
     }
-    return { ok: mismatches.length === 0, checkedSettlements: settlements.length, mismatches }
+    return { ok: totalBad === 0, checkedSettlements: settlements.length, mismatches, reserveMismatches }
   }
 }

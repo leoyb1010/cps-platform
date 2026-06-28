@@ -17,14 +17,15 @@ test.beforeEach(async ({ page }) => {
 test('未登录访问受保护页 → 重定向到登录页', async ({ page }) => {
   await page.goto('/#/settlement')
   await expect(page).toHaveURL(/#\/login/)
-  await expect(page.getByText('CPS 会员联运清结算平台')).toBeVisible()
+  await expect(page.getByText('订阅增长交易与风险清结算平台')).toBeVisible()
 })
 
 test('登录 → 进入经营总览，侧边栏可见', async ({ page }) => {
   await login(page)
   await expect(page.getByRole('heading', { name: '经营总览' })).toBeVisible()
   const nav = page.locator('nav').first()
-  await expect(nav.getByRole('link', { name: '品牌管理' })).toBeVisible()
+  // 信息架构重构后：品牌入驻与清结算归入"共享中台"层
+  await expect(nav.getByRole('link', { name: '品牌 · 入驻' })).toBeVisible()
   await expect(nav.getByRole('link', { name: '清结算' })).toBeVisible()
 })
 

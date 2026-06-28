@@ -18,23 +18,22 @@ import {
 } from '../components/ui/primitives'
 import { Donut } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
+import { DocModal } from '../components/ui/DocModal'
+import { Term } from '../components/ui/Term'
 import { fundSplit, directSharePct, SETTLE_PATH_LABEL } from '../lib/data'
-import { useStore } from '../lib/store'
+import { useStore, setChannelState } from '../lib/store'
 import { pct, cx } from '../lib/format'
 import { useState } from 'react'
 
-const CHANNELS = [
-  { name: '连连支付 · 分账', status: '已启用', note: '主通道' },
-  { name: '汇付天下 · 分账', status: '已启用', note: '容灾通道' },
-  { name: '微信支付 · 官方分账', status: '已启用', note: '直连品牌' },
-  { name: '支付宝 · 分账', status: '已启用', note: '直连品牌' },
-  { name: '银行二类户 · 存管', status: '评估中', note: '接入中' },
-]
+const CHANNEL_NOTE: Record<string, string> = {
+  '连连支付 · 分账': '主通道', '汇付天下 · 分账': '容灾通道', '微信支付 · 官方分账': '直连品牌', '支付宝 · 分账': '直连品牌', '银行二类户 · 存管': '接入中',
+}
 
 export default function Compliance() {
   const toast = useToast()
-  const { brands } = useStore()
+  const { brands, channelStates } = useStore()
   const [cfg, setCfg] = useState(false)
+  const [opinionOpen, setOpinionOpen] = useState(false)
   return (
     <>
       <PageHeader
@@ -42,7 +41,7 @@ export default function Compliance() {
         desc="平台生死线。直连为主、过路只走持牌分账，绝不自建资金池做二清。三流一致 + 个人佣金税务方案是两大暗雷区。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => toast({ tone: 'info', text: '合规意见书已在文档库（演示）' })}><FileText size={14} /> 合规意见书</Button>
+            <Button variant="ghost" onClick={() => setOpinionOpen(true)}><FileText size={14} /> 合规意见书</Button>
             <Button variant="primary" onClick={() => setCfg(true)}>分账通道配置</Button>
           </>
         }
@@ -55,9 +54,9 @@ export default function Compliance() {
             <AlertOctagon size={18} />
           </span>
           <div className="flex-1">
-            <h3 className="text-[14px] font-semibold text-ink">二清红线（致命风险 · 必须规避）</h3>
+            <h3 className="text-[14px] font-semibold text-ink"><Term k="erqing">二清</Term>红线（致命风险 · 必须规避）</h3>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-2">
-              用户付款先进入平台（非持牌机构）控制的账户，再由平台二次清分给品牌和代理 —— 属于无证经营支付结算业务，可被认定为非法经营，账户会被冻结，平台直接归零。
+              用户付款先进入平台（非持牌机构）控制的账户，再由平台二次清分给品牌和代理，属于无证经营支付结算业务，可被认定为非法经营，账户会被冻结，平台直接归零。
               <span className="font-medium text-alert-ink"> 平台不得自建资金池、不得让用户资金停留在自有账户后由平台手动分给多方。</span>
             </p>
           </div>
@@ -141,16 +140,35 @@ export default function Compliance() {
         <Modal open={cfg} onClose={() => setCfg(false)} width={480} title="持牌分账通道配置" footer={<Button variant="ghost" onClick={() => setCfg(false)}>关闭</Button>}>
           <div className="mb-3 text-[12px] text-ink-3">过路资金只走持牌机构，平台仅下发分账指令、不碰资金本体（规避二清）。</div>
           <div className="space-y-2">
-            {CHANNELS.map((c) => (
-              <div key={c.name} className="flex items-center justify-between rounded-lg border border-line p-3">
-                <div><div className="text-[12.5px] font-medium text-ink">{c.name}</div><div className="text-[11px] text-ink-4">{c.note}</div></div>
-                <Badge tone={c.status === '已启用' ? 'good' : 'warn'} dot>{c.status}</Badge>
-              </div>
-            ))}
+            {Object.keys(CHANNEL_NOTE).map((name) => {
+              const st = channelStates[name] ?? 'review'
+              return (
+                <div key={name} className="flex items-center justify-between rounded-lg border border-line p-3">
+                  <div><div className="text-[12.5px] font-medium text-ink">{name}</div><div className="text-[11px] text-ink-4">{CHANNEL_NOTE[name]}</div></div>
+                  <button onClick={() => setChannelState(name, st === 'live' ? 'review' : 'live')} title="点击启用/置为评估中">
+                    <Badge tone={st === 'live' ? 'good' : 'warn'} dot>{st === 'live' ? '已启用' : '评估中'}</Badge>
+                  </button>
+                </div>
+              )
+            })}
           </div>
-          <Button variant="soft" className="mt-3 w-full justify-center" onClick={() => { setCfg(false); toast({ tone: 'good', text: '通道配置已保存' }) }}>保存配置</Button>
+          <div className="mt-3 text-center text-[11px] text-ink-4">点击状态徽章即时启停，两页配置同步</div>
         </Modal>
       </Card>
+
+      <DocModal
+        open={opinionOpen}
+        onClose={() => setOpinionOpen(false)}
+        title="资金合规意见书（摘要）"
+        intro="由支付合规与税务双顾问出具，覆盖资金清分与个人佣金税务两大风险点。"
+        sections={[
+          { heading: '资金清分（防二清）', bullets: ['平台不自建资金池、不碰用户资金', '资金只走持牌机构（连连/汇付/官方分账），平台仅发清分指令', '直连为主，过路只走持牌分账'] },
+          { heading: '三流一致', bullets: ['合同流、资金流、发票流三者口径对齐', '每笔分账可追溯到对应订单与发票'] },
+          { heading: '个人佣金税务', bullets: ['代理个人结算经合规灵活用工平台开票', '解决大量个人收入的个税与发票合规', '企业代理走企业开票'] },
+          { heading: '连续包月合规', bullets: ['自动续费显著告知 + 便捷退订', '符合《消费者权益保护法实施条例》提醒义务'] },
+        ]}
+        downloadName="资金合规意见书.txt"
+      />
     </>
   )
 }
@@ -195,7 +213,7 @@ function InfoCard({ icon, tone, title, body }: { icon: React.ReactNode; tone: 'w
     <Card>
       <div className="flex items-center gap-2.5">
         <span className={cx('grid h-8 w-8 place-items-center rounded-lg', TONE[tone].soft, TONE[tone].ink)}>{icon}</span>
-        <h3 className="text-[13.5px] font-semibold text-ink">{title}</h3>
+        <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
       </div>
       <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink-3">{body}</p>
     </Card>

@@ -15,6 +15,10 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'market.view', label: '选品市场', group: '业务' },
   { key: 'order.read', label: '查看订单', group: '交易与资金' },
   { key: 'order.refund', label: '退款/退订', group: '交易与资金' },
+  { key: 'contract.read', label: '查看增长合约', group: '交易与资金' },
+  { key: 'contract.write', label: '创建/接单增长合约', group: '交易与资金' },
+  { key: 'barter.view', label: '资源置换台账', group: '业务板块' },
+  { key: 'aigc.view', label: 'AIGC 素材实验', group: '业务板块' },
   { key: 'settlement.read', label: '查看清结算', group: '交易与资金' },
   { key: 'settlement.clear', label: '发起结算/核销/提现', group: '交易与资金' },
   { key: 'merchant.read', label: '查看号池', group: '交易与资金' },
@@ -28,9 +32,38 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'config.write', label: '平台配置', group: '系统' },
   { key: 'member.manage', label: '成员与角色', group: '系统' },
   { key: 'audit.read', label: '操作审计', group: '系统' },
+  { key: 'product.read', label: '订阅商品查看/审核', group: '交易与资金' },
+  { key: 'product.write', label: '订阅商品审核/规则', group: '交易与资金' },
+  { key: 'barter.write', label: '资源置换创建/流转', group: '业务板块' },
 ]
 
+// 内部权限点（super = 全部内部权限）。客户门户权限点单列，不并入此集，
+// 以保持 super 的内部权限计数稳定，且让「客户能打哪些端点」在路由表上一眼可见。
 export const ALL_PERMS = PERMISSIONS.map((p) => p.key)
+
+// 客户门户专属权限点（品牌方 / 代理商）。完全独立于内部权限点：
+// 客户角色只持有这些，绝不持有任何内部权限点 → 即便伪造前端路由进内部页，
+// 拉数端点（标内部权限点）会被 PermsGuard 直接 403（纵深防御第二道）。
+export const PORTAL_PERMISSIONS: PermDef[] = [
+  { key: 'portal.brand.home', label: '品牌门户首页', group: '客户门户' },
+  { key: 'portal.brand.orders', label: '品牌-我的订单', group: '客户门户' },
+  { key: 'portal.brand.settlement', label: '品牌-我的结算单(脱敏)', group: '客户门户' },
+  { key: 'portal.brand.onboarding', label: '品牌-我的入驻', group: '客户门户' },
+  { key: 'portal.brand.tickets', label: '品牌-我的工单', group: '客户门户' },
+  { key: 'portal.brand.contracts', label: '品牌-我的增长合约', group: '客户门户' },
+  { key: 'portal.agent.home', label: '代理门户首页', group: '客户门户' },
+  { key: 'portal.agent.market', label: '代理-选品市场', group: '客户门户' },
+  { key: 'portal.agent.plans', label: '代理-我的投放计划', group: '客户门户' },
+  { key: 'portal.agent.payouts', label: '代理-我的分润', group: '客户门户' },
+  { key: 'portal.agent.credit', label: '代理-我的信用分', group: '客户门户' },
+  { key: 'portal.agent.contracts', label: '代理-我的接单', group: '客户门户' },
+  { key: 'portal.agent.tickets', label: '代理-相关工单', group: '客户门户' }, // 代理可见自己渠道的工单并协助处理
+
+  { key: 'portal.brand.products', label: '品牌-我的订阅商品', group: '客户门户' }, // 品牌上架订阅商品
+  { key: 'portal.aigc', label: '客户-AIGC 素材生成', group: '客户门户' }, // 品牌/代理共用的素材能力
+]
+export const BRAND_PERMS = [...PORTAL_PERMISSIONS.filter((p) => p.key.startsWith('portal.brand.')).map((p) => p.key), 'portal.aigc']
+export const AGENT_PERMS = [...PORTAL_PERMISSIONS.filter((p) => p.key.startsWith('portal.agent.')).map((p) => p.key), 'portal.aigc']
 
 export interface RolePreset {
   id: string
@@ -45,7 +78,7 @@ export const ROLE_PRESETS: RolePreset[] = [
     id: 'finance',
     name: '财务 / 清结算',
     description: '结算·对账·提现·发票',
-    permissions: ['dashboard.view', 'order.read', 'settlement.read', 'settlement.clear', 'analytics.view', 'audit.read'],
+    permissions: ['dashboard.view', 'order.read', 'contract.read', 'settlement.read', 'settlement.clear', 'analytics.view', 'audit.read'],
   },
   {
     id: 'risk',
@@ -57,13 +90,13 @@ export const ROLE_PRESETS: RolePreset[] = [
     id: 'ops',
     name: '运营',
     description: '品牌·代理·选品·数据',
-    permissions: ['dashboard.view', 'brand.read', 'brand.write', 'agent.read', 'agent.write', 'market.view', 'analytics.view', 'order.read'],
+    permissions: ['dashboard.view', 'brand.read', 'brand.write', 'agent.read', 'agent.write', 'market.view', 'analytics.view', 'order.read', 'contract.read', 'contract.write', 'barter.view', 'aigc.view'],
   },
   {
     id: 'audit',
     name: '只读审计',
     description: '全部只读 + 审计',
-    permissions: ['dashboard.view', 'brand.read', 'agent.read', 'order.read', 'settlement.read', 'merchant.read', 'risk.read', 'ticket.read', 'compliance.view', 'analytics.view', 'audit.read'],
+    permissions: ['dashboard.view', 'brand.read', 'agent.read', 'order.read', 'contract.read', 'settlement.read', 'merchant.read', 'risk.read', 'ticket.read', 'compliance.view', 'analytics.view', 'audit.read'],
   },
   {
     // 团队管理员：可管理成员(读 + 停用)，但无 super 权限——用于验证「不可自我提权到 super」
@@ -71,6 +104,19 @@ export const ROLE_PRESETS: RolePreset[] = [
     name: '团队管理员',
     description: '成员只读 + 停用，但不可改角色权限',
     permissions: ['dashboard.view', 'member.manage', 'audit.read'],
+  },
+  // ── 客户角色（只持客户门户权限，绝不含内部权限点）──
+  {
+    id: 'brand',
+    name: '品牌方',
+    description: '品牌客户门户：我的订单/结算/入驻/工单/合约',
+    permissions: BRAND_PERMS,
+  },
+  {
+    id: 'agent',
+    name: '代理商',
+    description: '代理客户门户：选品/投放/分润/信用分/接单',
+    permissions: AGENT_PERMS,
   },
 ]
 
@@ -81,9 +127,9 @@ export const SEED_USERS = [
   { id: 'U-003', name: '陈风控', account: 'risk', roleId: 'risk', scopeType: 'platform', scopeId: null },
   { id: 'U-004', name: '王运营', account: 'ops', roleId: 'ops', scopeType: 'platform', scopeId: null },
   { id: 'U-005', name: '赵审计', account: 'audit', roleId: 'audit', scopeType: 'platform', scopeId: null },
-  // 数据级 RBAC 演示：品牌方账户只见自己品牌；代理账户只见自己
-  { id: 'U-006', name: '有道品牌方', account: 'brand', roleId: 'ops', scopeType: 'brand', scopeId: 'youdao' },
-  { id: 'U-007', name: '代理 A-2041', account: 'agent', roleId: 'ops', scopeType: 'agent', scopeId: 'A-2041' },
+  // 客户门户账户：品牌方 / 代理商各自专属角色 + scope 收窄到自己
+  { id: 'U-006', name: '有道品牌方', account: 'brand', roleId: 'brand', scopeType: 'brand', scopeId: 'youdao' },
+  { id: 'U-007', name: '代理 A-2041', account: 'agent', roleId: 'agent', scopeType: 'agent', scopeId: 'A-2041' },
   // 品牌方+只读审计角色（有 merchant.read/settlement.read）：用于验证「即使有读权限，scope 仍收窄」
   { id: 'U-008', name: '有道审计', account: 'brandaudit', roleId: 'audit', scopeType: 'brand', scopeId: 'youdao' },
   // 团队管理员（有 member.manage 非 super）：用于验证不可自我提权

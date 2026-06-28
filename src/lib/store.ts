@@ -10,6 +10,7 @@ import {
   agents as seedAgents,
   merchants as seedMerchants,
   brands as seedBrands,
+  contracts as seedContracts,
   brandById,
   type Order,
   type Complaint,
@@ -18,6 +19,8 @@ import {
   type MerchantAccount,
   type MerchantState,
   type Brand,
+  type GrowthContract,
+  type SettleModel,
   type Tone,
 } from './data'
 import { isRealApi } from './http'
@@ -31,6 +34,58 @@ export interface ActivityItem {
   read: boolean
 }
 
+// ── 批3 受控配置结构 ──
+export interface AttributionConfig {
+  firstClickWindow: '1' | '7' | '14'
+  renewAttribution: 'first' | 'last'
+  dedupe: 'device' | 'phone'
+  hijackThresholdSec: number
+}
+export interface PlatformConfig {
+  autoFuse: boolean; throttleAds: boolean; reserveAuto: boolean
+  isolateBrand: boolean; isolateAgent: boolean; flexTax: boolean; audit: boolean
+}
+// 平台数值参数（默认服务费/费率区间/账期/分润 + 风控阈值）——可编辑、持久化
+export interface PlatformParams {
+  serviceFeePct: number; feeRangeLow: number; feeRangeHigh: number; defaultPeriod: number; agentSharePct: number
+  complaintRedline: number; escalatedRedline: number; close72hTarget: number
+}
+export interface SlaConfig {
+  normalH: number; escalatedH: number; regulatoryH: number
+}
+// ── 批4 新集合结构 ──
+export interface RiskRule {
+  id: string; name: string; cond: string; action: string; on: boolean
+}
+export interface AdClaim {
+  id: string; agentId: string; brandId: string; plan: string; url: string; channel: string
+  spend: number; firstOrders: number; payout: number; createdAt: string
+}
+export interface PendingAgent {
+  id: string; name: string; type: '个人' | '企业'; invoicing: '灵活用工' | '企业开票' | '个体户'; appliedAt: string
+  kyc: { license: boolean; legal: boolean; bankAccount: boolean; riskHit: boolean }
+}
+
+const SEED_RULES: RiskRule[] = [
+  { id: 'RULE-1', name: '同设备 / IP 批量', cond: '同设备 60 分钟内 ≥ 5 单', action: '降权 + 复核', on: true },
+  { id: 'RULE-2', name: '空包单 / 秒退单', cond: '24h 内退款 ≤ 5 分钟占比 > 20%', action: '限流', on: true },
+  { id: 'RULE-3', name: '模拟器农场', cond: '设备指纹命中模拟器特征', action: '拦截', on: true },
+  { id: 'RULE-4', name: '异常退款集中', cond: '单代理日退款率 > 8%', action: '冻结结算', on: true },
+  { id: 'RULE-5', name: '归因劫持', cond: '点击-转化时差 < 3 秒', action: '拦截 + 告警', on: true },
+  { id: 'RULE-6', name: '异常转化时差', cond: '曝光-转化 < 2 秒', action: '限流', on: false },
+]
+const SEED_PENDING_AGENTS: PendingAgent[] = [
+  { id: 'APP-1', name: '极速增长 文化传媒', type: '企业', invoicing: '企业开票', appliedAt: '今天 10:24', kyc: { license: true, legal: true, bankAccount: true, riskHit: false } },
+  { id: 'APP-2', name: '张昊', type: '个人', invoicing: '灵活用工', appliedAt: '今天 09:11', kyc: { license: false, legal: true, bankAccount: true, riskHit: false } },
+]
+const SEED_ATTRIBUTION: AttributionConfig = { firstClickWindow: '7', renewAttribution: 'first', dedupe: 'device', hijackThresholdSec: 3 }
+const SEED_PLATFORM_CONFIG: PlatformConfig = { autoFuse: true, throttleAds: true, reserveAuto: true, isolateBrand: true, isolateAgent: true, flexTax: true, audit: true }
+const SEED_PLATFORM_PARAMS: PlatformParams = { serviceFeePct: 21, feeRangeLow: 40, feeRangeHigh: 52, defaultPeriod: 7, agentSharePct: 72, complaintRedline: 1, escalatedRedline: 0.1, close72hTarget: 95 }
+const SEED_SLA: SlaConfig = { normalH: 24, escalatedH: 4, regulatoryH: 2 }
+const SEED_CHANNELS: Record<string, 'live' | 'review'> = {
+  '连连支付 · 分账': 'live', '汇付天下 · 分账': 'live', '微信支付 · 官方分账': 'live', '支付宝 · 分账': 'live', '银行二类户 · 存管': 'review',
+}
+
 export interface StoreState {
   orders: Order[]
   complaints: Complaint[]
@@ -39,6 +94,17 @@ export interface StoreState {
   merchants: MerchantAccount[]
   brands: Brand[]
   activity: ActivityItem[]
+  // 批3 受控配置
+  attributionConfig: AttributionConfig
+  platformConfig: PlatformConfig
+  platformParams: PlatformParams
+  slaConfig: SlaConfig
+  channelStates: Record<string, 'live' | 'review'>
+  // 批4 新集合
+  rules: RiskRule[]
+  claims: AdClaim[]
+  pendingAgents: PendingAgent[]
+  contracts: GrowthContract[]
 }
 
 const KEY = 'cps-store-v2'
@@ -59,6 +125,15 @@ function seed(): StoreState {
     merchants: structuredClone(seedMerchants),
     brands: structuredClone(seedBrands),
     activity: [],
+    attributionConfig: { ...SEED_ATTRIBUTION },
+    platformConfig: { ...SEED_PLATFORM_CONFIG },
+    platformParams: { ...SEED_PLATFORM_PARAMS },
+    slaConfig: { ...SEED_SLA },
+    channelStates: { ...SEED_CHANNELS },
+    rules: structuredClone(SEED_RULES),
+    claims: [],
+    pendingAgents: structuredClone(SEED_PENDING_AGENTS),
+    contracts: structuredClone(seedContracts),
   }
 }
 
@@ -80,7 +155,22 @@ function load(): StoreState {
         for (const b of p.brands) maxSeq = Math.max(maxSeq, nums(b.id))
         for (const mAcc of p.merchants) maxSeq = Math.max(maxSeq, nums(mAcc.id))
         if (maxSeq >= seq) seq = maxSeq + 1
-        return { ...seed(), ...p, activity: p.activity ?? [] }
+        // 新字段对旧缓存逐字段兜底（缺则取 seed 默认），不进硬校验，避免旧 localStorage 被整体重置
+        const s = seed()
+        return {
+          ...s,
+          ...p,
+          activity: p.activity ?? [],
+          attributionConfig: p.attributionConfig ?? s.attributionConfig,
+          platformConfig: p.platformConfig ?? s.platformConfig,
+          platformParams: { ...s.platformParams, ...(p.platformParams ?? {}) },
+          slaConfig: p.slaConfig ?? s.slaConfig,
+          channelStates: p.channelStates ?? s.channelStates,
+          rules: p.rules ?? s.rules,
+          claims: p.claims ?? s.claims,
+          pendingAgents: p.pendingAgents ?? s.pendingAgents,
+          contracts: p.contracts ?? s.contracts,
+        }
       }
     }
   } catch {
@@ -120,13 +210,14 @@ export async function hydrateFromServer() {
   // 每个集合独立取数：某集合无权限(403)则置空（用户本就看不到），
   // 不让单个失败拖垮整体——这同时让数据级 RBAC 在 UI 自然生效。
   const safe = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null)
-  const [brands, agents, merchants, ordersPage, settlements, tickets] = await Promise.all([
+  const [brands, agents, merchants, ordersPage, settlements, tickets, config] = await Promise.all([
     safe(bizApi.brands<Partial<Brand>[]>()),
     safe(bizApi.agents<Partial<Agent>[]>()),
     safe(bizApi.merchants<Partial<MerchantAccount>[]>()),
     safe(bizApi.orders<Partial<Order>[]>()), // 游标分页：{ items, nextCursor }
     safe(bizApi.settlements<Partial<Settlement>[]>()),
     safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
+    safe(bizApi.config<Record<string, unknown>>()), // 配置 KV（平台配置/通道/SLA/归因）回读
   ])
   const orders = ordersPage?.items ?? null
   // 全部失败（如完全离线）：保留本地 seed，不阻断演示
@@ -146,6 +237,17 @@ export async function hydrateFromServer() {
       return { ...(s ?? seedComplaints[0]), ...t } as Complaint
     }),
     activity: state.activity,
+    // 配置 KV：服务端 Config 表已持久化 → 回读覆盖本地 seed（无值则保留 seed，逐键兜底不被清空）
+    attributionConfig: { ...state.attributionConfig, ...((config?.attributionConfig as object) ?? {}) },
+    platformConfig: { ...state.platformConfig, ...((config?.platformConfig as object) ?? {}) },
+    platformParams: { ...state.platformParams, ...((config?.platformParams as object) ?? {}) },
+    slaConfig: { ...state.slaConfig, ...((config?.slaConfig as object) ?? {}) },
+    channelStates: { ...state.channelStates, ...((config?.channelStates as object) ?? {}) },
+    // 以下纯前端结构（后端无对应表）：保留本地，不被水合清空
+    rules: state.rules,
+    claims: state.claims,
+    pendingAgents: state.pendingAgents,
+    contracts: state.contracts,
   }
   commit(next)
 }
@@ -556,4 +658,120 @@ export function selectActions(s: StoreState): ActionItem[] {
   const diff = s.settlements.find((x) => x.reconcileDiff > 0)
   if (diff) out.push({ id: 'recon', tone: 'violet', title: `${brandById(diff.brandId)?.name ?? ''} 对账差异 ¥${diff.reconcileDiff.toLocaleString('zh-CN')}`, sub: `${diff.period} 挂起，待三方核对`, to: '/settlement' })
   return out
+}
+
+// ════════════════════════════════════════════════════════════════
+//  批3/批4 新增动作 —— 受控配置 + 新集合的真实写入（commit + 持久化）
+// ════════════════════════════════════════════════════════════════
+
+// 批3：归因配置
+export function setAttributionConfig(patch: Partial<AttributionConfig>) {
+  const next = { ...state, attributionConfig: { ...state.attributionConfig, ...patch } }
+  commit({ ...next, activity: logActivity(next, '归因模型配置已更新', 'info') })
+  mirror(() => bizApi.setConfig({ attributionConfig: next.attributionConfig }), '归因配置')
+}
+// 批3：平台配置开关
+export function setPlatformConfig(patch: Partial<PlatformConfig>) {
+  const next = { ...state, platformConfig: { ...state.platformConfig, ...patch } }
+  commit({ ...next, activity: logActivity(next, '平台配置已保存', 'good') })
+  mirror(() => bizApi.setConfig({ platformConfig: next.platformConfig }), '平台配置')
+}
+// 平台数值参数（服务费/费率/账期/分润 + 风控阈值）——可编辑、持久化、回读
+export function setPlatformParams(patch: Partial<PlatformParams>) {
+  const next = { ...state, platformParams: { ...state.platformParams, ...patch } }
+  commit({ ...next, activity: logActivity(next, '平台参数已保存', 'good') })
+  mirror(() => bizApi.setConfig({ platformParams: next.platformParams }), '平台参数')
+}
+// 批3：SLA 配置
+export function setSlaConfig(patch: Partial<SlaConfig>) {
+  const next = { ...state, slaConfig: { ...state.slaConfig, ...patch } }
+  commit({ ...next, activity: logActivity(next, 'SLA 规则已更新', 'info') })
+  mirror(() => bizApi.setConfig({ slaConfig: next.slaConfig }), 'SLA 配置')
+}
+// 批3：分账通道启停
+export function setChannelState(name: string, st: 'live' | 'review') {
+  const next = { ...state, channelStates: { ...state.channelStates, [name]: st } }
+  commit({ ...next, activity: logActivity(next, `分账通道「${name}」已${st === 'live' ? '启用' : '置为评估中'}`, 'info') })
+  mirror(() => bizApi.setConfig({ channelStates: next.channelStates }), '通道配置')
+}
+
+// 批4：风控规则
+export function addRule(input: { name: string; cond: string; action: string }): RiskRule {
+  const rule: RiskRule = { id: 'RULE-' + ++seq, name: input.name, cond: input.cond, action: input.action, on: true }
+  const next = { ...state, rules: [...state.rules, rule] }
+  commit({ ...next, activity: logActivity(next, `新增风控规则「${rule.name}」`, 'good') })
+  return rule
+}
+export function updateRule(id: string, patch: Partial<Omit<RiskRule, 'id'>>) {
+  const next = { ...state, rules: state.rules.map((r) => (r.id === id ? { ...r, ...patch } : r)) }
+  commit({ ...next, activity: logActivity(next, '风控规则已更新', 'info') })
+}
+export function toggleRule(id: string) {
+  const r = state.rules.find((x) => x.id === id)
+  const next = { ...state, rules: state.rules.map((x) => (x.id === id ? { ...x, on: !x.on } : x)) }
+  commit({ ...next, activity: logActivity(next, `风控规则「${r?.name ?? id}」已${r?.on ? '停用' : '启用'}`, 'info') })
+}
+
+// 批4：投放计划（领取追踪链接时写入）
+export function addClaim(input: { brandId: string; plan: string; url: string; channel: string }): AdClaim {
+  const agentId = state.agents.find((a) => a.status === 'active')?.id ?? 'A-2041'
+  const claim: AdClaim = {
+    id: 'CLAIM-' + ++seq, agentId, brandId: input.brandId, plan: input.plan, url: input.url, channel: input.channel,
+    spend: 0, firstOrders: 0, payout: 0, createdAt: clock(),
+  }
+  const next = { ...state, claims: [claim, ...state.claims] }
+  commit({ ...next, activity: logActivity(next, `领取投放链接：${brandById(input.brandId)?.name ?? input.brandId} · ${input.plan}`, 'good') })
+  return claim
+}
+
+// 批4：入驻审核（通过 → 转为正式代理；驳回 → 移除）
+export function approveAgent(pendingId: string): Agent | null {
+  const p = state.pendingAgents.find((x) => x.id === pendingId)
+  if (!p) return null
+  const agent: Agent = {
+    id: 'A-' + ++seq, name: p.name, type: p.type, status: 'active', creditScore: 700,
+    spendMtd: 0, firstOrders: 0, roi: 0, renewalRate: 0, complaintRate: 0, refundRate: 0,
+    payoutPending: 0, settledTotal: 0, deposit: p.type === '企业' ? 200000 : 30000, brandsCount: 0,
+    invoicing: p.invoicing, joinedAt: '刚刚',
+  }
+  const next = { ...state, agents: [agent, ...state.agents], pendingAgents: state.pendingAgents.filter((x) => x.id !== pendingId) }
+  commit({ ...next, activity: logActivity(next, `代理「${p.name}」审核通过，准入 L1`, 'good') })
+  return agent
+}
+export function rejectAgent(pendingId: string) {
+  const p = state.pendingAgents.find((x) => x.id === pendingId)
+  const next = { ...state, pendingAgents: state.pendingAgents.filter((x) => x.id !== pendingId) }
+  commit({ ...next, activity: logActivity(next, `代理「${p?.name ?? pendingId}」入驻申请已驳回`, 'warn') })
+}
+
+// 批4：发起增长合约
+export function addContract(input: { brandId: string; settleModel: SettleModel; ltvWindow: 'D30' | 'D60' | 'D90'; complaintLiability: 'agent' | 'brand' | 'shared'; reservePct: number; targetGmv: number; userLimit: string }): GrowthContract {
+  const c: GrowthContract = {
+    id: 'GC-' + ++seq, brandId: input.brandId, agentId: null, status: 'open',
+    settleModel: input.settleModel, ltvWindow: input.ltvWindow, complaintLiability: input.complaintLiability,
+    reservePct: input.reservePct, targetGmv: input.targetGmv, achievedGmv: 0, userLimit: input.userLimit,
+    breachNote: '—', signedAt: null,
+  }
+  const next = { ...state, contracts: [c, ...state.contracts] }
+  commit({ ...next, activity: logActivity(next, `发起增长合约：${brandById(input.brandId)?.name ?? input.brandId}（挂单中）`, 'good') })
+  return c
+}
+
+// 批5：订单回传同步（mock：造一条续费回传 + 活动；real：重拉后端订单）
+export function triggerOrderSync(brandId?: string) {
+  if (isRealApi) {
+    void hydrateFromServer()
+    const next = { ...state }
+    commit({ ...next, activity: logActivity(next, '订单回传已从渠道同步（已对齐后端）', 'good') })
+    return
+  }
+  // mock：插入 1 条"刚回传"的续费订单，让订单流真的变长、通知中心有记录（不再谎报成功）
+  const pool = brandId ? state.orders.filter((o) => o.brandId === brandId) : state.orders
+  const ref = pool.find((o) => o.type === 'first') ?? state.orders[0]
+  const newOrders: Order[] = ref
+    ? [{ id: 'O-' + ++seq, time: '现在', brandId: ref.brandId, agentId: ref.agentId, channel: ref.channel, type: 'renew', amount: ref.amount, plan: ref.plan, mid: ref.mid }]
+    : []
+  const next = { ...state, orders: [...newOrders, ...state.orders] }
+  const label = brandId ? `${brandById(brandId)?.name ?? brandId} 订单回传同步完成` : '订单回传同步完成 · 新增 1 笔续费回传'
+  commit({ ...next, activity: logActivity(next, label, 'good') })
 }

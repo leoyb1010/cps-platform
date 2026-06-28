@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { Tone } from '../../lib/data'
 import { cx } from '../../lib/format'
+import { resolveBrandLogo } from '../../lib/brandLogos'
 
 /* ── replay / choreography epoch ─────────────────── */
 export const ReplayContext = createContext<{ epoch: number; replay: () => void }>({
@@ -23,7 +24,9 @@ export function useCountUp(
   const group = opts?.group ?? true
   const fmt = (n: number) =>
     pre + n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: group }) + suf
-  const [text, setText] = useState(fmt(0))
+  // 初值用目标值（而非 0）：即便 requestAnimationFrame 因不可见/被节流而不触发，
+  // 数字也始终显示正确值，不会卡在 0；可见时 rAF 仍会从 0 滚动到目标值。
+  const [text, setText] = useState(fmt(to))
   const raf = useRef(0)
   const fromRef = useRef(0) // current displayed value → roll from here to `to`
   const epochRef = useRef(opts?.epoch)
@@ -32,6 +35,12 @@ export function useCountUp(
     if (opts?.epoch !== epochRef.current) {
       fromRef.current = 0
       epochRef.current = opts?.epoch
+    }
+    // 尊重 prefers-reduced-motion：偏好减少动效时直接落到目标值（rAF 是 JS，全局 CSS 媒体查询拦不住它）
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      fromRef.current = to
+      setText(fmt(to))
+      return
     }
     const from = fromRef.current
     const t0 = performance.now()
@@ -77,11 +86,6 @@ export function RegMark() {
   )
 }
 
-/* ── red square section marker ───────────────────── */
-export function Mark({ tone = 'brand' }: { tone?: Tone }) {
-  return <span className="h-[7px] w-[7px] shrink-0" style={{ background: toneVar[tone] }} />
-}
-
 /* ── tone → class maps ──────────────────────────── */
 
 export const TONE: Record<Tone, { soft: string; ink: string; dot: string }> = {
@@ -91,7 +95,7 @@ export const TONE: Record<Tone, { soft: string; ink: string; dot: string }> = {
   info: { soft: 'bg-info-soft', ink: 'text-info-ink', dot: 'bg-info' },
   violet: { soft: 'bg-violet-soft', ink: 'text-violet-ink', dot: 'bg-violet' },
   brand: { soft: 'bg-brand-soft', ink: 'text-brand-ink', dot: 'bg-brand' },
-  neutral: { soft: 'bg-[#efefec]', ink: 'text-ink-2', dot: 'bg-ink-3' },
+  neutral: { soft: 'bg-neutral-soft', ink: 'text-ink-2', dot: 'bg-ink-3' },
 }
 
 export const toneVar: Record<Tone, string> = {
@@ -121,7 +125,7 @@ export function Badge({
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-[4px] px-2 py-[3px] text-[11.5px] font-medium whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[11.5px] font-medium whitespace-nowrap',
         t.soft,
         t.ink,
         className,
@@ -208,7 +212,7 @@ export function Stat({
   hint,
   children,
 }: {
-  label: string
+  label: ReactNode
   value: ReactNode
   unit?: string
   sub?: ReactNode
@@ -261,10 +265,8 @@ export function PageHeader({
   return (
     <div className="mb-6 flex items-end justify-between gap-4">
       <div>
-        <h1 className="text-[21px] font-semibold tracking-tight text-ink">
-          {title}
-        </h1>
-        {desc && <p className="mt-1 max-w-2xl text-[13px] text-ink-3">{desc}</p>}
+        <h1 className="t-h1 text-ink">{title}</h1>
+        {desc && <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-ink-3">{desc}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
@@ -299,8 +301,8 @@ export function Button({
     variant === 'primary'
       ? 'bg-brand text-white hover:bg-brand-hover shadow-[var(--shadow-brand)]'
       : variant === 'soft'
-        ? 'bg-surface-sunken text-ink-2 hover:bg-[#e6e8eb]'
-        : 'border border-line text-ink-2 hover:bg-surface-muted hover:text-ink'
+        ? 'bg-surface-sunken text-ink-2 hover:bg-soft-hover'
+        : 'border border-line text-ink-2 hover:border-line-strong hover:bg-surface-muted hover:text-ink'
   const handle = () => {
     if (!onClick || busy) return
     if (busyMs) {
@@ -440,14 +442,15 @@ export function Row({
   className,
 }: {
   children: ReactNode
-  onClick?: () => void
+  onClick?: (e: React.MouseEvent) => void
   className?: string
 }) {
   return (
     <tr
       onClick={onClick}
       className={cx(
-        'border-b border-line/60 transition-colors last:border-0 even:bg-surface-muted/40',
+        // 单一底色策略：去斑马纹，仅保留 hover（更现代、更不"花"）
+        'border-b border-line/70 transition-colors last:border-0',
         onClick && 'cursor-pointer hover:bg-surface-muted',
         className,
       )}
@@ -459,10 +462,45 @@ export function Row({
 
 /* ── Brand mark chip ────────────────────────────── */
 
-export function BrandMark({ mark, size = 30 }: { mark: string; size?: number }) {
+/**
+ * 品牌 Logo chip。
+ * 传 `brand`(id 或品牌名) 时优先渲染真实品牌 logo（官方色 + 签名字形，App 图标风格）；
+ * 解析不到时回退为字母 chip(`mark`)。两者皆向后兼容——旧调用只传 `mark` 照常工作。
+ */
+export function BrandMark({ mark, brand, size = 30 }: { mark?: string; brand?: string | null; size?: number }) {
+  const logo = resolveBrandLogo(brand) ?? resolveBrandLogo(mark)
+  if (logo) {
+    const radius = Math.round(size * 0.26)
+    const bg = logo.light
+      ? '#ffffff'
+      : logo.color2
+        ? `linear-gradient(160deg, ${logo.color} 0%, ${logo.color2} 100%)`
+        : logo.color
+    const fg = logo.light ? logo.color : logo.fg ?? '#ffffff'
+    return (
+      <span
+        aria-label={mark ?? logo.glyph}
+        className="grid shrink-0 place-items-center overflow-hidden tracking-tight"
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius,
+          background: bg,
+          color: fg,
+          fontSize: size * (logo.scale ?? 0.42),
+          fontWeight: logo.weight ?? 700,
+          lineHeight: 1,
+          boxShadow: logo.light ? `inset 0 0 0 1px ${logo.color}22` : 'inset 0 1px 0 0 rgba(255,255,255,.18)',
+          fontFamily: '-apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+        }}
+      >
+        {logo.glyph}
+      </span>
+    )
+  }
   return (
     <span
-      className="grid shrink-0 place-items-center rounded-[7px] bg-surface-sunken font-semibold text-ink-2 ring-1 ring-line"
+      className="grid shrink-0 place-items-center rounded-lg bg-surface-sunken font-semibold text-ink-2 ring-1 ring-line"
       style={{ width: size, height: size, fontSize: size * 0.42 }}
     >
       {mark}

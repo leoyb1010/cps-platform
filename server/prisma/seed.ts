@@ -38,13 +38,15 @@ const MERCHANTS = [
 
 // 结算单：严格对平 gross = brandShare + reserve + platformFee + agentPayout + reversal
 const SETTLEMENTS = [
-  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 601188, agentPayout: 2220412, reserve: 673600, reversal: 41200, frozen: 673600, status: 'pending', reconcileDiff: 0 },
-  { id: 'S-2406-WP', period: '2026-06 上半月', brandId: 'wps', gross: 3260000, brandShare: 1956000, platformFee: 221680, agentPayout: 841320, reserve: 228200, reversal: 12800, frozen: 228200, status: 'pending', reconcileDiff: 0 },
+  // YD/WP 启用准备金分期释放：D7 首批已释放（reserveReleased），frozen = reserve − released（守恒式 II）
+  { id: 'S-2406-YD', period: '2026-06 上半月', brandId: 'youdao', gross: 8420000, brandShare: 4883600, platformFee: 601188, agentPayout: 2220412, reserve: 673600, reversal: 41200, frozen: 471520, reserveReleased: 202080, reserveClawedBack: 0, status: 'pending', reconcileDiff: 0 },
+  { id: 'S-2406-WP', period: '2026-06 上半月', brandId: 'wps', gross: 3260000, brandShare: 1956000, platformFee: 221680, agentPayout: 841320, reserve: 228200, reversal: 12800, frozen: 159740, reserveReleased: 68460, status: 'pending', reconcileDiff: 0 },
   { id: 'S-2405-YD', period: '2026-05 月结', brandId: 'youdao', gross: 16240000, brandShare: 9419200, platformFee: 1159536, agentPayout: 4275664, reserve: 1299200, reversal: 86400, frozen: 1299200, status: 'cleared', reconcileDiff: 0 },
   { id: 'S-2405-XM', period: '2026-05 月结', brandId: 'ximalaya', gross: 11860000, brandShare: 6404400, platformFee: 927452, agentPayout: 2962348, reserve: 1423200, reversal: 142600, frozen: 1423200, status: 'reconciling', reconcileDiff: 18400 },
   { id: 'S-2405-MG', period: '2026-05 月结', brandId: 'mango', gross: 9240000, brandShare: 4804800, platformFee: 753984, agentPayout: 2191316, reserve: 1293600, reversal: 196300, frozen: 1293600, status: 'reconciling', reconcileDiff: 31200 },
   { id: 'S-2405-ZH', period: '2026-05 月结', brandId: 'zhihu', gross: 5680000, brandShare: 3180800, platformFee: 424864, agentPayout: 1432236, reserve: 568000, reversal: 74100, frozen: 568000, status: 'cleared', reconcileDiff: 0 },
-  { id: 'S-2405-BL', period: '2026-05 月结', brandId: 'bilibili', gross: 2140000, brandShare: 1134200, platformFee: 170986, agentPayout: 403814, reserve: 342400, reversal: 88600, frozen: 171200, status: 'reversed', reconcileDiff: 0 },
+  // BL 为 reversed 态：部分准备金已被逆向追偿（reserveClawedBack），故 frozen = reserve − clawed = 171200（守恒式 II）
+  { id: 'S-2405-BL', period: '2026-05 月结', brandId: 'bilibili', gross: 2140000, brandShare: 1134200, platformFee: 170986, agentPayout: 403814, reserve: 342400, reversal: 88600, frozen: 171200, reserveClawedBack: 171200, status: 'reversed', reconcileDiff: 0 },
   { id: 'S-2405-KP', period: '2026-05 月结', brandId: 'keep', gross: 3520000, brandShare: 1936000, platformFee: 269280, agentPayout: 888320, reserve: 387200, reversal: 39200, frozen: 387200, status: 'cleared', reconcileDiff: 0 },
 ]
 
@@ -72,6 +74,93 @@ const ORDERS = [
   { id: 'O-93770', time: '昨天 09:45', brandId: 'youdao', agentId: 'A-5521', channel: 'wechat', type: 'first', amount: 29.9, plan: '词典 VIP 连续包月', mid: 'M-YD-01' },
 ]
 
+// ── 订阅增长交易（新）样例数据 ──
+// 增长合约：覆盖三种结算模型与不同生命周期态。本阶段仅记条款，不接入结算计算。
+const CONTRACTS = [
+  {
+    id: 'GC-2406-01', brandId: 'youdao', agentId: 'A-2041', productId: null,
+    status: 'active', settleModel: 'cps_share',
+    settleParams: JSON.stringify({ agentSharePct: 38, firstPrice: 29.9 }),
+    userLimit: JSON.stringify({ newOnly: true, regions: [], crowd: ['泛知识'] }),
+    ltvWindow: 'D30', complaintLiability: 'agent', reservePct: 8,
+    reserveReleaseRule: JSON.stringify([{ stage: 'D7_init', pct: 30 }, { stage: 'D30_quality', pct: 30 }, { stage: 'D60_renew', pct: 20 }, { stage: 'D90_renew', pct: 20 }]),
+    breachRule: JSON.stringify({ shortfall: 'deduct_deposit' }),
+    targetGmv: 6000000, achievedGmv: 4180000, signedAt: new Date('2026-06-01'),
+  },
+  {
+    id: 'GC-2406-02', brandId: 'mango', agentId: 'A-1188', productId: null,
+    status: 'fulfilling', settleModel: 'floor_tiered',
+    settleParams: JSON.stringify({ floorGmv: 2000000, tiers: [{ over: 2000000, sharePct: 40 }, { over: 4000000, sharePct: 46 }] }),
+    userLimit: JSON.stringify({ newOnly: true, regions: ['华东', '华南'], crowd: [] }),
+    ltvWindow: 'D60', complaintLiability: 'shared', reservePct: 14,
+    reserveReleaseRule: JSON.stringify([{ stage: 'D7_init', pct: 20 }, { stage: 'D30_quality', pct: 30 }, { stage: 'D60_renew', pct: 30 }, { stage: 'D90_renew', pct: 20 }]),
+    breachRule: JSON.stringify({ shortfall: 'rollover_next' }),
+    targetGmv: 5000000, achievedGmv: 2360000, signedAt: new Date('2026-06-03'),
+  },
+  {
+    id: 'GC-2406-03', brandId: 'zhihu', agentId: null, productId: null,
+    status: 'open', settleModel: 'mutual_quota',
+    settleParams: JSON.stringify({ myQuota: 1000000, counterpartyQuota: 1000000, counterparty: 'wps' }),
+    userLimit: JSON.stringify({ newOnly: false, regions: [], crowd: ['职场'] }),
+    ltvWindow: 'D30', complaintLiability: 'brand', reservePct: 10,
+    reserveReleaseRule: JSON.stringify([{ stage: 'D7_init', pct: 30 }, { stage: 'D30_quality', pct: 40 }, { stage: 'D60_renew', pct: 30 }]),
+    breachRule: '',
+    targetGmv: 1000000, achievedGmv: 0, signedAt: null,
+  },
+]
+
+// 订阅聚合：把离散订单聚合成生命周期；userRef 为脱敏匿名标识，不含 PII。
+const SUBSCRIPTIONS = [
+  { id: 'SUB-90011', brandId: 'youdao', agentId: 'A-2041', productId: null, userRef: 'u_7f3a••21', plan: '词典 VIP 连续包月', status: 'active', firstOrderId: 'O-96820', startAt: new Date('2026-03-12'), currentPeriod: 4, lastRenewAt: new Date('2026-06-12'), mrr: 29.9 },
+  { id: 'SUB-90012', brandId: 'wps', agentId: 'A-1188', productId: null, userRef: 'u_2b8c••55', plan: 'WPS 超级会员连续包月', status: 'active', firstOrderId: 'O-95004', startAt: new Date('2026-04-09'), currentPeriod: 3, lastRenewAt: new Date('2026-06-09'), mrr: 12 },
+  { id: 'SUB-90013', brandId: 'mango', agentId: 'A-4410', productId: null, userRef: 'u_9d1e••07', plan: '芒果 TV 移动会员连续包月', status: 'churned', firstOrderId: 'O-95610', startAt: new Date('2026-05-05'), currentPeriod: 1, churnedAt: new Date('2026-06-04'), mrr: 0 },
+  { id: 'SUB-90014', brandId: 'zhihu', agentId: 'A-3372', productId: null, userRef: 'u_4a6f••92', plan: '盐选会员连续包月', status: 'winback', firstOrderId: 'O-94320', startAt: new Date('2026-02-18'), currentPeriod: 2, lastRenewAt: new Date('2026-06-18'), winbackAt: new Date('2026-06-15'), mrr: 9.9 },
+]
+
+// 准备金分期释放台账：各 stage 的 amount 之和 == 对应结算单 reserve（为后续守恒校验预备）。
+// 本阶段仅展示，不做释放资金动作。
+const RESERVE_RELEASES = [
+  // S-2406-YD reserve = 673600 → 30/30/20/20
+  { id: 'RR-2406YD-1', settlementId: 'S-2406-YD', contractId: 'GC-2406-01', agentId: 'A-2041', stage: 'D7_init', amount: 202080, dueAt: new Date('2026-06-22'), status: 'released', releasedAt: new Date('2026-06-22'), releasedAmount: 202080, holdReason: '' },
+  { id: 'RR-2406YD-2', settlementId: 'S-2406-YD', contractId: 'GC-2406-01', agentId: 'A-2041', stage: 'D30_quality', amount: 202080, dueAt: new Date('2026-07-15'), status: 'scheduled', releasedAmount: 0, holdReason: '' },
+  { id: 'RR-2406YD-3', settlementId: 'S-2406-YD', contractId: 'GC-2406-01', agentId: 'A-2041', stage: 'D60_renew', amount: 134720, dueAt: new Date('2026-08-14'), status: 'scheduled', releasedAmount: 0, holdReason: '' },
+  { id: 'RR-2406YD-4', settlementId: 'S-2406-YD', contractId: 'GC-2406-01', agentId: 'A-2041', stage: 'D90_renew', amount: 134720, dueAt: new Date('2026-09-13'), status: 'scheduled', releasedAmount: 0, holdReason: '' },
+  // S-2406-WP reserve = 228200 → 30/30/20/20
+  { id: 'RR-2406WP-1', settlementId: 'S-2406-WP', contractId: null, agentId: 'A-1188', stage: 'D7_init', amount: 68460, dueAt: new Date('2026-06-22'), status: 'released', releasedAt: new Date('2026-06-22'), releasedAmount: 68460, holdReason: '' },
+  { id: 'RR-2406WP-2', settlementId: 'S-2406-WP', contractId: null, agentId: 'A-1188', stage: 'D30_quality', amount: 68460, dueAt: new Date('2026-07-15'), status: 'scheduled', releasedAmount: 0, holdReason: '' },
+  { id: 'RR-2406WP-3', settlementId: 'S-2406-WP', contractId: null, agentId: 'A-1188', stage: 'D60_renew', amount: 45640, dueAt: new Date('2026-08-14'), status: 'frozen', releasedAmount: 0, holdReason: '投诉率逼近阈值，复核中' },
+  { id: 'RR-2406WP-4', settlementId: 'S-2406-WP', contractId: null, agentId: 'A-1188', stage: 'D90_renew', amount: 45640, dueAt: new Date('2026-09-13'), status: 'scheduled', releasedAmount: 0, holdReason: '' },
+]
+
+const BARTER_DEALS = [
+  { id: 'BD-2406-01', initiatorBrandId: 'youdao', counterpartyBrandId: 'mango', status: 'active', resourceType: '会员权益', myQuota: 1000000, counterpartyQuota: 1000000, invoiceStatus: 'partial', terms: JSON.stringify({ window: 'Q3', note: '词典VIP × 芒果TV 联合会员互推' }) },
+  { id: 'BD-2406-02', initiatorBrandId: 'wps', counterpartyBrandId: 'youdao', status: 'proposed', resourceType: '广告位', myQuota: 500000, counterpartyQuota: 500000, invoiceStatus: 'pending', terms: JSON.stringify({ window: 'Q3', note: 'WPS 开屏 × 有道信息流' }) },
+  { id: 'BD-2406-03', initiatorBrandId: 'youdao', counterpartyBrandId: 'zhihu', status: 'settled', resourceType: '流量包', myQuota: 300000, counterpartyQuota: 320000, invoiceStatus: 'done', terms: JSON.stringify({ window: 'Q2', note: '已完成结算，差额 2 万对手补开' }) },
+]
+
+// 订阅商品：覆盖 live(已上架，超市可见) / pending(待审) / draft。互斥组用于组合冲突演示。
+const PRODUCTS = [
+  { id: 'PRD-YD-01', brandId: 'youdao', name: '有道词典 VIP 连续包月', category: '工具', description: '词典查词无广告 + 专业词库 + AI 翻译', billingCycle: 'continuous', firstPrice: 29.9, renewPrice: 29.9, defaultSharePct: 30, status: 'live', bundleEligible: true, exclusiveGroup: 'youdao-vip', tags: JSON.stringify(['学生', '职场']) },
+  { id: 'PRD-YD-02', brandId: 'youdao', name: '有道词典 VIP 年卡', category: '工具', description: '同 VIP 权益，年付更省', billingCycle: 'yearly', firstPrice: 268, renewPrice: 268, defaultSharePct: 28, status: 'live', bundleEligible: true, exclusiveGroup: 'youdao-vip', tags: JSON.stringify(['学生']) },
+  { id: 'PRD-MG-01', brandId: 'mango', name: '芒果 TV 移动会员连续包月', category: '泛娱乐', description: '热剧综艺移动端畅看', billingCycle: 'continuous', firstPrice: 15, renewPrice: 19, defaultSharePct: 35, status: 'live', bundleEligible: true, exclusiveGroup: '', tags: JSON.stringify(['追剧']) },
+  { id: 'PRD-XM-01', brandId: 'ximalaya', name: '喜马拉雅 VIP 连续包月', category: '泛娱乐', description: '有声书播客畅听', billingCycle: 'continuous', firstPrice: 18, renewPrice: 25, defaultSharePct: 33, status: 'live', bundleEligible: true, exclusiveGroup: '', tags: JSON.stringify(['通勤']) },
+  { id: 'PRD-WP-01', brandId: 'wps', name: 'WPS 超级会员连续包月', category: '工具', description: '云存储 + PDF + 模板', billingCycle: 'continuous', firstPrice: 12, renewPrice: 30, defaultSharePct: 32, status: 'live', bundleEligible: true, exclusiveGroup: '', tags: JSON.stringify(['职场']) },
+  { id: 'PRD-ZH-01', brandId: 'zhihu', name: '知乎盐选会员连续包月', category: '泛娱乐', description: '盐选专栏与小说', billingCycle: 'continuous', firstPrice: 9.9, renewPrice: 19, defaultSharePct: 30, status: 'pending', bundleEligible: true, exclusiveGroup: '', tags: JSON.stringify(['阅读']) },
+  { id: 'PRD-KP-01', brandId: 'keep', name: 'Keep 会员连续包月', category: '生活服务', description: '课程 + 训练计划', billingCycle: 'continuous', firstPrice: 12, renewPrice: 25, defaultSharePct: 30, status: 'draft', bundleEligible: true, exclusiveGroup: '', tags: JSON.stringify(['健身']) },
+]
+
+// 组合优惠规则：满 2 件 9 折、满 3 件 85 折。
+const BUNDLE_RULES = [
+  { id: 'BR-01', name: '满 2 件享 9 折', kind: 'count_off', params: JSON.stringify({ minItems: 2, discountPct: 10 }), active: true },
+  { id: 'BR-02', name: '满 3 件享 85 折', kind: 'count_off', params: JSON.stringify({ minItems: 3, discountPct: 15 }), active: true },
+]
+
+const NOTIFICATIONS = [
+  { id: 'NT-0001', userId: null, scopeType: 'brand', scopeId: 'youdao', category: 'fund', title: '结算单已生成', body: '2026-06 上半月结算单已出，回款 ¥488.4 万', link: '/portal/brand/settlement', read: false },
+  { id: 'NT-0002', userId: null, scopeType: 'agent', scopeId: 'A-2041', category: 'contract', title: '合约履约推进', body: 'GC-2406-01 已进入履约中', link: '/portal/agent/contracts', read: false },
+  { id: 'NT-0003', userId: null, scopeType: 'platform', scopeId: null, category: 'product', title: '有新商品待审核', body: '知乎盐选会员连续包月 提交上架待审', link: '/products', read: false },
+]
+
 async function main() {
   console.log('Seeding…')
   // roles
@@ -96,11 +185,29 @@ async function main() {
   for (const b of BRANDS) await db.brand.upsert({ where: { id: b.id }, update: b, create: b })
   for (const a of AGENTS) await db.agent.upsert({ where: { id: a.id }, update: a, create: a })
   for (const m of MERCHANTS) await db.merchantAccount.upsert({ where: { id: m.id }, update: m, create: m })
-  for (const s of SETTLEMENTS) await db.settlement.upsert({ where: { id: s.id }, update: s, create: s })
+  // 落 agentShareSnapshot = 成交时点代理分润占比（agentPayout/gross），供退款冲账按快照计算、不随后续退款漂移。
+  // 显式归零 reserveReleased/reserveClawedBack（字面量省略时）：upsert 的 update 路径不会用 create-default，
+  // 否则旧库残留的释放/追偿值不会被种子重置，导致守恒式 II/III 漂移（幂等性保障）。
+  for (const s of SETTLEMENTS) {
+    const withSnap = {
+      reserveReleased: 0, reserveClawedBack: 0,
+      ...s,
+      agentShareSnapshot: s.gross > 0 ? +(s.agentPayout / s.gross).toFixed(6) : 0,
+    }
+    await db.settlement.upsert({ where: { id: s.id }, update: withSnap, create: withSnap })
+  }
   for (const t of TICKETS) await db.ticket.upsert({ where: { id: t.id }, update: t, create: t })
   for (const o of ORDERS) await db.order.upsert({ where: { id: o.id }, update: o, create: o })
+  // 订阅增长交易（新）：增长合约 / 订阅聚合 / 准备金释放台账
+  for (const c of CONTRACTS) await db.growthContract.upsert({ where: { id: c.id }, update: c, create: c })
+  for (const s of SUBSCRIPTIONS) await db.subscription.upsert({ where: { id: s.id }, update: s, create: s })
+  for (const rr of RESERVE_RELEASES) await db.reserveRelease.upsert({ where: { id: rr.id }, update: rr, create: rr })
+  for (const bd of BARTER_DEALS) await db.barterDeal.upsert({ where: { id: bd.id }, update: bd, create: bd })
+  for (const p of PRODUCTS) await db.product.upsert({ where: { id: p.id }, update: p, create: p })
+  for (const br of BUNDLE_RULES) await db.bundleRule.upsert({ where: { id: br.id }, update: br, create: br })
+  for (const n of NOTIFICATIONS) await db.notification.upsert({ where: { id: n.id }, update: n, create: n })
   await db.org.upsert({ where: { id: 'org' }, update: {}, create: { id: 'org', name: '网易有道' } })
-  console.log(`Seeded: ${ROLE_PRESETS.length} roles, ${SEED_USERS.length} users, ${BRANDS.length} brands, ${AGENTS.length} agents, ${MERCHANTS.length} merchants, ${SETTLEMENTS.length} settlements, ${TICKETS.length} tickets.`)
+  console.log(`Seeded: ${ROLE_PRESETS.length} roles, ${SEED_USERS.length} users, ${BRANDS.length} brands, ${AGENTS.length} agents, ${MERCHANTS.length} merchants, ${SETTLEMENTS.length} settlements, ${TICKETS.length} tickets, ${CONTRACTS.length} contracts, ${SUBSCRIPTIONS.length} subscriptions, ${RESERVE_RELEASES.length} reserve-releases, ${BARTER_DEALS.length} barter-deals, ${PRODUCTS.length} products, ${BUNDLE_RULES.length} bundle-rules, ${NOTIFICATIONS.length} notifications.`)
 }
 
 main()

@@ -101,53 +101,6 @@ export function AreaLine({
   )
 }
 
-/* ── Dual area (two series) ─────────────────────── */
-
-export function DualArea({
-  a,
-  b,
-  labels,
-  height = 220,
-}: {
-  a: { data: number[]; tone: Tone }
-  b: { data: number[]; tone: Tone }
-  labels?: string[]
-  height?: number
-}) {
-  const W = 640
-  const H = height
-  const padB = labels ? 22 : 8
-  const padT = 8
-  const all = [...a.data, ...b.data]
-  const min = Math.min(...all) * 0.94
-  const max = Math.max(...all) * 1.06
-  const span = max - min || 1
-  const iw = W - 16
-  const ih = H - padT - padB
-  const step = iw / (a.data.length - 1)
-  const x = (i: number) => 8 + i * step
-  const y = (v: number) => padT + ih - ((v - min) / span) * ih
-  const path = (d: number[]) => d.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
-      {[0, 0.25, 0.5, 0.75, 1].map((g, i) => (
-        <line key={i} x1={8} x2={W - 8} y1={padT + ih * g} y2={padT + ih * g} stroke="rgba(18,18,20,0.06)" />
-      ))}
-      <path d={path(b.data)} fill="none" stroke={toneVar[b.tone]} strokeWidth={1.6} strokeDasharray="4 3" opacity={0.7} />
-      <path d={path(a.data)} fill="none" stroke={toneVar[a.tone]} strokeWidth={2} strokeLinejoin="round" />
-      <circle cx={x(a.data.length - 1)} cy={y(a.data[a.data.length - 1])} r={3} fill={toneVar[a.tone]} />
-      {labels &&
-        labels.map((l, i) =>
-          i % 2 === 0 || i === labels.length - 1 ? (
-            <text key={i} x={x(i)} y={H - 6} fontSize={10.5} fill="var(--color-ink-4)" textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}>
-              {l}
-            </text>
-          ) : null,
-        )}
-    </svg>
-  )
-}
-
 /* ── Mini bars ──────────────────────────────────── */
 
 export function Bars({
@@ -284,12 +237,14 @@ export function Gauge({
   target,
   status,
   delay = 0.5,
+  decimals = 2,
 }: {
   value: number
   max: number
   target: number
   status: string
   delay?: number
+  decimals?: number // 0 = 整数（信用分等），默认 2（ROI 等小数仪表）
 }) {
   const cx0 = 100,
     cy = 108,
@@ -326,12 +281,12 @@ export function Gauge({
         return <line key={i} x1={ax} y1={ay} x2={ux} y2={uy} stroke="var(--color-hairtick)" strokeWidth="1.5" />
       })}
       <text x="12" y="124" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">0</text>
-      <text x="100" y="9" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{(max / 2).toFixed(1)}</text>
-      <text x="188" y="124" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{max.toFixed(1)}</text>
+      <text x="100" y="9" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{(max / 2).toFixed(decimals)}</text>
+      <text x="188" y="124" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{max.toFixed(decimals)}</text>
       <line x1={tx0} y1={ty0} x2={tx1} y2={ty1} stroke="var(--color-ink)" strokeWidth="2" />
-      <text x={tx0 + 8} y={ty0 + 6} className="tnum" fontSize="8.5" fill="var(--color-ink-2)">目标 {target.toFixed(1)}</text>
+      <text x={tx0 + 8} y={ty0 + 6} className="tnum" fontSize="8.5" fill="var(--color-ink-2)">目标 {target.toFixed(decimals)}</text>
       <text x="100" y="98" textAnchor="middle" className="tnum" fontSize="34" fontWeight="700" fill="var(--color-ink)" letterSpacing="-1">
-        {value.toFixed(2)}
+        {value.toFixed(decimals)}
       </text>
       <text x="100" y="118" textAnchor="middle" fontSize="10.5" fill="var(--color-ink-3)">{status}</text>
     </svg>
@@ -426,8 +381,8 @@ export function CrosshairChart({
       </svg>
       {hi !== null && (
         <div
-          className="pointer-events-none absolute rounded-md bg-ink px-2.5 py-[7px] text-[11px] whitespace-nowrap text-white"
-          style={{ left: `${(xs[hi] / VBW) * 100}%`, top: gy[hi] - 14, transform: 'translate(-50%,-100%)', boxShadow: '0 6px 20px -6px rgba(0,0,0,.4)' }}
+          className="pointer-events-none absolute rounded-md bg-ink px-2.5 py-1.5 text-[11px] whitespace-nowrap text-white"
+          style={{ left: `${(xs[hi] / VBW) * 100}%`, top: gy[hi] - 14, transform: 'translate(-50%,-100%)', boxShadow: 'var(--shadow-pop)' }}
         >
           <div className="tnum mb-1 text-[10px] text-ink-5">{labels[hi]}</div>
           <div className="flex items-center gap-1.5">

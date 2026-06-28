@@ -23,17 +23,24 @@ import {
   type Order,
   type OrderType,
 } from '../lib/data'
-import { useStore, refundOrder } from '../lib/store'
-import { Drawer, Confirm, useToast } from '../components/ui/overlays'
+import { useStore, refundOrder, triggerOrderSync } from '../lib/store'
+import { Confirm, useToast } from '../components/ui/overlays'
+import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Timeline } from '../components/ui/forms'
-import { int, cx } from '../lib/format'
+import { Bars } from '../components/ui/charts'
+import { series } from '../lib/data'
+import { int, pct, cx } from '../lib/format'
 
+// 完整订阅生命周期 7 态（PDF 6.4 订阅留存与退订体验）：合规退订不是损失，
+// 而是降低投诉、保护商户号、提高长期信任的成本。
 const LIFECYCLE: { t: string; d: string; tone: 'info' | 'good' | 'warn' | 'alert' }[] = [
   { t: '签约', d: '支付宝/微信连续包月', tone: 'info' },
-  { t: '扣费成功', d: '首单确认', tone: 'good' },
+  { t: '激活', d: '权益激活提醒', tone: 'good' },
   { t: '续费中', d: '周期自动扣费', tone: 'good' },
-  { t: '退订', d: '用户主动取消', tone: 'warn' },
-  { t: '退款 / 拒付', d: '触发逆向冲账', tone: 'alert' },
+  { t: '续费前提醒', d: '自动续费前显著提醒', tone: 'info' },
+  { t: '退订', d: '退订前原因收集', tone: 'warn' },
+  { t: '挽留 / 换套餐', d: '暂停 · 降档，优惠挽留', tone: 'info' },
+  { t: 'win-back', d: '退订后召回复订', tone: 'good' },
 ]
 
 const LC_BORDER: Record<'info' | 'good' | 'warn' | 'alert', string> = {
@@ -46,8 +53,10 @@ const LC_BORDER: Record<'info' | 'good' | 'warn' | 'alert', string> = {
 export default function Orders() {
   const { orders } = useStore()
   const toast = useToast()
+  const [view, setView] = useState<'orders' | 'lifecycle'>('orders')
   const [f, setF] = useState<'all' | OrderType>('all')
   const [openId, setOpenId] = useState<string | null>(null)
+  const pop = useAnchoredPopover()
   const [confirm, setConfirm] = useState<string | null>(null)
   const active = orders.find((o) => o.id === openId) ?? null
   const firsts = orders.filter((o) => o.type === 'first').length
@@ -56,6 +65,12 @@ export default function Orders() {
   const cbs = orders.filter((o) => o.type === 'chargeback').length
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
 
+  // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
+  const cohort = series.renewalCohort
+  const d30 = cohort[1] ?? 0
+  const d60 = cohort[2] ?? 0
+  const d90 = cohort[3] ?? 0
+
   return (
     <>
       <PageHeader
@@ -63,12 +78,69 @@ export default function Orders() {
         desc="首单 / 续费 / 退款 / 拒付全生命周期状态机。连续包月真正看的是续费与净 LTV，不是首单。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => toast({ tone: 'good', text: '订单回传已同步' })}><RefreshCcw size={14} /> 同步回传</Button>
+            <Segmented value={view} onChange={setView} options={[{ value: 'orders', label: '订单流' }, { value: 'lifecycle', label: '订阅生命周期' }]} />
+            <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成 · 新增 1 笔续费回传' }) }}><RefreshCcw size={14} /> 同步回传</Button>
             <Button variant="primary" onClick={() => { const csv = '﻿订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '订单对账.csv'; a.click(); URL.revokeObjectURL(a.href); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
           </>
         }
       />
 
+      {view === 'lifecycle' ? (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <Card><Stat label="D30 续费率" value={pct(d30)} deltaTone={d30 >= 60 ? 'good' : 'warn'} sub={<span>判断是否真 LTV</span>} /></Card>
+            <Card><Stat label="D60 / D90 续费率" value={`${pct(d60)} / ${pct(d90)}`} sub={<span>中长期留存</span>} /></Card>
+            <Card><Stat label="退订路径完成率" value="96.4%" deltaTone="good" hint="发起退订并成功完成占比" sub={<span>合规体验 · 越高越好</span>} /></Card>
+            <Card><Stat label="win-back 召回" value="1,243" deltaTone="good" sub={<span>本月退订后复订</span>} /></Card>
+          </div>
+
+          {/* 生命周期 7 态 */}
+          <Card className="mt-4">
+            <CardTitle title="订阅生命周期" desc="签约 → 激活 → 续费 → 续费前提醒 → 退订 → 挽留 → win-back · 合规退订降低投诉、保护商户号" />
+            <div className="flex flex-col gap-2 md:flex-row md:items-center">
+              {LIFECYCLE.map((s, i, arr) => (
+                <div key={s.t} className="flex flex-1 items-center gap-2">
+                  <div className={cx('flex-1 rounded-xl border p-3', LC_BORDER[s.tone], TONE[s.tone].soft)}>
+                    <div className={cx('text-[12.5px] font-medium', TONE[s.tone].ink)}>{s.t}</div>
+                    <div className={cx('mt-0.5 text-[11px]', TONE[s.tone].ink, 'opacity-80')}>{s.d}</div>
+                  </div>
+                  {i < arr.length - 1 && <ArrowRight size={14} className="hidden shrink-0 text-ink-4 md:block" />}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* 留存 cohort */}
+          <Card className="mt-4">
+            <CardTitle title="订阅留存 cohort" desc="首单后逐月仍在订阅占比（D0=100%）· 续费率是 LTV 的核心驱动" />
+            <Bars
+              data={cohort}
+              labels={cohort.map((_, i) => (i === 0 ? 'D0' : `M${i}`))}
+              tone="brand"
+              format={(v) => v + '%'}
+            />
+          </Card>
+
+          {/* 退订与挽留漏斗 */}
+          <Card className="mt-4">
+            <CardTitle title="退订与挽留" desc="退订前原因收集 → 暂停 / 换套餐 / 优惠挽留 → 退订后 win-back" />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {[
+                { k: '发起退订', v: '2,860', tone: 'warn' as const, d: '本月退订意向' },
+                { k: '挽留成功', v: '1,617', tone: 'good' as const, d: '暂停/降档/优惠 · 56.5%' },
+                { k: 'win-back 复订', v: '1,243', tone: 'good' as const, d: '退订后召回复订' },
+              ].map((x) => (
+                <div key={x.k} className={cx('rounded-xl border p-4', LC_BORDER[x.tone], TONE[x.tone].soft)}>
+                  <div className="text-[11.5px] text-ink-3">{x.k}</div>
+                  <div className={cx('tnum mt-1 text-[22px] font-semibold', TONE[x.tone].ink)}>{x.v}</div>
+                  <div className="mt-0.5 text-[11px] text-ink-4">{x.d}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      ) : (
+      <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card><Stat label="今日订单" value="3,184" delta="+8.2%" deltaTone="good" sub={<span>首单 {int(1820)} · 续费 {int(1364)}</span>} /></Card>
         <Card><Stat label="续费 / 首单" value="0.75" hint="续费笔数 ÷ 首单笔数" sub={<span>越高 LTV 越好</span>} /></Card>
@@ -130,14 +202,14 @@ export default function Orders() {
             const b = brandById(o.brandId)!
             const t = ORDER_TYPE[o.type]
             return (
-              <Row key={o.id} onClick={() => setOpenId(o.id)}>
+              <Row key={o.id} onClick={(e) => { setOpenId(o.id); pop.openAt(e) }}>
                 <Td className="pl-3">
                   <div className="tnum text-[12.5px] font-medium text-ink">{o.id}</div>
                   <div className="tnum text-[11px] text-ink-4">今天 {o.time}</div>
                 </Td>
                 <Td>
                   <div className="flex items-center gap-2.5">
-                    <BrandMark mark={b.mark} size={26} />
+                    <BrandMark brand={b.id} mark={b.mark} size={26} />
                     <div>
                       <div className="text-[12.5px] text-ink-2">{o.plan}</div>
                       <div className="text-[11px] text-ink-4">{b.name}</div>
@@ -158,12 +230,14 @@ export default function Orders() {
           })}
         </TableShell>
         <div className="flex items-center justify-between border-t border-line px-5 py-3 text-[12px] text-ink-3">
-          <span>本页 {list.length} 笔 · 首单 {firsts} · 续费 {renews} · 退款 {refunds} · 拒付 {cbs}</span>
+          <span>本页 {list.length} 笔 · 首单 {firsts}，续费 {renews}，退款 {refunds}，拒付 {cbs}</span>
           <span className="text-ink-4">每 5 分钟刷新 · 完整数据见对账中心</span>
         </div>
       </Card>
+      </>
+      )}
 
-      <OrderDrawer order={active} onClose={() => setOpenId(null)} onRefund={() => active && setConfirm(active.id)} />
+      <OrderDrawer order={active} anchor={pop.anchorRect} onClose={() => { setOpenId(null); pop.close() }} onRefund={() => active && setConfirm(active.id)} />
       <Confirm
         open={!!confirm}
         onClose={() => setConfirm(null)}
@@ -177,7 +251,7 @@ export default function Orders() {
   )
 }
 
-function OrderDrawer({ order, onClose, onRefund }: { order: Order | null; onClose: () => void; onRefund: () => void }) {
+function OrderDrawer({ order, anchor, onClose, onRefund }: { order: Order | null; anchor: AnchorRect | null; onClose: () => void; onRefund: () => void }) {
   if (!order) return null
   const b = brandById(order.brandId)
   const a = agentById(order.agentId)
@@ -185,9 +259,10 @@ function OrderDrawer({ order, onClose, onRefund }: { order: Order | null; onClos
   const refunded = order.type === 'refund' || order.type === 'chargeback'
   const isFirst = order.type === 'first'
   return (
-    <Drawer
-      open={!!order}
+    <DetailPopover
+      anchor={anchor}
       onClose={onClose}
+      width={400}
       title={<span className="tnum">{order.id}</span>}
       desc={<span>{b?.name} · 今天 {order.time}</span>}
       footer={
@@ -221,10 +296,6 @@ function OrderDrawer({ order, onClose, onRefund }: { order: Order | null; onClos
           ]}
         />
       </div>
-    </Drawer>
+    </DetailPopover>
   )
-}
-
-function Info({ k, v }: { k: string; v: React.ReactNode }) {
-  return <div className="rounded-lg border border-line p-2.5"><div className="text-[11px] text-ink-4">{k}</div><div className="mt-0.5 font-medium text-ink">{v}</div></div>
 }

@@ -15,29 +15,36 @@ import {
 } from '../components/ui/primitives'
 import { Modal, useToast } from '../components/ui/overlays'
 import { Field, Input, Select } from '../components/ui/forms'
+import { InviteMemberModal, ManageMemberModal } from '../components/ui/MemberModals'
 import { DEMO_USERS, ROLES, PERMISSIONS, type RoleId } from '../lib/auth'
 import { isRealApi } from '../lib/http'
-import { adminApi, useApi } from '../lib/adminApi'
+import { adminApi, bizApi, useApi } from '../lib/adminApi'
 import { cx } from '../lib/format'
 
 const ROLE_IDS = Object.keys(ROLES) as RoleId[]
 const PERM_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))]
 
 // 统一成员/角色视图（mock 用本地常量；real 用服务端数据）
-interface MView { id: string; name: string; account: string; roleId: string; roleName: string }
+interface MView { id: string; name: string; account: string; roleId: string; roleName: string; scopeType: string; scopeId: string | null; status: string }
 interface RView { id: string; name: string; desc: string; perms: string[] }
-const LOCAL_MEMBERS: MView[] = DEMO_USERS.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: ROLES[u.roleId].name }))
+const LOCAL_MEMBERS: MView[] = DEMO_USERS.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: ROLES[u.roleId].name, scopeType: 'platform', scopeId: null, status: 'active' }))
+// scopeType + scopeId → 数据范围中文
+const scopeLabel = (st: string, sid: string | null) => st === 'brand' ? `品牌 · ${sid ?? ''}` : st === 'agent' ? `代理 · ${sid ?? ''}` : '平台级'
 const LOCAL_ROLES: RView[] = ROLE_IDS.map((r) => ({ id: r, name: ROLES[r].name, desc: ROLES[r].desc, perms: ROLES[r].perms }))
 
 export default function Members() {
   const toast = useToast()
   const [tab, setTab] = useState<'members' | 'roles'>('members')
   const [invite, setInvite] = useState(false)
+  const [manageMember, setManageMember] = useState<{ id: string; name: string; roleId: string } | null>(null)
   const [activeRole, setActiveRole] = useState<string>('super')
 
   const membersApi = useApi(() => adminApi.members(), [])
   const rolesApi = useApi(() => adminApi.roles(), [])
-  const members: MView[] = isRealApi ? (membersApi.data ?? []).map((m) => ({ id: m.id, name: m.name, account: m.account, roleId: m.roleId, roleName: m.roleName })) : LOCAL_MEMBERS
+  const members: MView[] = isRealApi ? (membersApi.data ?? []).map((m) => ({ id: m.id, name: m.name, account: m.account, roleId: m.roleId, roleName: m.roleName, scopeType: m.scopeType, scopeId: m.scopeId, status: m.status })) : LOCAL_MEMBERS
+  // 供邀请弹窗选 scope（品牌/代理角色建号需绑定主体）
+  const brandsApi = useApi(() => bizApi.brands<{ id: string; name: string }[]>(), [])
+  const agentsApi = useApi(() => bizApi.agents<{ id: string; name: string }[]>(), [])
   const roles: RView[] = isRealApi ? (rolesApi.data ?? []).map((r) => ({ id: r.id, name: r.name, desc: r.description, perms: r.permissions })) : LOCAL_ROLES
   const activeRoleObj = roles.find((r) => r.id === activeRole) ?? roles[0]
   const cnt = (rid: string) => members.filter((m) => m.roleId === rid).length
@@ -46,7 +53,7 @@ export default function Members() {
     <>
       <PageHeader
         title="成员与角色"
-        desc="RBAC：成员归属角色，角色绑定权限点 + 数据范围。路由级 / 操作级 / 数据级三级控制——品牌只见自己、代理只见自己。"
+        desc="RBAC：成员归属角色，角色绑定权限点 + 数据范围。路由级 / 操作级 / 数据级三级控制：品牌只见自己、代理只见自己。"
         actions={<Button variant="primary" onClick={() => setInvite(true)}><UserPlus size={14} /> 邀请成员</Button>}
       />
 
@@ -75,10 +82,10 @@ export default function Members() {
                 </Td>
                 <Td mono>{u.account}</Td>
                 <Td><Badge tone={u.roleId === 'super' ? 'brand' : u.roleId === 'audit' ? 'neutral' : 'info'}>{u.roleName}</Badge></Td>
-                <Td><span className="text-[12px] text-ink-3">平台级</span></Td>
-                <Td right><Badge tone="good" dot>在职</Badge></Td>
+                <Td><span className="text-[12px] text-ink-3">{scopeLabel(u.scopeType, u.scopeId)}</span></Td>
+                <Td right><Badge tone={u.status === 'disabled' ? 'alert' : 'good'} dot>{u.status === 'disabled' ? '已停用' : '在职'}</Badge></Td>
                 <Td right>
-                  <button onClick={() => toast({ tone: 'info', text: `${u.name}：改角色 / 停用（演示）` })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>
+                  <button onClick={() => setManageMember({ id: u.id, name: u.name, roleId: u.roleId })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>
                 </Td>
               </Row>
             ))}
@@ -119,16 +126,8 @@ export default function Members() {
         )}
       </Card>
 
-      <Modal open={invite} onClose={() => setInvite(false)} title="邀请成员" footer={<><Button variant="ghost" onClick={() => setInvite(false)}>取消</Button><button onClick={() => { setInvite(false); toast({ tone: 'good', text: '邀请已发送' }) }} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">发送邀请</button></>}>
-        <div className="space-y-3.5">
-          <Field label="账号（手机号 / 邮箱）" required><Input placeholder="name@youdao.com" /></Field>
-          <Field label="姓名"><Input placeholder="张三" /></Field>
-          <Field label="角色">
-            <Select defaultValue="ops">{ROLE_IDS.map((r) => <option key={r} value={r}>{ROLES[r].name}</option>)}</Select>
-          </Field>
-          <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">成员将收到邀请，设置密码后按所选角色获得权限；数据范围默认平台级，品牌/代理租户可限定到具体主体。</div>
-        </div>
-      </Modal>
+      {invite && <InviteMemberModal scopeOptions={{ brands: brandsApi.data ?? [], agents: agentsApi.data ?? [] }} onClose={() => setInvite(false)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
+      {manageMember && <ManageMemberModal member={manageMember} onClose={() => setManageMember(null)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
     </>
   )
 }

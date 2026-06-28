@@ -2,29 +2,29 @@
 
 @theme {
   /* ── Surfaces ──────────────────────────────── */
-  --color-canvas: #f5f6f7;
+  --color-canvas: #f4f5f7;
   --color-surface: #ffffff;
-  --color-surface-muted: #f7f8f9;
-  --color-surface-sunken: #eef0f3;
+  --color-surface-muted: #f6f7f9;
+  --color-surface-sunken: #eceef1;
+  --color-rail: #fbfcfd; /* 侧栏底色（原硬编码 #fbfcfd 提为令牌） */
 
   /* ── Ink / text ────────────────────────────── */
   --color-ink: #14151a;
-  --color-ink-2: #5a5f68;
+  --color-ink-2: #565b64;
   --color-ink-3: #868b95;
-  --color-ink-4: #a3a8b0;
-  --color-ink-5: #aeb3bb;
+  --color-ink-4: #a6abb3; /* 合并原 ink-4/ink-5 为单一弱化阶 */
+  --color-ink-5: #a6abb3; /* 别名保留，避免连锁改动；与 ink-4 同值 */
   --color-hairtick: #cdd1d7;
 
   /* ── Hairlines ─────────────────────────────── */
-  --color-line: rgba(20, 21, 26, 0.1);
-  --color-line-strong: rgba(20, 21, 26, 0.14);
+  --color-line: rgba(20, 21, 26, 0.08);
+  --color-line-strong: rgba(20, 21, 26, 0.13);
 
   /* ── Brand accent (vivid instrument red) ───── */
   --color-brand: #f5333b;
   --color-brand-hover: #e11f28;
   --color-brand-soft: #fdebec;
   --color-brand-ink: #b3161d;
-  --color-brand-2: #fa8a8f;
 
   /* ── Semantic ──────────────────────────────── */
   --color-good: #0f7a45;
@@ -47,12 +47,9 @@
   --color-violet-soft: #efebfc;
   --color-violet-ink: #3f2c8c;
 
-  /* health ramp */
-  --color-h1: #0f7a45;
-  --color-h2: #8aa81b;
-  --color-h3: #c1820f;
-  --color-h4: #d9601f;
-  --color-h5: #cf3b3b;
+  /* ── Neutral tone (Badge/soft surfaces) ────── */
+  --color-neutral-soft: #eeeff0; /* 原硬编码 #efefec → 中性灰底 */
+  --color-soft-hover: #e7e9ec; /* soft 按钮 hover（原硬编码 #e6e8eb） */
 
   /* ── Radii (sharper, instrument) ───────────── */
   --radius-sm: 4px;
@@ -115,7 +112,7 @@ summary,
 :focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 :focus:not(:focus-visible) {
   outline: none;
@@ -141,23 +138,12 @@ summary,
   letter-spacing: -0.01em;
 }
 
-/* semantic type scale (use going forward to reduce px drift) */
-.t-meta {
-  font-size: 11px;
-  line-height: 1.45;
-}
-.t-label {
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.t-body {
-  font-size: 13px;
-  line-height: 1.6;
-}
-.t-title {
-  font-size: 14px;
+/* page-level heading token — collapses the 21/22/24px drift to one named step */
+.t-h1 {
+  font-size: 20px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.25;
+  letter-spacing: -0.011em;
 }
 
 ::selection {
@@ -259,4 +245,83 @@ summary,
 
 .animate-in {
   animation: revUpSm 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 弹性弹入（选中勾选、徽标）——轻微过冲，质感更"实" */
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  70% {
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-pop {
+  animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 行揭示（优惠行淡入）——仅动 opacity/transform（合成层），不动 max-height 以免逐帧重排 + 裁剪 */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-row {
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 骨架微光 */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface-sunken);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-line) 50%, transparent), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+/* 错落延迟：给网格子项加阶梯进入（配合 .animate-in / .animate-pop） */
+.stagger > * {
+  animation: revUpSm 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+.stagger > *:nth-child(n + 9) { animation-delay: 0.34s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-in,
+  .animate-pop,
+  .animate-row,
+  .stagger > * {
+    animation: none;
+  }
+  .skeleton::after {
+    animation: none;
+  }
 }

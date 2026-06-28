@@ -18,6 +18,7 @@ import {
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
 import { Drawer, Modal, useToast } from '../components/ui/overlays'
+import { DetailPopover, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Timeline, Field, Select, Input } from '../components/ui/forms'
 import {
   brandById,
@@ -28,6 +29,7 @@ import {
   type MerchantAccount,
 } from '../lib/data'
 import { useStore, setMerchantState, addMerchant } from '../lib/store'
+import { useViewMode } from '../lib/prefs'
 import { money, int, pct, cx } from '../lib/format'
 
 const STATES: { key: MerchantState; desc: string }[] = [
@@ -40,10 +42,13 @@ const STATES: { key: MerchantState; desc: string }[] = [
 
 export default function Merchants() {
   const { merchants, brands } = useStore()
+  const expert = useViewMode() === 'expert'
   const toast = useToast()
   const [filter, setFilter] = useState<'all' | 'risk'>('all')
   const [openId, setOpenId] = useState<string | null>(null)
+  const pop = useAnchoredPopover()
   const [newOpen, setNewOpen] = useState(false)
+  const [routeOpen, setRouteOpen] = useState(false)
   const [nf, setNf] = useState({ brandId: brands[0].id, channel: 'wechat' as 'wechat' | 'alipay' | 'bank', weight: 30 })
   const activeM = merchants.find((m) => m.id === openId) ?? null
   const counts = {
@@ -62,10 +67,10 @@ export default function Merchants() {
     <>
       <PageHeader
         title="商户号 · 号池"
-        desc="号池按品牌严格隔离 · 投诉率/升级投诉率逼近阈值自动降权与熔断 · 健康度反向控制投放。"
+        desc="号池按品牌严格隔离 · 投诉率/升级投诉率逼近阈值自动降权与熔断，健康度反向控制投放。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => toast({ tone: 'info', text: '路由日志：按健康度加权分配进单，详见每笔分配明细' })}>
+            <Button variant="ghost" onClick={() => setRouteOpen(true)}>
               <Activity size={14} /> 路由日志
             </Button>
             <Button variant="primary" onClick={() => setNewOpen(true)}>新增商户号</Button>
@@ -97,7 +102,7 @@ export default function Merchants() {
       <Card className="mt-4">
         <CardTitle
           title="商户号健康状态机"
-          desc="支付平台管控口径 · 投诉率<1%（近7天累计）· 升级投诉<0.1% · 72h 完结率≥95%"
+          desc="支付平台管控口径 · 投诉率<1%（近7天累计），升级投诉<0.1%，72h 完结率≥95%"
         />
         <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
           {STATES.map((s, i) => {
@@ -121,12 +126,13 @@ export default function Merchants() {
           <Zap size={15} className="mt-0.5 shrink-0 text-warn-ink" />
           <span>
             <span className="font-medium text-ink-2">投放联动与管控升级：</span>
-            逼近红线时平台先内部降低进单权重并收紧投放（早于支付平台管控）。一旦被支付平台暂停新签：首次 7 天、二次 21 天、三次有暂停交易风险——其中「暂停新签」仅限制新订单，老订单续费照常。把投诉率作为投放的第二目标函数（第一为 ROI / LTV）。
+            逼近红线时平台先内部降低进单权重并收紧投放（早于支付平台管控）。一旦被支付平台暂停新签：首次 7 天、二次 21 天、三次有暂停交易风险，其中「暂停新签」仅限制新订单，老订单续费照常。把投诉率作为投放的第二目标函数（第一为 ROI / LTV）。
           </span>
         </div>
       </Card>
 
-      {/* 智能路由 + 号池隔离 */}
+      {/* 智能路由 + 号池隔离（机制说明，专家视图展开） */}
+      {expert && (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardTitle title="智能进单路由" desc="实时按健康度分配权重" right={<Badge tone="good" dot>运行中</Badge>} />
@@ -160,7 +166,7 @@ export default function Merchants() {
               const tone = MERCHANT_STATE[worstState].tone
               return (
                 <div key={b.id} className="flex items-center gap-3 rounded-xl border border-line p-3">
-                  <BrandMark mark={b.mark} size={30} />
+                  <BrandMark brand={b.id} mark={b.mark} size={30} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12.5px] font-medium text-ink">{b.name}</div>
                     <div className="mt-0.5 flex items-center gap-1.5">
@@ -181,6 +187,7 @@ export default function Merchants() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* 明细表 */}
       <Card className="mt-4" pad={false}>
@@ -221,8 +228,8 @@ export default function Merchants() {
               return (
                 <Row key={m.id}>
                   <Td className="pl-3">
-                    <button onClick={() => setOpenId(m.id)} className="flex items-center gap-2.5 text-left">
-                      <BrandMark mark={b.mark} size={26} />
+                    <button onClick={(e) => { setOpenId(m.id); pop.openAt(e) }} className="flex items-center gap-2.5 text-left">
+                      <BrandMark brand={b.id} mark={b.mark} size={26} />
                       <div>
                         <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{m.id}</div>
                         <div className="text-[11px] text-ink-4">{m.mid}</div>
@@ -265,13 +272,14 @@ export default function Merchants() {
         <ShieldAlert size={16} className="mt-0.5 shrink-0 text-ink-3" />
         <span>
           <span className="font-medium text-ink-2">合规主体：</span>
-          商户号原则上由品牌方提供并承担主体责任（直连模式天然如此）。平台不大量自持商户号「借通道」给品牌——既规避二清，也规避合规主体责任风险。每个品牌建议准备 ≥2 个商户号 / ≥2 条通道做容灾。
+          商户号原则上由品牌方提供并承担主体责任（直连模式天然如此）。平台不大量自持商户号「借通道」给品牌，既规避二清，也规避合规主体责任风险。每个品牌建议准备 ≥2 个商户号 / ≥2 条通道做容灾。
         </span>
       </div>
 
       <MerchantDrawer
         m={activeM}
-        onClose={() => setOpenId(null)}
+        anchor={pop.anchorRect}
+        onClose={() => { setOpenId(null); pop.close() }}
         onFuse={() => { if (activeM) { setMerchantState(activeM.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${activeM.id} 已熔断下线` }) } }}
         onPause={() => { if (activeM) { setMerchantState(activeM.id, 'paused', '暂停新签·21天'); toast({ tone: 'warn', text: `${activeM.id} 已暂停新签` }) } }}
         onResume={() => { if (activeM) { setMerchantState(activeM.id, 'healthy', '健康'); toast({ tone: 'good', text: `${activeM.id} 已恢复进单` }) } }}
@@ -287,11 +295,43 @@ export default function Merchants() {
           <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">商户号由品牌方提供并承担主体责任。录入后默认「健康」，按健康度加权进单；逼近红线自动降权/熔断。</div>
         </div>
       </Modal>
+
+      <Drawer open={routeOpen} onClose={() => setRouteOpen(false)} title="进单路由分配明细" desc={<span>按号池权重加权分配 · 健康度低的少给或不给</span>}>
+        <div className="space-y-4">
+          {brandsWithPools.map((b) => {
+            const pool = merchants.filter((m) => m.brandId === b.id)
+            const wsum = pool.reduce((s, m) => s + m.weight, 0) || 1
+            return (
+              <div key={b.id} className="rounded-lg border border-line p-3">
+                <div className="mb-2 flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="text-[12.5px] font-medium text-ink">{b.name}</span></div>
+                <div className="space-y-2">
+                  {pool.map((m) => {
+                    const share = (m.weight / wsum) * 100
+                    const st = MERCHANT_STATE[m.state]
+                    return (
+                      <div key={m.id}>
+                        <div className="mb-1 flex items-center justify-between text-[11.5px]">
+                          <span className="tnum text-ink-2">{m.mid}</span>
+                          <span className="flex items-center gap-2"><Badge tone={st.tone}>{st.label}</Badge><span className="tnum text-ink-3">{m.weight === 0 ? '不分流' : share.toFixed(0) + '%'}</span></span>
+                        </div>
+                        <Meter value={share} tone={m.weight === 0 ? 'alert' : m.state === 'healthy' ? 'good' : 'warn'} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+          <div className="rounded-lg border border-dashed border-line bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">
+            <span className="font-medium text-ink-2">路由规则：</span>新订单按各商户号 weight 占比加权分配；熔断（weight=0）的号不再进单；投诉率逼近阈值自动降权。
+          </div>
+        </div>
+      </Drawer>
     </>
   )
 }
 
-function MerchantDrawer({ m, onClose, onFuse, onPause, onResume }: { m: MerchantAccount | null; onClose: () => void; onFuse: () => void; onPause: () => void; onResume: () => void }) {
+function MerchantDrawer({ m, anchor, onClose, onFuse, onPause, onResume }: { m: MerchantAccount | null; anchor: AnchorRect | null; onClose: () => void; onFuse: () => void; onPause: () => void; onResume: () => void }) {
   if (!m) return null
   const b = brandById(m.brandId)!
   const st = MERCHANT_STATE[m.state]
@@ -308,11 +348,12 @@ function MerchantDrawer({ m, onClose, onFuse, onPause, onResume }: { m: Merchant
     ...(st.step >= 2 ? [{ title: st.label, desc: '阈值触发 · 自动降权 + 收紧投放', tone: 'alert' as const, done: true }] : []),
   ]
   return (
-    <Drawer
-      open={!!m}
+    <DetailPopover
+      anchor={anchor}
       onClose={onClose}
+      width={400}
       title={<span className="tnum">{m.id}</span>}
-      desc={<span>{b.name} · {CHANNEL_LABEL[m.channel]} · {m.mid}</span>}
+      desc={<span>{b.name} · {CHANNEL_LABEL[m.channel]}，{m.mid}</span>}
       footer={
         m.state === 'healthy' ? (
           <>
@@ -328,7 +369,7 @@ function MerchantDrawer({ m, onClose, onFuse, onPause, onResume }: { m: Merchant
       }
     >
       <div className="flex items-center justify-between rounded-lg border border-line bg-surface-muted p-3.5">
-        <div><div className="text-[11px] text-ink-4">当前状态 · 进单权重 {m.weight}</div><div className="tnum mt-0.5 text-[15px] font-semibold text-ink">{money(m.gmvMtd)} · {int(m.txCount)} 笔</div></div>
+        <div><div className="text-[11px] text-ink-4">当前状态 · 进单权重 {m.weight}</div><div className="tnum mt-0.5 text-[15px] font-semibold text-ink">{money(m.gmvMtd)}，{int(m.txCount)} 笔</div></div>
         <Badge tone={st.tone} dot>{st.label}</Badge>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -347,6 +388,6 @@ function MerchantDrawer({ m, onClose, onFuse, onPause, onResume }: { m: Merchant
         <div className="mb-2.5 flex items-center gap-2"><span className="h-[7px] w-[7px] bg-brand" /><span className="text-[13px] font-semibold">状态变更历史</span></div>
         <Timeline items={history} />
       </div>
-    </Drawer>
+    </DetailPopover>
   )
 }

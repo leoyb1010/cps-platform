@@ -26,16 +26,10 @@ import { Meter } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
 import { Field, Select, Input } from '../components/ui/forms'
 import { brandById, agentById } from '../lib/data'
+import { useStore, addRule, updateRule, toggleRule, type RiskRule } from '../lib/store'
 import { cx } from '../lib/format'
 
-const RULES = [
-  { name: '同设备 / IP 批量', cond: '同设备 60 分钟内 ≥ 5 单', action: '降权 + 复核', on: true },
-  { name: '空包单 / 秒退单', cond: '24h 内退款 ≤ 5 分钟占比 > 20%', action: '限流', on: true },
-  { name: '模拟器农场', cond: '设备指纹命中模拟器特征', action: '拦截', on: true },
-  { name: '异常退款集中', cond: '单代理日退款率 > 8%', action: '冻结结算', on: true },
-  { name: '归因劫持', cond: '点击-转化时差 < 3 秒', action: '拦截 + 告警', on: true },
-  { name: '异常转化时差', cond: '曝光-转化 < 2 秒', action: '限流', on: false },
-]
+const ACTIONS = ['降权 + 复核', '限流', '拦截', '拦截 + 告警', '冻结结算']
 
 const SIGNALS = [
   { icon: Fingerprint, name: '同设备 / IP 批量', hits: 142, tone: 'alert' as const },
@@ -62,20 +56,17 @@ const DEFENSE = [
 
 export default function Risk() {
   const toast = useToast()
-  const [rules, setRules] = useState(RULES)
+  const { rules } = useStore()
   const [cfg, setCfg] = useState(false)
-  const [editIdx, setEditIdx] = useState<number | null>(null)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const editRule = rules.find((r) => r.id === editId) ?? null
   return (
     <>
       <PageHeader
         title="风控中心"
-        desc="事前 / 事中 / 事后三道防线。投诉率是投放的第二目标函数 —— 风控不仅在支付侧，更要能踩投放的刹车。"
-        actions={
-          <>
-            <Button variant="ghost" onClick={() => setCfg(true)}>规则配置</Button>
-            <Button variant="primary" onClick={() => toast({ tone: 'info', text: '风控大盘已是当前页' })}><ShieldAlert size={14} /> 风控大盘</Button>
-          </>
-        }
+        desc="事前 / 事中 / 事后三道防线。投诉率是投放的第二目标函数：风控不仅在支付侧，更要能踩投放的刹车。"
+        actions={<Button variant="ghost" onClick={() => setCfg(true)}>规则配置</Button>}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -93,7 +84,7 @@ export default function Risk() {
               <span className={cx('grid h-7 w-7 place-items-center rounded-lg text-[12px] font-semibold', i === 0 ? 'bg-info-soft text-info-ink' : i === 1 ? 'bg-warn-soft text-warn-ink' : 'bg-good-soft text-good-ink')}>{i + 1}</span>
               <div>
                 <span className="text-[11px] text-ink-4">{d.phase}</span>
-                <h3 className="text-[13.5px] font-semibold text-ink">{d.title}</h3>
+                <h3 className="text-[14px] font-semibold text-ink">{d.title}</h3>
               </div>
             </div>
             <ul className="space-y-1.5">
@@ -140,7 +131,7 @@ export default function Risk() {
                 <Row key={i}>
                   <Td className="pl-3 tnum text-[12px] text-ink-4">{e.time}</Td>
                   <Td><span className="text-[12.5px] font-medium text-ink">{a?.name ?? e.agentId}</span><div className="text-[11px] text-ink-4">{e.agentId}</div></Td>
-                  <Td><div className="flex items-center gap-2"><BrandMark mark={b.mark} size={22} /><span className="text-[12px] text-ink-3">{b.name.slice(0, 5)}</span></div></Td>
+                  <Td><div className="flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="text-[12px] text-ink-3">{b.name.slice(0, 5)}</span></div></Td>
                   <Td><span className="text-[12px] text-ink-2">{e.sig}</span></Td>
                   <Td right><Badge tone={e.tone}>{e.action}</Badge></Td>
                 </Row>
@@ -152,20 +143,20 @@ export default function Risk() {
 
       <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-line bg-surface p-4 text-[12.5px] leading-relaxed text-ink-3">
         <ShieldAlert size={16} className="mt-0.5 shrink-0 text-ink-3" />
-        <span><span className="font-medium text-ink-2">投放刹车联动：</span>当某品牌某商户号投诉率逼近阈值，风控自动收紧该品牌投放量、提示代理降速、暂停高客诉素材——避免代理为冲量牺牲号的健康。第一目标函数为 ROI/LTV，第二目标函数为投诉率。</span>
+        <span><span className="font-medium text-ink-2">投放刹车联动：</span>当某品牌某商户号投诉率逼近阈值，风控自动收紧该品牌投放量、提示代理降速、暂停高客诉素材，避免代理为冲量牺牲号的健康。第一目标函数为 ROI/LTV，第二目标函数为投诉率。</span>
       </div>
 
       <Modal open={cfg} onClose={() => setCfg(false)} width={560} title="风控规则引擎" footer={<Button variant="ghost" onClick={() => setCfg(false)}>关闭</Button>}>
         <div className="mb-3 text-[12px] text-ink-3">条件 → 阈值 → 动作。点规则可编辑阈值与处置动作。</div>
         <div className="space-y-2">
-          {rules.map((r, i) => (
-            <div key={r.name} className="flex items-center gap-3 rounded-lg border border-line p-3">
-              <button onClick={() => setEditIdx(i)} className="min-w-0 flex-1 text-left">
+          {rules.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 rounded-lg border border-line p-3">
+              <button onClick={() => setEditId(r.id)} className="min-w-0 flex-1 text-left">
                 <div className="text-[12.5px] font-medium text-ink transition-colors hover:text-brand">{r.name}</div>
                 <div className="mt-0.5 text-[11px] text-ink-4">{r.cond} → <span className="text-ink-3">{r.action}</span></div>
               </button>
               <button
-                onClick={() => { setRules((rs) => rs.map((x, k) => (k === i ? { ...x, on: !x.on } : x))); toast({ tone: r.on ? 'warn' : 'good', text: `${r.name} 已${r.on ? '停用' : '启用'}` }) }}
+                onClick={() => { toggleRule(r.id); toast({ tone: r.on ? 'warn' : 'good', text: `${r.name} 已${r.on ? '停用' : '启用'}` }) }}
                 className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', r.on ? 'bg-ink' : 'bg-line-strong')}
               >
                 <span className={cx('absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all', r.on ? 'left-[18px]' : 'left-[2px]')} />
@@ -173,23 +164,40 @@ export default function Risk() {
             </div>
           ))}
         </div>
-        <Button variant="soft" className="mt-3 w-full justify-center" onClick={() => toast({ tone: 'info', text: '新规则草稿已创建（演示）' })}>+ 新增规则</Button>
+        <Button variant="soft" className="mt-3 w-full justify-center" onClick={() => setAddOpen(true)}>+ 新增规则</Button>
       </Modal>
 
-      <Modal
-        open={editIdx !== null}
-        onClose={() => setEditIdx(null)}
-        title="编辑规则"
-        footer={<><Button variant="ghost" onClick={() => setEditIdx(null)}>取消</Button><button onClick={() => { setEditIdx(null); toast({ tone: 'good', text: '规则已保存' }) }} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}
-      >
-        {editIdx !== null && (
-          <div className="space-y-3.5">
-            <Field label="规则名称"><Input defaultValue={rules[editIdx].name} /></Field>
-            <Field label="触发条件"><Input defaultValue={rules[editIdx].cond} /></Field>
-            <Field label="处置动作"><Select defaultValue={rules[editIdx].action}><option>降权 + 复核</option><option>限流</option><option>拦截</option><option>拦截 + 告警</option><option>冻结结算</option></Select></Field>
-          </div>
-        )}
-      </Modal>
+      {editRule && <RuleEditModal key={editRule.id} rule={editRule} onClose={() => setEditId(null)} onSaved={() => toast({ tone: 'good', text: '规则已保存' })} />}
+      {addOpen && <RuleAddModal onClose={() => setAddOpen(false)} onSaved={(n) => toast({ tone: 'good', text: `规则「${n}」已新增` })} />}
     </>
+  )
+}
+
+function RuleEditModal({ rule, onClose, onSaved }: { rule: RiskRule; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ name: rule.name, cond: rule.cond, action: rule.action })
+  const save = () => { updateRule(rule.id, form); onClose(); onSaved() }
+  return (
+    <Modal open onClose={onClose} title="编辑规则" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={save} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
+      <div className="space-y-3.5">
+        <Field label="规则名称"><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} /></Field>
+        <Field label="触发条件"><Input value={form.cond} onChange={(e) => setForm((f) => ({ ...f, cond: e.target.value }))} /></Field>
+        <Field label="处置动作"><Select value={form.action} onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))}>{ACTIONS.map((a) => <option key={a}>{a}</option>)}</Select></Field>
+      </div>
+    </Modal>
+  )
+}
+
+function RuleAddModal({ onClose, onSaved }: { onClose: () => void; onSaved: (name: string) => void }) {
+  const [form, setForm] = useState({ name: '', cond: '', action: ACTIONS[0] })
+  const canSave = form.name.trim() && form.cond.trim()
+  const save = () => { if (!canSave) return; addRule(form); onClose(); onSaved(form.name) }
+  return (
+    <Modal open onClose={onClose} title="新增风控规则" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button disabled={!canSave} onClick={save} className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', canSave ? 'bg-brand hover:bg-brand-hover' : 'cursor-not-allowed bg-ink-4')}>新增</button></>}>
+      <div className="space-y-3.5">
+        <Field label="规则名称" required><Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="如：夜间异常下单" /></Field>
+        <Field label="触发条件" required><Input value={form.cond} onChange={(e) => setForm((f) => ({ ...f, cond: e.target.value }))} placeholder="如：00:00–06:00 单代理下单 > 100" /></Field>
+        <Field label="处置动作"><Select value={form.action} onChange={(e) => setForm((f) => ({ ...f, action: e.target.value }))}>{ACTIONS.map((a) => <option key={a}>{a}</option>)}</Select></Field>
+      </div>
+    </Modal>
   )
 }

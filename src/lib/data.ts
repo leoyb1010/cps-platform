@@ -547,6 +547,85 @@ export const settlements: Settlement[] = [
   { id: 'S-2405-KP', period: '2026-05 月结', brandId: 'keep', gross: 3520000, brandShare: 1936000, platformFee: 269280, agentPayout: 888320, reserve: 387200, reversal: 39200, frozen: 387200, status: 'cleared', reconcileDiff: 0 },
 ]
 
+/* ---------- 增长合约（订阅增长交易：品牌发单 / 渠道接单） ---------- */
+// PDF 7.1：会员互销网络重构为"品牌增长合约市场"。每笔互销/分销都写清条款，不做开放市场。
+
+export type SettleModel = 'cps_share' | 'floor_tiered' | 'mutual_quota'
+export const SETTLE_MODEL_LABEL: Record<SettleModel, { label: string; desc: string }> = {
+  cps_share: { label: 'CPS 分成', desc: '成熟商品·成熟渠道' },
+  floor_tiered: { label: '保底 + 阶梯', desc: '品牌要确定性曝光/销量' },
+  mutual_quota: { label: '互销额度', desc: '双方都有渠道与会员商品' },
+}
+
+export type ContractStatus = 'draft' | 'open' | 'active' | 'fulfilling' | 'settling' | 'closed' | 'breached'
+export const CONTRACT_STATUS: Record<ContractStatus, { label: string; tone: Tone }> = {
+  draft: { label: '草稿', tone: 'neutral' },
+  open: { label: '挂单中', tone: 'info' },
+  active: { label: '执行中', tone: 'good' },
+  fulfilling: { label: '履约中', tone: 'good' },
+  settling: { label: '结算中', tone: 'info' },
+  closed: { label: '已结束', tone: 'neutral' },
+  breached: { label: '违约', tone: 'alert' },
+}
+
+export interface GrowthContract {
+  id: string
+  brandId: string
+  agentId: string | null
+  status: ContractStatus
+  settleModel: SettleModel
+  ltvWindow: 'D30' | 'D60' | 'D90'
+  complaintLiability: 'agent' | 'brand' | 'shared'
+  reservePct: number
+  targetGmv: number
+  achievedGmv: number
+  userLimit: string // 人群限制摘要
+  breachNote: string // 违约处理摘要
+  signedAt: string | null
+}
+export const COMPLAINT_LIABILITY_LABEL: Record<'agent' | 'brand' | 'shared', string> = {
+  agent: '渠道承担', brand: '品牌承担', shared: '双方共担',
+}
+
+export const contracts: GrowthContract[] = [
+  { id: 'GC-2406-01', brandId: 'youdao', agentId: 'A-2041', status: 'active', settleModel: 'cps_share', ltvWindow: 'D30', complaintLiability: 'agent', reservePct: 8, targetGmv: 6000000, achievedGmv: 4180000, userLimit: '仅新客 · 泛知识人群', breachNote: '未达标扣减保证金', signedAt: '2026-06-01' },
+  { id: 'GC-2406-02', brandId: 'mango', agentId: 'A-1188', status: 'fulfilling', settleModel: 'floor_tiered', ltvWindow: 'D60', complaintLiability: 'shared', reservePct: 14, targetGmv: 5000000, achievedGmv: 2360000, userLimit: '仅新客 · 华东/华南', breachNote: '缺口顺延下期', signedAt: '2026-06-03' },
+  { id: 'GC-2406-03', brandId: 'zhihu', agentId: null, status: 'open', settleModel: 'mutual_quota', ltvWindow: 'D30', complaintLiability: 'brand', reservePct: 10, targetGmv: 1000000, achievedGmv: 0, userLimit: '不限新老 · 职场人群', breachNote: '—', signedAt: null },
+  { id: 'GC-2405-08', brandId: 'wps', agentId: 'A-3372', status: 'settling', settleModel: 'cps_share', ltvWindow: 'D30', complaintLiability: 'agent', reservePct: 7, targetGmv: 3000000, achievedGmv: 3120000, userLimit: '仅新客 · 办公人群', breachNote: '已超额达成', signedAt: '2026-05-12' },
+  { id: 'GC-2405-05', brandId: 'keep', agentId: 'A-6093', status: 'breached', settleModel: 'floor_tiered', ltvWindow: 'D60', complaintLiability: 'shared', reservePct: 11, targetGmv: 2000000, achievedGmv: 640000, userLimit: '仅新客 · 健身人群', breachNote: '严重缺口·扣保证金并冻结', signedAt: '2026-05-04' },
+]
+
+/* ---------- AIGC 素材实验（PDF 7.3：素材实验系统，不是普通生图工具） ---------- */
+// 差异化 = 素材→投放→订阅→续费→投诉→退款的闭环数据，按 LTV 排名而非 CTR。
+
+export type CreativeType = 'image' | 'video' | 'copy'
+export const CREATIVE_TYPE_LABEL: Record<CreativeType, string> = { image: '图片', video: '短视频', copy: '文案' }
+export type AigcStatus = 'generating' | 'live' | 'collected' | 'archived'
+export const AIGC_STATUS: Record<AigcStatus, { label: string; tone: Tone }> = {
+  generating: { label: '生成中', tone: 'info' },
+  live: { label: '投放中', tone: 'good' },
+  collected: { label: '已回收数据', tone: 'neutral' },
+  archived: { label: '已归档', tone: 'warn' },
+}
+export interface AigcAsset {
+  id: string
+  name: string
+  type: CreativeType
+  brandId: string // 关联投放品牌（接 CPS 链路）
+  credits: number // 消耗积分
+  ctr: number // 点击率 %
+  cvr: number // 转化率 %
+  ltv: number // 素材维度净 LTV（元）—— 排名依据
+  status: AigcStatus
+}
+export const aigcAssets: AigcAsset[] = [
+  { id: 'AI-3301', name: '有道词典·考研冲刺图', type: 'image', brandId: 'youdao', credits: 120, ctr: 4.8, cvr: 3.1, ltv: 104, status: 'collected' },
+  { id: 'AI-3302', name: '芒果会员·热剧短视频', type: 'video', brandId: 'mango', credits: 480, ctr: 6.2, cvr: 2.4, ltv: 78, status: 'live' },
+  { id: 'AI-3303', name: 'WPS·职场效率文案', type: 'copy', brandId: 'wps', credits: 40, ctr: 3.5, cvr: 2.9, ltv: 96, status: 'collected' },
+  { id: 'AI-3304', name: '喜马拉雅·助眠图', type: 'image', brandId: 'ximalaya', credits: 120, ctr: 5.1, cvr: 1.8, ltv: 52, status: 'generating' },
+]
+export const aigcCredits = 84200 // 积分余额
+
 /* ---------- KPI / 大盘 ---------- */
 
 export const kpi = {
@@ -565,7 +644,24 @@ export const kpi = {
   activeSubs: 797200, // = 各品牌 activeSubs 之和
   activeAgents: 186,
   liveBrands: 6,
+  // 北极星 R-NSC（风险调整后净订阅贡献）= 基础流水 − 各成本项。明细见 RNSC_BREAKDOWN（∑ 恰等；部分含估算系数，已诚实标注）。
+  rnscMtd: 9228000,
+  rnscTarget: 11000000, // 本月目标
+  rnscPrevMtd: 8710000, // 上月，用于环比
 }
+
+// R-NSC 瀑布分解：收入项为正、成本项为负，∑ = rnscMtd。供归因页瀑布图与口径透明展示（estimated 标注估算项）。
+export const RNSC_BREAKDOWN: { label: string; value: number; estimated?: boolean }[] = [
+  { label: '基础流水（首单+续费）', value: 28420000 },
+  { label: '挽回收入', value: 1240000, estimated: true },
+  { label: '渠道分润', value: -12860000 },
+  { label: '退款 / 拒付', value: -1820000 },
+  { label: '投诉成本', value: -640000, estimated: true },
+  { label: '风险准备金', value: -2118000 },
+  { label: '投流成本', value: -2160000 },
+  { label: '素材成本', value: -410000, estimated: true },
+  { label: '商户号风险成本', value: -424000, estimated: true },
+]
 
 /* ---------- 时间序列（确定性，便于稳定渲染） ---------- */
 

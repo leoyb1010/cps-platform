@@ -22,6 +22,10 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'market.view', label: '选品市场', group: '业务' },
   { key: 'order.read', label: '查看订单', group: '交易与资金' },
   { key: 'order.refund', label: '退款/退订', group: '交易与资金' },
+  { key: 'contract.read', label: '查看增长合约', group: '交易与资金' },
+  { key: 'contract.write', label: '创建/接单增长合约', group: '交易与资金' },
+  { key: 'barter.view', label: '资源置换台账', group: '业务板块' },
+  { key: 'aigc.view', label: 'AIGC 素材实验', group: '业务板块' },
   { key: 'settlement.read', label: '查看清结算', group: '交易与资金' },
   { key: 'settlement.clear', label: '发起结算/核销/提现', group: '交易与资金' },
   { key: 'merchant.read', label: '查看号池', group: '交易与资金' },
@@ -35,11 +39,19 @@ export const PERMISSIONS: PermDef[] = [
   { key: 'config.write', label: '平台配置', group: '系统' },
   { key: 'member.manage', label: '成员与角色', group: '系统' },
   { key: 'audit.read', label: '操作审计', group: '系统' },
+  { key: 'product.read', label: '订阅商品查看/审核', group: '交易与资金' },
+  { key: 'product.write', label: '订阅商品审核/规则', group: '交易与资金' },
+  { key: 'barter.write', label: '资源置换创建/流转', group: '业务板块' },
 ]
 const ALL = PERMISSIONS.map((p) => p.key)
 
+/* ── 客户门户权限点（与后端 PORTAL_PERMISSIONS 镜像；real 模式以服务端下发为准）──
+   独立于内部 PERMISSIONS，不并入 ALL，保持 super 内部权限计数稳定。 */
+export const BRAND_PERMS = ['portal.brand.home', 'portal.brand.orders', 'portal.brand.settlement', 'portal.brand.onboarding', 'portal.brand.tickets', 'portal.brand.contracts', 'portal.brand.products', 'portal.aigc']
+export const AGENT_PERMS = ['portal.agent.home', 'portal.agent.market', 'portal.agent.plans', 'portal.agent.payouts', 'portal.agent.credit', 'portal.agent.contracts', 'portal.agent.tickets', 'portal.aigc']
+
 /* ── 角色 → 权限点（与 v4 §4 预设角色一致） ── */
-export type RoleId = 'super' | 'finance' | 'risk' | 'ops' | 'audit'
+export type RoleId = 'super' | 'finance' | 'risk' | 'ops' | 'audit' | 'teamadmin' | 'brand' | 'agent'
 export interface Role {
   id: RoleId
   name: string
@@ -52,7 +64,7 @@ export const ROLES: Record<RoleId, Role> = {
     id: 'finance',
     name: '财务 / 清结算',
     desc: '结算·对账·提现·发票',
-    perms: ['dashboard.view', 'order.read', 'settlement.read', 'settlement.clear', 'analytics.view', 'audit.read'],
+    perms: ['dashboard.view', 'order.read', 'contract.read', 'settlement.read', 'settlement.clear', 'analytics.view', 'audit.read'],
   },
   risk: {
     id: 'risk',
@@ -64,14 +76,17 @@ export const ROLES: Record<RoleId, Role> = {
     id: 'ops',
     name: '运营',
     desc: '品牌·代理·选品·数据',
-    perms: ['dashboard.view', 'brand.read', 'brand.write', 'agent.read', 'agent.write', 'market.view', 'analytics.view', 'order.read'],
+    perms: ['dashboard.view', 'brand.read', 'brand.write', 'agent.read', 'agent.write', 'market.view', 'analytics.view', 'order.read', 'contract.read', 'contract.write', 'barter.view', 'aigc.view'],
   },
   audit: {
     id: 'audit',
     name: '只读审计',
     desc: '全部只读 + 审计',
-    perms: ['dashboard.view', 'brand.read', 'agent.read', 'order.read', 'settlement.read', 'merchant.read', 'risk.read', 'ticket.read', 'compliance.view', 'analytics.view', 'audit.read'],
+    perms: ['dashboard.view', 'brand.read', 'agent.read', 'order.read', 'contract.read', 'settlement.read', 'merchant.read', 'risk.read', 'ticket.read', 'compliance.view', 'analytics.view', 'audit.read'],
   },
+  brand: { id: 'brand', name: '品牌方', desc: '品牌客户门户', perms: BRAND_PERMS },
+  teamadmin: { id: 'teamadmin', name: '团队管理员', desc: '成员只读 + 停用，不可改角色权限', perms: ['dashboard.view', 'member.manage', 'audit.read'] },
+  agent: { id: 'agent', name: '代理商', desc: '代理客户门户', perms: AGENT_PERMS },
 }
 
 export interface User {

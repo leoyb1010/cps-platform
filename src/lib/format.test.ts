@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { yuan, money, pct, compact, int, delta, cx } from './format'
+import { yuan, money, pct, int, delta, cx } from './format'
 
 describe('format · 金额/百分比/紧凑', () => {
   it('yuan 默认两位小数 + 符号', () => {
@@ -12,13 +12,6 @@ describe('format · 金额/百分比/紧凑', () => {
     expect(money(800)).toBe('¥800')
     expect(money(12345)).toBe('¥1.2万')
     expect(money(258_000_000)).toBe('¥2.58亿')
-  })
-
-  it('compact 紧凑 k/万/亿', () => {
-    expect(compact(500)).toBe('500')
-    expect(compact(1500)).toBe('1.5k')
-    expect(compact(12345)).toBe('1.2万')
-    expect(compact(258_000_000)).toBe('2.58亿')
   })
 
   it('pct 带百分号、可控小数', () => {

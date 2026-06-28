@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { X } from 'lucide-react'
 import { cx } from '../../lib/format'
 import { toneVar } from './primitives'
 import type { Tone } from '../../lib/data'
@@ -100,6 +101,53 @@ export function EmptyState({ icon, title, desc }: { icon?: ReactNode; title: str
       {icon && <span className="grid h-11 w-11 place-items-center rounded-xl bg-surface-muted text-ink-4">{icon}</span>}
       <div className="text-[13px] font-medium text-ink-2">{title}</div>
       {desc && <div className="max-w-xs text-[12px] text-ink-4">{desc}</div>}
+    </div>
+  )
+}
+
+/* ── CheckGroup：多选药丸（地域/人群等固定预设多选） ───────────── */
+export function CheckGroup({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (o: string) => onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o])
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const on = value.includes(o)
+        return (
+          <button key={o} type="button" onClick={() => toggle(o)}
+            className={cx('rounded-full border px-2.5 py-1 text-[12px] transition-all', on ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>
+            {o}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ── TagInput：开放词标签输入（Enter 添加，可删，序列化 string[]） ── */
+export function TagInput({ value, onChange, placeholder = '输入后回车添加', max = 8 }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string; max?: number }) {
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    const t = draft.trim()
+    if (t && !value.includes(t) && value.length < max) { onChange([...value, t]); setDraft('') }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1.5">
+      {value.map((t) => (
+        <span key={t} className="inline-flex items-center gap-1 rounded-md bg-surface-muted px-1.5 py-0.5 text-[11.5px] text-ink-2">
+          {t}
+          <button type="button" onClick={() => onChange(value.filter((x) => x !== t))} className="text-ink-4 hover:text-alert-ink"><X size={11} /></button>
+        </span>
+      ))}
+      {value.length < max && (
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          onBlur={add}
+          placeholder={value.length === 0 ? placeholder : ''}
+          className="min-w-[80px] flex-1 bg-transparent px-1 py-0.5 text-[12.5px] text-ink outline-none placeholder:text-ink-4"
+        />
+      )}
     </div>
   )
 }

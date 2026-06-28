@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { JwtModule } from '@nestjs/jwt'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { ScheduleModule } from '@nestjs/schedule'
 import { LoggerModule } from 'nestjs-pino'
 import { randomUUID } from 'crypto'
 
@@ -16,11 +17,18 @@ import { AuditController } from './audit/audit.controller'
 import { AuditInterceptor } from './audit/audit.interceptor'
 import { MembersController } from './members/members.controller'
 import { BusinessController } from './business/business.controller'
+import { AigcController } from './aigc/aigc.controller'
+import { PortalController } from './portal/portal.controller'
+import { MarketController } from './market/market.controller'
 import { HealthController } from './common/health.controller'
 import { MetricsService } from './common/metrics.service'
 import { MetricsInterceptor } from './common/metrics.interceptor'
 import { IdempotencyService } from './common/idempotency.service'
 import { ReconciliationService } from './business/reconciliation.service'
+import { SettlementService } from './business/settlement.service'
+import { ReserveReleaseService } from './business/reserve-release.service'
+import { FulfillmentService } from './business/fulfillment.service'
+import { ScheduledTasksService } from './business/scheduled-tasks.service'
 
 @Module({
   imports: [
@@ -47,8 +55,10 @@ import { ReconciliationService } from './business/reconciliation.service'
       throttlers: [{ ttl: 60_000, limit: 120 }],
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
+    // 定时任务调度（准备金到期释放、对账）。任务体在 ScheduledTasksService，测试环境内部跳过自动触发。
+    ScheduleModule.forRoot(),
   ],
-  controllers: [AuthController, AuditController, MembersController, BusinessController, HealthController],
+  controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, HealthController],
   providers: [
     PrismaService,
     AuthService,
@@ -56,6 +66,10 @@ import { ReconciliationService } from './business/reconciliation.service'
     MetricsService,
     IdempotencyService,
     ReconciliationService,
+    SettlementService,
+    ReserveReleaseService,
+    FulfillmentService,
+    ScheduledTasksService,
     // 全局：限流 → 认证 → 鉴权
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

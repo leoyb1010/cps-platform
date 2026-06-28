@@ -95,101 +95,297 @@ model IdempotencyKey {
 
 // ── 业务实体（核心，承袭领域模型） ──────────────
 model Brand {
-  id         String   @id
-  name       String
-  mark       String
-  category   String
-  status     String   @default("review") // live | review | paused
-  path       String   @default("direct") // direct | licensed | mixed
-  feeRate    Float
-  period     Int
-  reservePct Int
-  gmvMtd     Float    @default(0)
-  activeSubs Int      @default(0)
-  renewalRate Float   @default(0)
-  complaintRate Float @default(0)
-  joinedAt   String
-  createdAt  DateTime @default(now())
+  id            String    @id
+  name          String
+  mark          String
+  category      String
+  status        String    @default("review") // live | review | paused
+  path          String    @default("direct") // direct | licensed | mixed
+  feeRate       Float
+  period        Int
+  reservePct    Int
+  gmvMtd        Float     @default(0)
+  activeSubs    Int       @default(0)
+  renewalRate   Float     @default(0)
+  complaintRate Float     @default(0)
+  joinedAt      String
+  createdAt     DateTime  @default(now())
   deletedAt     DateTime?
 }
 
 model Agent {
-  id            String   @id
+  id            String    @id
   name          String
   type          String // 个人 | 企业
-  status        String   @default("active") // active | throttled | frozen | blacklist
-  creditScore   Int      @default(800)
-  spendMtd      Float    @default(0)
-  firstOrders   Int      @default(0)
-  roi           Float    @default(0)
-  renewalRate   Float    @default(0)
-  complaintRate Float    @default(0)
-  refundRate    Float    @default(0)
-  payoutPending Float    @default(0)
-  settledTotal  Float    @default(0)
-  deposit       Float    @default(0)
-  brandsCount   Int      @default(0)
-  invoicing     String   @default("灵活用工")
+  status        String    @default("active") // active | throttled | frozen | blacklist
+  creditScore   Int       @default(800)
+  spendMtd      Float     @default(0)
+  firstOrders   Int       @default(0)
+  roi           Float     @default(0)
+  renewalRate   Float     @default(0)
+  complaintRate Float     @default(0)
+  refundRate    Float     @default(0)
+  payoutPending Float     @default(0)
+  settledTotal  Float     @default(0)
+  deposit       Float     @default(0)
+  brandsCount   Int       @default(0)
+  invoicing     String    @default("灵活用工")
   joinedAt      String
   deletedAt     DateTime?
 }
 
 model MerchantAccount {
-  id            String  @id
-  brandId       String
-  channel       String // wechat | alipay | bank
-  mid           String  @unique // 商户号唯一，防重复录入
-  state         String  @default("healthy")
-  complaintRate Float   @default(0)
-  escalatedRate Float   @default(0)
-  chargebackRate Float  @default(0)
-  refundRate    Float   @default(0)
-  close72h      Float   @default(100)
-  gmvMtd        Float   @default(0)
-  txCount       Int     @default(0)
-  limitUsedPct  Int     @default(0)
-  weight        Int     @default(50)
-  deletedAt     DateTime?
+  id             String    @id
+  brandId        String
+  channel        String // wechat | alipay | bank
+  mid            String    @unique // 商户号唯一，防重复录入
+  state          String    @default("healthy")
+  complaintRate  Float     @default(0)
+  escalatedRate  Float     @default(0)
+  chargebackRate Float     @default(0)
+  refundRate     Float     @default(0)
+  close72h       Float     @default(100)
+  gmvMtd         Float     @default(0)
+  txCount        Int       @default(0)
+  limitUsedPct   Int       @default(0)
+  weight         Int       @default(50)
+  deletedAt      DateTime?
 }
 
 model Order {
-  id        String   @id
-  time      String
-  brandId   String
-  agentId   String
-  channel   String
-  type      String // first | renew | refund | chargeback
-  amount    Float
-  plan      String
-  mid       String
-  createdAt DateTime @default(now())
+  id             String   @id
+  time           String
+  brandId        String
+  agentId        String
+  channel        String
+  type           String // first | renew | refund | chargeback
+  amount         Float
+  plan           String
+  mid            String
+  subscriptionId String? // 聚合到订阅生命周期；存量订单为 null
+  productId      String? // 履约引擎按 agentId+brandId+productId 匹配合约；存量 null
+  bundleId       String? // 套餐转订单溯源：同一 Bundle 拆出的多笔 Order 共享此 id；散单为 null
+  createdAt      DateTime @default(now())
 }
 
 model Settlement {
-  id            String @id
-  period        String
-  brandId       String
-  gross         Float
-  brandShare    Float
-  platformFee   Float
-  agentPayout   Float
-  reserve       Float  @default(0)
-  reversal      Float  @default(0)
-  frozen        Float  @default(0)
-  status        String @default("pending")
-  reconcileDiff Float  @default(0)
+  id                 String  @id
+  period             String
+  brandId            String
+  gross              Float
+  brandShare         Float
+  platformFee        Float
+  agentPayout        Float
+  reserve            Float   @default(0)
+  reversal           Float   @default(0)
+  frozen             Float   @default(0)
+  status             String  @default("pending")
+  reconcileDiff      Float   @default(0)
+  contractId         String? // 溯源增长合约（弱关联）
+  agentShareSnapshot Float   @default(0) // 冲账比例快照位（本阶段仅留位，回填 0）
+  reserveReleased    Float   @default(0) // 已释放准备金累计
+  reserveClawedBack  Float   @default(0) // 已追偿准备金累计
 }
 
 model Ticket {
-  id        String @id
-  time      String
-  source    String
-  level     String
-  status    String
+  id         String @id
+  time       String
+  source     String
+  level      String
+  status     String
   slaLeftMin Int
-  brandId   String
-  agentId   String
-  orderId   String
-  reason    String
-  owner     String @default("未分配")
+  brandId    String
+  agentId    String
+  orderId    String
+  reason     String
+  owner      String @default("未分配")
+  handlePlan String @default("") // 处理办法（服务商/品牌登记的处置方案）
+  note       String @default("") // 处理备注 / 回复内容
+  handledBy  String @default("") // 处理方标识（brand:<id> / agent:<id> / ops）
+  createdAt  DateTime @default(now())
+}
+
+// ── 订阅增长交易（新）：增长合约 / 订阅聚合 / 准备金释放台账 ──
+// 新增字段一律带 @default，db push 对存量行无损；裸 String 外键无 @relation，与现有风格一致。
+
+// 增长合约：品牌发单、渠道接单。本阶段仅记条款，不接入结算计算（松耦合）。
+model GrowthContract {
+  id                 String    @id // GC-xxxx
+  brandId            String // 发单品牌
+  agentId            String? // 接单渠道（未接单为 null = 挂单态）
+  productId          String? // 限定商品（关联订阅商品准入）
+  status             String    @default("draft") // draft|open|active|fulfilling|settling|closed|breached
+  settleModel        String // cps_share | floor_tiered（保底+阶梯）| mutual_quota（互销额度）
+  settleParams       String    @default("{}") // JSON：费率/阶梯表/保底额/额度
+  userLimit          String    @default("{}") // JSON：{newOnly,oldOnly,regions[],crowd[]}
+  ltvWindow          String    @default("D30") // D30 | D60 | D90
+  complaintLiability String    @default("agent") // agent | brand | shared 投诉责任归属
+  reservePct         Int       @default(10) // 本合约风险准备金扣比
+  reserveReleaseRule String    @default("{}") // JSON：释放计划模板
+  breachRule         String    @default("") // JSON：违约处理
+  targetGmv          Float     @default(0) // 履约目标（进度分母）
+  achievedGmv        Float     @default(0) // 已履约（进度分子）
+  signedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  deletedAt          DateTime?
+}
+
+// 订阅聚合根：把离散 Order 聚合成可追踪的订阅生命周期。
+model Subscription {
+  id            String    @id // SUB-xxxx
+  brandId       String
+  agentId       String // 首单归因渠道
+  productId     String?
+  userRef       String // 终端用户匿名标识（脱敏哈希，不存 PII）
+  plan          String
+  status        String    @default("active") // active | paused | churned | winback
+  firstOrderId  String // 首单 Order.id（锚定 D0）
+  startAt       DateTime  @default(now()) // D0，所有 Dn 窗口基准
+  currentPeriod Int       @default(1) // 已计期数（续费 +1）
+  lastRenewAt   DateTime?
+  churnedAt     DateTime?
+  pausedAt      DateTime?
+  winbackAt     DateTime?
+  mrr           Float     @default(0) // 月度经常性收入（换套餐时更新）
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
+
+  // 防并发重复建订阅（L1）：同一品牌+代理+套餐唯一。续费更新现有行而非新建。
+  @@unique([brandId, agentId, plan])
+}
+
+// 风险准备金分期释放台账。本阶段仅立表 + 展示，不做释放资金动作、不改恒等式校验。
+model ReserveRelease {
+  id             String    @id // RR-xxxx
+  settlementId   String // 所属结算单
+  contractId     String? // 合约（便于按合约口径汇总）
+  agentId        String // 释放目标渠道
+  stage          String // D7_init | D30_quality | D60_renew | D90_renew
+  amount         Float // 本期计划释放额
+  dueAt          DateTime // 到期可释放时间
+  status         String    @default("scheduled") // scheduled|released|frozen|clawed_back|cancelled
+  releasedAt     DateTime?
+  releasedAmount Float     @default(0) // 实际释放额
+  holdReason     String    @default("") // 冻结/延迟原因
+  createdAt      DateTime  @default(now())
+}
+
+// 资源置换台账（品牌间互相开票、各自确认收入）。双边：发起方 + 对手方均为真实品牌。
+// scope 为 OR 语义：品牌只见「我发起的」或「待我确认的」。
+model BarterDeal {
+  id                  String    @id // BD-xxxx
+  initiatorBrandId    String // 发起品牌
+  counterpartyBrandId String // 对手品牌（真实 Brand.id）
+  status              String    @default("proposed") // proposed|accepted|active|settled|rejected
+  resourceType        String // 资源类型：广告位 | 会员权益 | 流量包
+  myQuota             Float     @default(0) // 我方拿出的等值额度
+  counterpartyQuota   Float     @default(0) // 对手拿出的等值额度
+  invoiceStatus       String    @default("pending") // pending|partial|done 开票状态
+  terms               String    @default("{}") // JSON 条款
+  createdAt           DateTime  @default(now())
+  deletedAt           DateTime?
+}
+
+// ── 商品/订阅超市/通知/投放领取/素材归属/提现申请（统一交易层）──
+
+// 订阅商品：品牌上架，平台审核后上架。同时是合约/订阅/订单的履约绑定对象。
+model Product {
+  id              String    @id // PRD-xxxx
+  brandId         String // 归属品牌（上架方）
+  name            String
+  category        String    @default("") // 工具/泛娱乐/生活服务
+  description     String    @default("")
+  billingCycle    String    @default("monthly") // monthly | yearly | continuous
+  firstPrice      Float     @default(0) // 首单价
+  renewPrice      Float     @default(0) // 续费价
+  defaultSharePct Float     @default(0) // 默认代理分成%（结算快照来源）
+  status          String    @default("draft") // draft | pending | live | delisted
+  reviewNote      String    @default("") // 审核驳回理由
+  bundleEligible  Boolean   @default(true) // 是否可进组合套餐
+  exclusiveGroup  String    @default("") // 互斥组：同组不可同选进 Bundle
+  tags            String    @default("[]") // JSON string[]
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime?
+}
+
+// 用户在超市自由搭配多个上架 Product 组合成的套餐（含组合优惠算价快照）。
+model Bundle {
+  id          String   @id // BDL-xxxx
+  userRef     String   @default("") // 终端用户匿名标识（脱敏，会话指纹）
+  productIds  String // JSON string[]：组成此套餐的 Product.id
+  listPrice   Float // 组合前各商品价之和
+  discountPct Float    @default(0) // 命中的组合优惠折扣%
+  finalPrice  Float // 算价结果（服务端权威）
+  ruleId      String   @default("") // 命中的 BundleRule.id
+  status      String   @default("draft") // draft | quoted | ordered
+  paymentStatus String @default("unpaid") // unpaid | paid（模拟支付：消费者侧状态翻转，不碰结算）
+  paidAt      DateTime? // 模拟支付成功时间
+  payChannel  String   @default("") // alipay | wechat（展示用，无真实扣款）
+  createdAt   DateTime @default(now())
+}
+
+// 组合优惠规则（平台配置）。
+model BundleRule {
+  id        String   @id // BR-xxxx
+  name      String
+  kind      String   @default("count_off") // count_off（满件折扣）| combo_fixed（指定组合固定价）
+  params    String   @default("{}") // JSON：{minItems,discountPct} 或 {productIds[],fixedPrice}
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// 三层通知：scoped 到具体用户 OR 一类 scope。关键写动作落消息。
+model Notification {
+  id        String   @id // NT-xxxx
+  userId    String? // 精确投递到某用户（优先）
+  scopeType String   @default("platform") // platform | brand | agent
+  scopeId   String? // 配合 scopeType（brand:youdao / agent:A-2041）
+  category  String   @default("system") // fund | risk | contract | product | system
+  title     String
+  body      String   @default("")
+  link      String   @default("") // 前端 hash 路由
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// 代理领取投放 → 生成专属追踪链接。
+model Claim {
+  id           String   @id // CLM-xxxx
+  agentId      String // 领取方
+  brandId      String
+  productId    String? // 关联具体商品
+  contractId   String? // 可选：在某合约下领取
+  channel      String   @default("") // 投放渠道
+  trackingUrl  String // 生成的专属追踪链接
+  trackingCode String   @unique // 唯一追踪码（归因锚点）
+  spend        Float    @default(0) // 回收：消耗
+  firstOrders  Int      @default(0) // 回收：首单数
+  payout       Float    @default(0) // 回收：分润
+  status       String   @default("active") // active | paused | archived
+  createdAt    DateTime @default(now())
+}
+
+// AIGC 生成素材的业务归属记录（只存归属+引用，不复制素材内容）。
+model Asset {
+  id         String   @id // AST-xxxx
+  brandId    String? // 归属品牌
+  agentId    String? // 归属代理（谁生成的）
+  contractId String? // 可选：为某合约生成
+  productId  String? // 可选：为某商品生成
+  assetType  String // 透传 agent-studio 类型
+  jobId      String   @default("") // agent-studio job.id（弱引用，溯源用）
+  prompt     String   @default("") // 生成意图摘要
+  status     String   @default("generated") // generated | live | archived
+  createdAt  DateTime @default(now())
+}
+
+// 代理发起提现申请 → 平台审批 → 复用 settleAgent 资金动作。
+model PayoutRequest {
+  id         String    @id // PR-xxxx
+  agentId    String
+  amount     Float // 申请金额（≤ payoutPending）
+  status     String    @default("pending") // pending | approved | rejected | paid
+  reviewNote String    @default("")
+  createdAt  DateTime  @default(now())
+  decidedAt  DateTime?
 }

@@ -1,0 +1,73 @@
+<svg width="100%" viewBox="0 0 680 700" role="img" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, 'PingFang SC', 'Helvetica Neue', Arial, sans-serif">
+<title>订阅经济交易与结算平台 · 产品全景图</title>
+<desc>顶层四条并行业务:CPS自营、会员对赌互销网络、资源置换市场、AIGC素材工厂;中层是复用的清结算+风控+对账+履约中台;底层是账户、积分钱包、商户号、合规资质。绿=已跑通,紫=新方向,琥珀=待新建,红=红线。</desc>
+<style>
+.t{font-size:14px;fill:#2C2C2A}.ts{font-size:12px;fill:#5F5E5A}.th{font-size:14px;font-weight:500;fill:#2C2C2A}
+.r-green{fill:#EAF3DE;stroke:#3B6D11;stroke-width:.5}.r-purple{fill:#EEEDFE;stroke:#534AB7;stroke-width:.5}
+.r-teal{fill:#E1F5EE;stroke:#0F6E56;stroke-width:.5}.r-teal2{fill:#cdeee2;stroke:#0F6E56;stroke-width:.5}
+.r-amber{fill:#FAEEDA;stroke:#854F0B;stroke-width:.5}.r-gray{fill:#F1EFE8;stroke:#5F5E5A;stroke-width:.5}.r-red{fill:#FCEBEB;stroke:#A32D2D;stroke-width:.5}
+.tt-green{fill:#27500A}.tt-purple{fill:#3C3489}.tt-teal{fill:#085041}.tt-gray{fill:#444441}.tt-red{fill:#791F1F}
+.st-green{fill:#3B6D11}.st-purple{fill:#534AB7}.st-teal{fill:#0F6E56}.st-amber{fill:#854F0B}.st-gray{fill:#5F5E5A}.st-red{fill:#A32D2D}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+
+<text class="th" x="40" y="28">业务层 · 四种交易形态并行</text>
+<text class="ts st-gray" x="640" y="28" text-anchor="end">绿=已跑通 · 紫=新方向 · 琥珀=待新建</text>
+
+<rect class="r-green" x="40" y="44" width="290" height="74" rx="8"/>
+<text class="th tt-green" x="56" y="66">① CPS 自营投流</text>
+<text class="ts st-green" x="56" y="86">现金牛 · 已跑通一个多亿流水</text>
+<text class="ts st-green" x="56" y="104">卖连续包月会员 · 看 LTV 与续费</text>
+
+<rect class="r-purple" x="350" y="44" width="290" height="74" rx="8"/>
+<text class="th tt-purple" x="366" y="66">② 会员对赌互销网络</text>
+<text class="ts st-purple" x="366" y="86">品牌↔品牌 互相承诺销量、互销代卖</text>
+<text class="ts st-purple" x="366" y="104">品牌多了→自由发单/接单·接单方定对价</text>
+
+<rect class="r-purple" x="40" y="130" width="290" height="74" rx="8"/>
+<text class="th tt-purple" x="56" y="152">③ 资源置换市场</text>
+<text class="ts st-purple" x="56" y="172">广告/会员资源置换</text>
+<text class="ts st-purple" x="56" y="190">互相开票 · 各自确认收入</text>
+
+<rect class="r-purple" x="350" y="130" width="290" height="74" rx="8"/>
+<text class="th tt-purple" x="366" y="152">④ AIGC 投放素材工厂</text>
+<text class="ts st-purple" x="366" y="172">积分制自助生成图/视频</text>
+<text class="ts st-purple" x="366" y="190">转化数据回流 · 第二曲线</text>
+
+<line x1="340" y1="216" x2="340" y2="240" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts st-purple" x="356" y="234">四条业务全部复用同一套中台</text>
+
+<text class="th" x="40" y="266">中台 · 真正的壁垒(复用底座)</text>
+<rect class="r-teal" x="40" y="282" width="600" height="128" rx="8"/>
+<text class="th tt-teal" x="56" y="304">清结算 + 风控 + 对账 + 履约中台</text>
+<rect class="r-teal2" x="56" y="318" width="180" height="36" rx="6"/>
+<text class="ts st-teal" x="66" y="340">分账 · 多方对账 · 准备金 · 逆向冲账</text>
+<rect class="r-teal2" x="246" y="318" width="180" height="36" rx="6"/>
+<text class="ts st-teal" x="256" y="340">号池风控 · 投诉率阈值 · 工单售后</text>
+<rect class="r-teal2" x="436" y="318" width="188" height="36" rx="6"/>
+<text class="ts st-teal" x="446" y="340">幂等/并发 · 审计闭环 · RBAC · 多租户</text>
+<rect class="r-amber" x="56" y="362" width="284" height="36" rx="6"/>
+<text class="ts st-amber" x="66" y="384">待新建:承诺额度台账 · 对赌结算规则引擎</text>
+<rect class="r-amber" x="350" y="362" width="274" height="36" rx="6"/>
+<text class="ts st-amber" x="360" y="384">待新建:资源估值 · 双向开票与收入确认台账</text>
+
+<line x1="340" y1="410" x2="340" y2="434" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<text class="th" x="40" y="460">底层资源</text>
+<rect class="r-gray" x="40" y="476" width="144" height="48" rx="8"/>
+<text class="t tt-gray" x="56" y="498">账户体系</text><text class="ts st-gray" x="56" y="515">User/Role/审计</text>
+<rect class="r-gray" x="192" y="476" width="144" height="48" rx="8"/>
+<text class="t tt-gray" x="208" y="498">积分钱包</text><text class="ts st-gray" x="208" y="515">计费/沉淀现金流</text>
+<rect class="r-gray" x="344" y="476" width="144" height="48" rx="8"/>
+<text class="t tt-gray" x="360" y="498">商户号/通道</text><text class="ts st-gray" x="360" y="515">号池/支付</text>
+<rect class="r-gray" x="496" y="476" width="144" height="48" rx="8"/>
+<text class="t tt-gray" x="512" y="498">合规资质</text><text class="ts st-gray" x="512" y="515">资金/税务口径</text>
+
+<rect class="r-red" x="40" y="548" width="600" height="58" rx="8"/>
+<text class="th tt-red" x="56" y="570">贯穿红线 · 不可逾越</text>
+<text class="ts st-red" x="56" y="590">商户号投诉率/升级投诉率必须低于阈值(触阈即熔断收款) · 投诉售后必须人工介入 · 置换开票与对价兑付必须可入账可审计</text>
+
+<text class="th" x="40" y="636">当前已具备(可被代码验证)</text>
+<text class="ts st-gray" x="40" y="658">16 个功能页 · 13 张数据表 · 5 角色 21 权限点 · React+NestJS+Prisma+Docker+CI · 单测/e2e</text>
+<text class="ts st-gray" x="40" y="678">核心模块:品牌·选品市场·代理商·订单订阅·清结算·商户号号池·风控·投诉工单·资金合规·数据归因</text>
+</svg>
