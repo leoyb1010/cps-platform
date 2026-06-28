@@ -53,6 +53,9 @@ class PortalClaimDto {
 class PayoutRequestDto {
   @IsNumber() @Min(1) amount!: number
 }
+class BarterRespondDto {
+  @IsIn(['accept', 'reject']) action!: string
+}
 // 门户订单筛选（type/周期；scope 由 brandId 注入，前端不可传）。
 // type 取值对齐真实 Order.type 集合：first / renew / refund / chargeback。'refund' 视为退款+拒付合并筛选。
 class PortalOrderQueryDto {
@@ -410,7 +413,7 @@ export class PortalController {
   }
 
   @Post('barter/:id/respond') @RequirePerms('portal.brand.contracts') @ApiOperation({ summary: '对手品牌应答置换（accept/reject，仅对手方）' })
-  async respondBarter(@Param('id') id: string, @Body() body: { action: 'accept' | 'reject' }, @CurrentUser() user: AuthUser) {
+  async respondBarter(@Param('id') id: string, @Body() body: BarterRespondDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
     const deal = await this.prisma.barterDeal.findFirst({ where: { id, deletedAt: null } })
     if (!deal) return { ok: false, detail: '置换单不存在' }

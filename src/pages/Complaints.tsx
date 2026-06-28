@@ -51,7 +51,7 @@ export default function Complaints() {
   const pending = complaints.filter((c) => c.status === 'pending').length
   const escalated = complaints.filter((c) => c.level !== 'normal' && c.status !== 'resolved').length
   const resolved = complaints.filter((c) => c.status === 'resolved').length
-  const urgent = complaints.filter((c) => c.status !== 'resolved' && c.slaLeftMin > 0).sort((a, b) => a.slaLeftMin - b.slaLeftMin)
+  const urgent = complaints.filter((c) => c.status !== 'resolved' && c.slaLeftMin >= 0).sort((a, b) => a.slaLeftMin - b.slaLeftMin)
   const list = complaints.filter((c) => (lvl === 'all' ? true : c.level === lvl))
   const active = complaints.find((c) => c.id === openId) ?? null
 
@@ -84,7 +84,7 @@ export default function Complaints() {
           ) : (
             <div className="space-y-2">
               {urgent.slice(0, 5).map((c) => {
-                const b = brandById(c.brandId)!
+                const b = brandById(c.brandId)
                 const lv = COMPLAINT_LEVEL[c.level]
                 const tone = c.slaLeftMin <= 30 ? 'alert' : c.slaLeftMin <= 90 ? 'warn' : 'good'
                 return (
@@ -134,7 +134,7 @@ export default function Complaints() {
         </div>
         <TableShell className="px-2 pb-2" head={<><Th className="pl-3">工单 / 时间</Th><Th>来源</Th><Th>等级</Th><Th>品牌 / 代理</Th><Th>投诉事由</Th><Th>处理人</Th><Th right>SLA</Th><Th right>状态</Th></>}>
           {list.map((c) => {
-            const b = brandById(c.brandId)!
+            const b = brandById(c.brandId)
             const lv = COMPLAINT_LEVEL[c.level]
             const st = COMPLAINT_STATUS[c.status]
             return (

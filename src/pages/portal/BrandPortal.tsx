@@ -28,7 +28,7 @@ export function BrandHome() {
                 {d.trend.length > 1 && <div className="mt-2"><Sparkline data={d.trend.map((t) => t.value)} tone="brand" w={140} h={30} /></div>}
               </Card>
               <Card><Stat label="活跃订阅" value={<CountUp to={d.activeSubs} group />} sub={<span>连续包月</span>} /></Card>
-              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 0.6 ? 'text-good-ink' : 'text-warn-ink'}>LTV 核心驱动</span>} /></Card>
+              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 60 ? 'text-good-ink' : 'text-warn-ink'}>LTV 核心驱动</span>} /></Card>
               <Card><Stat label="我的回款" value={money(d.brandShare)} hint="品牌回款侧，不含平台费与代理分润" sub={<span className="text-good-ink">累计 brandShare</span>} /></Card>
             </div>
 

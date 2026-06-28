@@ -101,7 +101,7 @@ export default function Contracts() {
           }
         >
           {list.map((c) => {
-            const b = brandById(c.brandId)!
+            const b = brandById(c.brandId)
             const prog = c.targetGmv ? Math.min(100, (c.achievedGmv / c.targetGmv) * 100) : 0
             const st = CONTRACT_STATUS[c.status]
             return (

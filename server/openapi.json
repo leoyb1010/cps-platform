@@ -1040,6 +1040,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToggleActiveDto"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": ""
@@ -1744,6 +1754,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarterRespondDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": ""
@@ -2103,6 +2123,10 @@
         "type": "object",
         "properties": {}
       },
+      "ToggleActiveDto": {
+        "type": "object",
+        "properties": {}
+      },
       "NewContractDto": {
         "type": "object",
         "properties": {}
@@ -2144,6 +2168,10 @@
         "properties": {}
       },
       "PortalBarterDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "BarterRespondDto": {
         "type": "object",
         "properties": {}
       },

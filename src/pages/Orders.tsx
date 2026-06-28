@@ -199,7 +199,7 @@ export default function Orders() {
           }
         >
           {list.map((o) => {
-            const b = brandById(o.brandId)!
+            const b = brandById(o.brandId)
             const t = ORDER_TYPE[o.type]
             return (
               <Row key={o.id} onClick={(e) => { setOpenId(o.id); pop.openAt(e) }}>

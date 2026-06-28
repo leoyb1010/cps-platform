@@ -36,13 +36,14 @@ export class SettlementService {
     args: { brandId: string; amount: number },
   ): Promise<{ share: number; settlement: Settlement | null }> {
     const s = await tx.settlement.findFirst({ where: { brandId: args.brandId }, orderBy: { period: 'desc' } })
-    const share = Math.round(args.amount * this.shareRateOf(s))
+    const rawShare = Math.round(args.amount * this.shareRateOf(s))
+    const share = s ? Math.min(rawShare, s.agentPayout) : rawShare
     if (s) {
       const status = s.status === 'cleared' ? 'reconciling' : s.status
       const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
       await tx.settlement.update({
         where: { id: s.id },
-        data: { reversal: s.reversal + share, agentPayout: Math.max(0, s.agentPayout - share), status, reconcileDiff },
+        data: { reversal: s.reversal + share, agentPayout: s.agentPayout - share, status, reconcileDiff },
       })
     }
     return { share, settlement: s }

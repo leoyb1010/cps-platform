@@ -737,7 +737,8 @@ export const complaintBySource = _srcOrder
 
 /* ---------- 查询助手 ---------- */
 
-export const brandById = (id: string) => brands.find((b) => b.id === id)
+const UNKNOWN_BRAND: Brand = { id: '?', name: '未知品牌', mark: '?', category: '', status: 'paused', path: 'direct', feeRate: 0, period: 0, reservePct: 0, thresholds: { complaint: 0, escalated: 0, chargeback: 0 }, plans: [], channels: [], gmvMtd: 0, activeSubs: 0, renewalRate: 0, complaintRate: 0, escalatedRate: 0, chargebackRate: 0, joinedAt: '' }
+export const brandById = (id: string): Brand => brands.find((b) => b.id === id) ?? UNKNOWN_BRAND
 export const agentById = (id: string) => agents.find((a) => a.id === id)
 export const merchantsByBrand = (id: string) =>
   merchants.filter((m) => m.brandId === id)

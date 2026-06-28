@@ -84,7 +84,7 @@ class OrderIngestDto {
   @IsString() @MaxLength(40) agentId!: string
   @IsOptional() @IsString() @MaxLength(40) productId?: string
   @IsIn(['first', 'renew']) type!: string
-  @IsNumber() @Min(0) amount!: number
+  @IsNumber() @Min(0.01) amount!: number
   @IsString() @MaxLength(60) plan!: string
   @IsOptional() @IsIn(['wechat', 'alipay', 'bank']) channel?: string
 }
@@ -140,6 +140,9 @@ class NewBarterDto {
 }
 class BarterStatusDto {
   @IsIn(['proposed', 'accepted', 'active', 'settled', 'rejected']) status!: string
+}
+class ToggleActiveDto {
+  @IsBoolean() active!: boolean
 }
 
 @ApiTags('business')
@@ -505,6 +508,8 @@ export class BusinessController {
       const amount = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({ where: { id } })
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
+        const existingRefund = await tx.order.findFirst({ where: { brandId: order.brandId, agentId: order.agentId, plan: order.plan, type: 'refund', amount: -Math.abs(order.amount) } })
+        if (existingRefund) return null
         const amt = Math.abs(order.amount)
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收（订单退款不扣信用分）
@@ -557,7 +562,8 @@ export class BusinessController {
 
   @Post('config') @RequirePerms('config.write') @ApiOperation({ summary: '写入平台配置（键值，upsert）' })
   async setConfig(@Body() body: Record<string, unknown>, @CurrentUser() user: AuthUser) {
-    const entries = Object.entries(body || {})
+    const ALLOWED_KEYS = ['platformFeeRate', 'defaultSharePct', 'complaintThreshold', 'escalatedThreshold', 'chargebackThreshold', 'slaDefaultMin', 'reserveDefaultPct', 'autoReconcile', 'channelWeChat', 'channelAlipay', 'channelBank', 'channelApple', 'channelGoogle', 'channelStripe', 'channelPaypal']
+    const entries = Object.entries(body || {}).filter(([k]) => ALLOWED_KEYS.includes(k))
     for (const [key, value] of entries) {
       const v = typeof value === 'string' ? value : JSON.stringify(value)
       await this.prisma.config.upsert({ where: { key }, create: { key, value: v }, update: { value: v } })
@@ -606,7 +612,7 @@ export class BusinessController {
   }
 
   @Patch('bundle-rules/:id') @RequirePerms('product.write') @ApiOperation({ summary: '启停组合优惠规则' })
-  async toggleBundleRule(@Param('id') id: string, @Body() body: { active: boolean }, @CurrentUser() user: AuthUser) {
+  async toggleBundleRule(@Param('id') id: string, @Body() body: ToggleActiveDto, @CurrentUser() user: AuthUser) {
     await this.prisma.bundleRule.update({ where: { id }, data: { active: !!body.active } })
     await this.audit.record({ user, action: 'bundlerule.toggle', resource: 'BundleRule', resourceId: id, detail: `规则 ${id} ${body.active ? '启用' : '停用'}` })
     return { ok: true }

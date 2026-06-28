@@ -126,7 +126,7 @@ export default function Risk() {
           >
             {EVENTS.map((e, i) => {
               const a = agentById(e.agentId)
-              const b = brandById(e.brandId)!
+              const b = brandById(e.brandId)
               return (
                 <Row key={i}>
                   <Td className="pl-3 tnum text-[12px] text-ink-4">{e.time}</Td>

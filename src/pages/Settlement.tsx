@@ -179,7 +179,7 @@ export default function Settlement() {
             }
           >
             {settlements.map((s) => {
-              const b = brandById(s.brandId)!
+              const b = brandById(s.brandId)
               const st = SETTLE_STATUS[s.status]
               return (
                 <Row key={s.id}>
@@ -316,7 +316,7 @@ export default function Settlement() {
 
 function SettlementDrawer({ s, anchor, onClose, onClear, onReconcile }: { s: SettlementT | null; anchor: AnchorRect | null; onClose: () => void; onClear: () => void; onReconcile: () => void }) {
   if (!s) return null
-  const b = brandById(s.brandId)!
+  const b = brandById(s.brandId)
   const st = SETTLE_STATUS[s.status]
   // 可分配池 = gross − 品牌留存 = 平台费 + 代理分润 + 准备金 + 逆向冲账（严格对平）
   const pool = s.gross - s.brandShare

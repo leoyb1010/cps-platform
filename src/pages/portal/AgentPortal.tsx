@@ -28,7 +28,7 @@ export function AgentHome() {
               </Card>
               <Card><Stat label="带来首单" value={<CountUp to={d.firstOrders} group />} sub={<span>新签</span>} /></Card>
               <Card><Stat label="待结分润" value={money(d.payoutPending)} sub={<span>T+N 账期</span>} /></Card>
-              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 0.6 ? 'text-good-ink' : 'text-warn-ink'}>带来用户质量</span>} /></Card>
+              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 60 ? 'text-good-ink' : 'text-warn-ink'}>带来用户质量</span>} /></Card>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
@@ -69,7 +69,7 @@ export function AgentMarket() {
     setBusy(brandId)
     try {
       const r = await portalApi.createClaim({ brandId })
-      if (r.ok && r.trackingUrl) toast({ tone: 'good', text: `已领取，追踪链接：${r.trackingUrl}` })
+      if (r.ok && r.trackingUrl) { toast({ tone: 'good', text: `已领取，追踪链接：${r.trackingUrl}` }); reload() }
       else toast({ tone: 'alert', text: '领取失败' })
     } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(null) }
   }
@@ -93,7 +93,7 @@ export function AgentMarket() {
                     <div className="truncate text-[13px] font-semibold text-ink">{b.name}</div>
                     <div className="text-[11px] text-ink-4">{b.category}</div>
                   </div>
-                  {b.renewalRate >= 0.65 && <span className="shrink-0 rounded-md bg-good-soft px-1.5 py-0.5 text-[10px] font-medium text-good-ink">优质货源</span>}
+                  {b.renewalRate >= 65 && <span className="shrink-0 rounded-md bg-good-soft px-1.5 py-0.5 text-[10px] font-medium text-good-ink">优质货源</span>}
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-center">
                   <div className="rounded-lg bg-surface-muted p-2"><div className="text-[11px] text-ink-4">分成费率</div><div className="text-[13px] font-semibold tnum text-ink">{pct(b.feeRate)}</div></div>

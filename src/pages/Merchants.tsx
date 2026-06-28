@@ -223,7 +223,7 @@ export default function Merchants() {
           {merchants
             .filter((m) => (filter === 'all' ? true : m.state !== 'healthy'))
             .map((m) => {
-              const b = brandById(m.brandId)!
+              const b = brandById(m.brandId)
               const st = MERCHANT_STATE[m.state]
               return (
                 <Row key={m.id}>
@@ -333,7 +333,7 @@ export default function Merchants() {
 
 function MerchantDrawer({ m, anchor, onClose, onFuse, onPause, onResume }: { m: MerchantAccount | null; anchor: AnchorRect | null; onClose: () => void; onFuse: () => void; onPause: () => void; onResume: () => void }) {
   if (!m) return null
-  const b = brandById(m.brandId)!
+  const b = brandById(m.brandId)
   const st = MERCHANT_STATE[m.state]
   const metrics = [
     { k: '投诉率', v: pct(m.complaintRate), red: m.complaintRate >= 1, warn: m.complaintRate >= 0.6 },
