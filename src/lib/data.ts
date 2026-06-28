@@ -102,6 +102,16 @@ export const COMPLAINT_STATUS: Record<
   arbitration: { label: '仲裁中', tone: 'violet' },
 }
 
+// 门户工单维度（品牌/代理门户共用，与上面 COMPLAINT_* 的运营口径有别：门户用精简标签）。
+// 单源，避免两个门户页各自重复定义而漂移。
+export const TICKET_LEVEL: Record<string, { label: string; tone: 'alert' | 'warn' | 'neutral' }> = {
+  regulatory: { label: '监管', tone: 'alert' }, escalated: { label: '升级', tone: 'warn' }, normal: { label: '普通', tone: 'neutral' },
+}
+export const TICKET_STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' }> = {
+  resolved: { label: '已解决', tone: 'good' }, processing: { label: '处理中', tone: 'info' }, open: { label: '待处理', tone: 'warn' },
+}
+export const TICKET_SOURCE: Record<string, string> = { alipay: '支付宝', wechat: '微信', '12315': '12315', heimao: '黑猫投诉', platform: '平台内', manual: '人工' }
+
 export type SettleStatus =
   | 'pending'
   | 'cleared'

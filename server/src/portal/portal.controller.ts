@@ -226,22 +226,28 @@ export class PortalController {
     return this.prisma.ticket.findMany({ where: { brandId: id }, orderBy: [{ status: 'asc' }, { slaLeftMin: 'asc' }] })
   }
 
-  // ── 品牌：处理工单（登记处理办法 / 回复 / 流转状态）──
-  // 红线：只能处理 brandId == 自己 scope 的工单（assertOwns），且只改处置字段不碰资金。
-  @Post('brand/tickets/:id/reply')
-  @RequirePerms('portal.brand.tickets')
-  async brandReplyTicket(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: TicketReplyDto) {
-    const brandId = this.scopeId(user, 'brand')
-    const t = await this.prisma.ticket.findFirst({ where: { id, brandId } })
+  // 工单处置共享逻辑（品牌/代理回复同一套：assertOwns + 登记处置字段 + SLA 冻结 + 审计）。
+  // 单源，避免 SLA-冻结等业务规则在两个端点各写一份而漂移。
+  private async replyTicketAs(actor: 'brand' | 'agent', scopeId: string, id: string, user: AuthUser, dto: TicketReplyDto) {
+    const t = await this.prisma.ticket.findFirst({ where: { id, [actor === 'brand' ? 'brandId' : 'agentId']: scopeId } })
     if (!t) return { ok: false, detail: '工单不存在或不属于你' }
-    const data: Record<string, unknown> = { handledBy: `brand:${brandId}` }
+    const data: Record<string, unknown> = { handledBy: `${actor}:${scopeId}` }
     if (dto.handlePlan !== undefined) data.handlePlan = dto.handlePlan
     if (dto.note !== undefined) data.note = dto.note
     if (dto.status) data.status = dto.status
     if (dto.status === 'resolved') data.slaLeftMin = 0 // 解决即冻结 SLA 倒计时（与退款解决路径一致）
     await this.prisma.ticket.update({ where: { id }, data })
-    await this.audit.record({ user, action: 'ticket.reply', resource: 'Ticket', resourceId: id, detail: `品牌 ${brandId} 处理工单 ${id}${dto.status ? ` → ${dto.status}` : ''}`, after: data })
+    const who = actor === 'brand' ? `品牌 ${scopeId} 处理` : `代理 ${scopeId} 协助处理`
+    await this.audit.record({ user, action: 'ticket.reply', resource: 'Ticket', resourceId: id, detail: `${who}工单 ${id}${dto.status ? ` → ${dto.status}` : ''}`, after: data })
     return { ok: true, detail: '工单已更新' }
+  }
+
+  // ── 品牌：处理工单（登记处理办法 / 回复 / 流转状态）──
+  // 红线：只能处理 brandId == 自己 scope 的工单（assertOwns），且只改处置字段不碰资金。
+  @Post('brand/tickets/:id/reply')
+  @RequirePerms('portal.brand.tickets')
+  async brandReplyTicket(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: TicketReplyDto) {
+    return this.replyTicketAs('brand', this.scopeId(user, 'brand'), id, user, dto)
   }
 
   // ── 代理：相关工单（自己渠道引发的售后，可协助处理）──
@@ -256,17 +262,7 @@ export class PortalController {
   @Post('agent/tickets/:id/reply')
   @RequirePerms('portal.agent.tickets')
   async agentReplyTicket(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: TicketReplyDto) {
-    const agentId = this.scopeId(user, 'agent')
-    const t = await this.prisma.ticket.findFirst({ where: { id, agentId } })
-    if (!t) return { ok: false, detail: '工单不存在或不属于你' }
-    const data: Record<string, unknown> = { handledBy: `agent:${agentId}` }
-    if (dto.handlePlan !== undefined) data.handlePlan = dto.handlePlan
-    if (dto.note !== undefined) data.note = dto.note
-    if (dto.status) data.status = dto.status
-    if (dto.status === 'resolved') data.slaLeftMin = 0 // 解决即冻结 SLA 倒计时（与退款解决路径一致）
-    await this.prisma.ticket.update({ where: { id }, data })
-    await this.audit.record({ user, action: 'ticket.reply', resource: 'Ticket', resourceId: id, detail: `代理 ${agentId} 协助处理工单 ${id}${dto.status ? ` → ${dto.status}` : ''}`, after: data })
-    return { ok: true, detail: '工单已更新' }
+    return this.replyTicketAs('agent', this.scopeId(user, 'agent'), id, user, dto)
   }
 
   // ── 品牌：资源置换（OR-scope：我发起的 OR 待我确认的）──

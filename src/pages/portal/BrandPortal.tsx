@@ -8,9 +8,10 @@ import { Wizard } from '../../components/ui/Wizard'
 import { PeriodFilter } from '../../components/ui/filters'
 import { type PeriodValue } from '../../lib/period'
 import { BARTER_RESOURCE_TYPES, INVOICE_STATUS } from '../../lib/dict'
+import { TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
 import { portalApi, type BrandSummary } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv } from '../../components/portal/kit'
-import { money, int, pct } from '../../lib/format'
+import { money, pct } from '../../lib/format'
 
 export function BrandHome() {
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
@@ -185,13 +186,6 @@ export function BrandOnboarding() {
 }
 
 type BrandTicketRow = { id: string; brandId: string; level: string; status: string; source: string; reason: string; owner: string; slaLeftMin: number; time: string; handlePlan: string; note: string; handledBy: string }
-const TICKET_LEVEL: Record<string, { label: string; tone: 'alert' | 'warn' | 'neutral' }> = {
-  regulatory: { label: '监管', tone: 'alert' }, escalated: { label: '升级', tone: 'warn' }, normal: { label: '普通', tone: 'neutral' },
-}
-const TICKET_STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' }> = {
-  resolved: { label: '已解决', tone: 'good' }, processing: { label: '处理中', tone: 'info' }, open: { label: '待处理', tone: 'warn' },
-}
-const TICKET_SOURCE: Record<string, string> = { alipay: '支付宝', wechat: '微信', '12315': '12315', heimao: '黑猫投诉', platform: '平台内', manual: '人工' }
 
 export function BrandTickets() {
   const { data, state, reload } = usePortalResource<BrandTicketRow[]>(() => portalApi.brandTickets())

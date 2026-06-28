@@ -9,8 +9,8 @@ import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
 import { isRealApi } from '../../lib/http'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars } from '../../components/portal/kit'
-import { brandById } from '../../lib/data'
-import { money, int, pct } from '../../lib/format'
+import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
+import { money, pct } from '../../lib/format'
 
 export function AgentHome() {
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
@@ -301,9 +301,6 @@ export function AgentContracts() {
 
 // 代理：相关工单（自己渠道引发的售后，可协助处理 / 回复）
 type AgentTicketRow = { id: string; level: string; status: string; source: string; reason: string; slaLeftMin: number; handlePlan: string; note: string; handledBy: string }
-const A_LEVEL: Record<string, { label: string; tone: 'alert' | 'warn' | 'neutral' }> = { regulatory: { label: '监管', tone: 'alert' }, escalated: { label: '升级', tone: 'warn' }, normal: { label: '普通', tone: 'neutral' } }
-const A_STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'info' }> = { resolved: { label: '已解决', tone: 'good' }, processing: { label: '处理中', tone: 'info' }, open: { label: '待处理', tone: 'warn' } }
-const A_SOURCE: Record<string, string> = { alipay: '支付宝', wechat: '微信', '12315': '12315', heimao: '黑猫投诉', platform: '平台内', manual: '人工' }
 export function AgentTickets() {
   const { data, state, reload } = usePortalResource<AgentTicketRow[]>(() => portalApi.agentTickets())
   const toast = useToast()
@@ -332,11 +329,11 @@ export function AgentTickets() {
             <Card pad={false}>
               <TableShell className="px-2 pb-2" head={<><Th className="pl-3">工单 / 事由</Th><Th>来源</Th><Th>级别</Th><Th right>时限</Th><Th right>状态</Th><Th right>处理</Th></>}>
                 {rows.map((t) => {
-                  const lv = A_LEVEL[t.level] ?? A_LEVEL.normal; const st = A_STATUS[t.status] ?? A_STATUS.open
+                  const lv = TICKET_LEVEL[t.level] ?? TICKET_LEVEL.normal; const st = TICKET_STATUS[t.status] ?? TICKET_STATUS.open
                   return (
                     <Row key={t.id}>
                       <Td className="pl-3"><div className="text-[12.5px] font-medium text-ink tnum">{t.id}</div><div className="mt-0.5 max-w-[260px] truncate text-[11.5px] text-ink-4">{t.reason || '—'}</div></Td>
-                      <Td className="text-[12px] text-ink-3">{A_SOURCE[t.source] ?? t.source}</Td>
+                      <Td className="text-[12px] text-ink-3">{TICKET_SOURCE[t.source] ?? t.source}</Td>
                       <Td><Badge tone={lv.tone}>{lv.label}</Badge></Td>
                       <Td right mono className={t.slaLeftMin < 60 && t.status !== 'resolved' ? 'text-alert-ink' : 'text-ink-3'}>{t.status === 'resolved' ? '—' : `${t.slaLeftMin}m`}</Td>
                       <Td right><Badge tone={st.tone} dot>{st.label}</Badge></Td>
@@ -358,7 +355,7 @@ export function AgentTickets() {
         ) : <Button variant="ghost" onClick={() => setActive(null)}>关闭</Button>}>
         {active && (
           <div className="space-y-3.5">
-            <div className="rounded-lg border border-line p-3"><div className="text-[10.5px] text-ink-4">投诉事由（来源：{A_SOURCE[active.source] ?? active.source}）</div><div className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{active.reason || '—'}</div></div>
+            <div className="rounded-lg border border-line p-3"><div className="text-[10.5px] text-ink-4">投诉事由（来源：{TICKET_SOURCE[active.source] ?? active.source}）</div><div className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{active.reason || '—'}</div></div>
             {active.status === 'resolved' ? (
               <div className="rounded-lg border border-good/30 bg-good-soft/40 p-3"><div className="text-[10.5px] text-ink-4">处理办法</div><div className="mt-1 text-[12.5px] leading-relaxed text-ink-2">{active.handlePlan || '—'}</div>{active.handledBy && <div className="mt-1 text-[11px] text-ink-4">处理方：{active.handledBy.startsWith('brand') ? '品牌方' : active.handledBy.startsWith('agent') ? '服务商' : '平台风控'}</div>}</div>
             ) : (
