@@ -2350,6 +2350,105 @@
         ]
       }
     },
+    "/pay/outside/order": {
+      "post": {
+        "operationId": "YoudaoController_order",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "有道续费·下单（RSA 验签，form-data）：建签约单返回签约链接",
+        "tags": [
+          "youdao"
+        ]
+      }
+    },
+    "/order/outside/refund": {
+      "post": {
+        "operationId": "YoudaoController_refund",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "有道续费·退款（RSA 验签）：指定订单退款，恒等式不破",
+        "tags": [
+          "youdao"
+        ]
+      }
+    },
+    "/order/outside/unsign": {
+      "post": {
+        "operationId": "YoudaoController_unsign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnsignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "有道续费·解约（RSA 验签）：停止后续扣款 + 取消补扣",
+        "tags": [
+          "youdao"
+        ]
+      }
+    },
+    "/order/outside/orderQuery": {
+      "get": {
+        "operationId": "YoudaoController_orderQuery",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "有道续费·订单查询（RSA 验签，GET）：orderStatus 状态",
+        "tags": [
+          "youdao"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_health",
@@ -2574,6 +2673,10 @@
         "properties": {}
       },
       "RetrySweepDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "OrderDto": {
         "type": "object",
         "properties": {}
       }

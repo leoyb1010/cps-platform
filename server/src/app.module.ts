@@ -31,6 +31,7 @@ import { FulfillmentService } from './business/fulfillment.service'
 import { CpsController } from './cps/cps.controller'
 import { CpsService } from './cps/cps.service'
 import { SignWebhookService } from './cps/sign-webhook.service'
+import { YoudaoController } from './youdao/youdao.controller'
 import { ScheduledTasksService } from './business/scheduled-tasks.service'
 
 @Module({
@@ -61,7 +62,7 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     // 定时任务调度（准备金到期释放、对账）。任务体在 ScheduledTasksService，测试环境内部跳过自动触发。
     ScheduleModule.forRoot(),
   ],
-  controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, CpsController, HealthController],
+  controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, CpsController, YoudaoController, HealthController],
   providers: [
     PrismaService,
     AuthService,

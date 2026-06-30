@@ -8,6 +8,7 @@ import { IdempotencyService } from '../common/idempotency.service'
 import { AuditService } from '../audit/audit.service'
 import { MetricsService } from '../common/metrics.service'
 import { SignWebhookService } from './sign-webhook.service'
+import { YD_STATUS } from '../youdao/youdao-status'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -55,14 +56,14 @@ export class CpsService {
     await this.prisma.signOrder.create({
       data: {
         id: so, brandId: args.brandId, productId: product.id, plan: product.name,
-        mobile: maskMobile(args.mobile), payChannel: args.payChannel === 1 ? 'alipay' : 'alipay',
+        mobile: maskMobile(args.mobile), payChannel: args.payChannel === 1 ? 'alipay' : 'wechat',
         status: 'signing', amount, currentPeriod: 0, extraInfo: args.extraInfo ?? '', appId: args.appId,
       },
     })
     await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.sign', resource: 'SignOrder', resourceId: so, detail: `签约单 ${so} · 商品 ${product.id} · ¥${amount}` })
     // 模拟收银台链接（演示态）：前端 hash 路由，可在门户内展示签约确认页。
     const url = `/#/sign/${so}`
-    return { code: 0, msg: 'success', data: { signOrderNo: so, url } }
+    return { code: 0, msg: 'success', data: { signOrderNo: so, url, amount } }
   }
 
   // ── 模拟首扣：signing→active，落首单 Order(first) + Subscription，推 webhook(1签约,2扣款) ──
@@ -76,7 +77,7 @@ export class CpsService {
     }
     const r = await this.charge(so.id, 0, 'first', idemKey)
     // 签约成功回调（1）+ 扣款成功回调（2），由 charge 内部推 2；这里补 1（仅首次，回放不重推）。
-    if (r.ok && !(r as { replayed?: boolean }).replayed) await this.webhook.deliver(so.id, 1, { amount: 0, period: 0, operateTime: new Date() })
+    if (r.ok && !(r as { replayed?: boolean }).replayed) await this.webhook.deliver(so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
     return r
   }
 
@@ -122,7 +123,7 @@ export class CpsService {
     if (result.ok && !replayed) {
       this.metrics.recordFundAction('cps.charge', 'ok')
       // 扣款成功回调（2）
-      await this.webhook.deliver(signOrderNo, 2, { orderNo: result.extOrderNo, amount: result.amount, period, operateTime: new Date() })
+      await this.webhook.deliver(signOrderNo, YD_STATUS.DEDUCT, { orderNo: result.extOrderNo, amount: result.amount, period, operateTime: new Date() })
     }
     return replayed ? { ...result, replayed: true } : result
   }
@@ -139,7 +140,7 @@ export class CpsService {
       data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period: so.currentPeriod + 1, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
     })
     await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
-    await this.webhook.deliver(so.id, 5, { amount: so.amount, period: so.currentPeriod + 1, operateTime: new Date(), msg: reason })
+    await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { amount: so.amount, period: so.currentPeriod + 1, operateTime: new Date(), subMsg: reason })
     return { ok: true, detail: '已记录扣款失败并进入补扣队列', retryId: cr }
   }
 
@@ -168,7 +169,7 @@ export class CpsService {
       this.metrics.addRefundAmount(r.amt)
       return { ok: true, detail: '退款成功', amount: r.amt, share: r.share, period: r.period }
     })
-    if (result.ok && !replayed) await this.webhook.deliver(signOrderNo, 4, { orderNo: extOrderNo, amount: result.amount, period: result.period ?? 0, operateTime: new Date() })
+    if (result.ok && !replayed) await this.webhook.deliver(signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: result.amount, period: result.period ?? 0, operateTime: new Date() })
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -181,7 +182,7 @@ export class CpsService {
     await this.prisma.chargeRetry.updateMany({ where: { signOrderNo: so.id, status: 'pending' }, data: { status: 'cancelled' } })
     if (so.subscriptionId) await this.prisma.subscription.update({ where: { id: so.subscriptionId }, data: { status: 'churned', churnedAt: new Date() } }).catch(() => undefined)
     await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.unsign', resource: 'SignOrder', resourceId: so.id, detail: `解约 ${so.id}` })
-    await this.webhook.deliver(so.id, 3, { operateTime: new Date() })
+    await this.webhook.deliver(so.id, YD_STATUS.UNSIGN, { operateTime: new Date() })
     return { ok: true, detail: '解约成功' }
   }
 
@@ -242,7 +243,7 @@ export class CpsService {
             return { ext, period }
           })
         })
-        if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.deliver(so.id, 2, { orderNo: r.result.ext, amount: cr.amount, period: r.result.period, operateTime: now }) }
+        if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: r.result.ext, amount: cr.amount, period: r.result.period, operateTime: now }) }
         succeeded++
       } else {
         // 补扣失败：attempt+1，排下次（首次失败当天再补1次→次日；之后每周）

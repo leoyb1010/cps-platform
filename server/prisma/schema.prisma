@@ -121,11 +121,20 @@ model ApiCredential {
   id         String   @id // AK-xxxx
   brandId    String
   appId      String   @unique // 公开标识，请求携带 X-Cps-App-Id / body appId
+  // ── 有道 RSA 对接凭证 ──
+  custId        String @default("") // 有道侧业务方 id
+  merchantId    String @default("") // 有道侧商户 id（请求携带，定位公钥）
+  publicKey     String @default("") // 合作方 RSA 2048 公钥（SPKI PEM），入站验签用
+  publicKeyHash String @default("") // sha256(publicKey)，防篡改
+  publicKeyHint String @default("") // 公钥指纹末 8 位展示，不泄漏全量
+  keySource     String @default("") // keygen（系统生成）| upload（合作方上传）
+  // ── HMAC 旧字段（清理批删除）──
   secret     String   @default("") // 对称共享密钥（演示态明文；生产应 KMS 加密）。出站 webhook 用它签名，品牌验签
   secretHash String // sha256(secret)，入站验签比对（纵深防御）
   secretHint String   @default("") // 末 4 位展示，便于品牌核对，不泄漏全量
   status     String   @default("active") // active | revoked
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 }
 
 model Agent {
@@ -289,12 +298,17 @@ model SignOrder {
   subscriptionId String? // 关联订阅生命周期（首扣成功后回填）
   extraInfo      String    @default("") // 透传参数（回调原样返回）
   appId          String    @default("") // 发起对接方
+  custOrderId    String    @default("") // 有道侧合作方订单号（唯一标志，对账/回调用）
+  orderId        String    @default("") // 有道侧订单号（= 本签约单 id，回前端 payInfo.orderId）
+  env            String    @default("prod") // prod | sandbox（联调/健康分用沙箱，不进真实对账）
   signedAt       DateTime?
   nextChargeAt   DateTime? // 下一期扣款时间
   unsignedAt     DateTime?
   expireAt       DateTime? // 合约到期自动解约时间
   createdAt      DateTime  @default(now())
   deletedAt      DateTime?
+
+  @@index([custOrderId])
 }
 
 // 补扣台账：扣款失败进队列，定时 sweep 按文档规则补扣（当天1次+每周1次，3月窗口，避峰）。

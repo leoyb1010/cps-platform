@@ -18,6 +18,11 @@ function assertSecrets() {
       throw new Error(`[安全] 生产环境 ${k} 未设置或过弱（需 ≥24 字符随机值，如 openssl rand -hex 32）`)
     }
   }
+  // 有道出站回调平台私钥：生产必须设置真实 RSA 私钥，否则回退到仓库内 demo 私钥 → 任何人可伪造回调签名。
+  const pk = process.env.YOUDAO_PLATFORM_PRIVATE_KEY || ''
+  if (!pk.includes('PRIVATE KEY')) {
+    throw new Error('[安全] 生产环境 YOUDAO_PLATFORM_PRIVATE_KEY 未设置真实 RSA 私钥（PEM）——回退 demo 私钥会被伪造回调')
+  }
 }
 
 async function bootstrap() {

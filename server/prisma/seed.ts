@@ -3,12 +3,16 @@ import { PrismaClient } from '@prisma/client'
 import * as argon2 from 'argon2'
 import { createHash } from 'crypto'
 import { ROLE_PRESETS, SEED_USERS } from '../src/rbac/permissions'
+import { DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
 
 const db = new PrismaClient()
 
-// CPS 对接演示凭证：固定 appId/secret，供对外文档 curl 示例与 e2e 联调直接使用。
-// 生产由品牌在「开发者中心」自助生成（明文仅返回一次）；此处为演示态可复现而固定。
-const DEMO_API = { id: 'AK-DEMO01', brandId: 'youdao', appId: 'cps_demo_youdao', secret: 'demo_secret_youdao_2026' }
+// 有道对接演示凭证：固定 custId/merchantId + RSA 公钥（私钥见 demo-keys.ts，合作方自留范式）。
+// 供对外文档 curl 示例与 e2e 联调直接使用；生产由合作方在「开发者中心」自助生成密钥。
+const DEMO_API = {
+  id: 'AK-DEMO01', brandId: 'youdao', appId: 'cps_demo_youdao', secret: 'demo_secret_youdao_2026',
+  custId: 'cust_youdao', merchantId: 'mch_youdao',
+}
 
 // ── 业务种子数据（与前端 src/lib/data.ts 对齐的精简集） ──
 const BRANDS = [
@@ -211,9 +215,14 @@ async function main() {
   for (const p of PRODUCTS) await db.product.upsert({ where: { id: p.id }, update: p, create: p })
   for (const br of BUNDLE_RULES) await db.bundleRule.upsert({ where: { id: br.id }, update: br, create: br })
   for (const n of NOTIFICATIONS) await db.notification.upsert({ where: { id: n.id }, update: n, create: n })
-  // CPS 对接演示凭证（youdao）：secret 只存哈希，hint 取末 4 位
+  // 有道对接演示凭证（youdao）：存 RSA 公钥（私钥见 demo-keys.ts 合作方自留）；secret 旧字段留待清理批删
   const demoCred = {
     id: DEMO_API.id, brandId: DEMO_API.brandId, appId: DEMO_API.appId,
+    custId: DEMO_API.custId, merchantId: DEMO_API.merchantId,
+    publicKey: DEMO_RSA_PUBLIC,
+    publicKeyHash: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex'),
+    publicKeyHint: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex').slice(-8),
+    keySource: 'keygen',
     secret: DEMO_API.secret,
     secretHash: createHash('sha256').update(DEMO_API.secret).digest('hex'),
     secretHint: DEMO_API.secret.slice(-4), status: 'active',
