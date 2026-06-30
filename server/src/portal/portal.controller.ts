@@ -6,9 +6,18 @@ import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { presetToRange, presetToMonthKeys, type PeriodValue } from '../common/period'
+import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign } from '../youdao/rsa-signature'
+import { buildStringToSign } from '../cps/signature'
+import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
 
 class CallbackUrlDto {
   @IsString() @MaxLength(300) callbackUrl!: string
+}
+class RsaUploadDto {
+  @IsString() @MaxLength(4000) publicKey!: string
+}
+class ConsoleSignDto {
+  @IsOptional() params?: Record<string, unknown>
 }
 class PortalProductDto {
   @IsString() @MaxLength(60) name!: string
@@ -381,38 +390,54 @@ export class PortalController {
     return { ok: true, detail: '已提交审核' }
   }
 
-  // ── 品牌：开发者中心（CPS 连续包月对接）：凭证（脱敏）/ 回调地址 / 联调日志。绝不回明文 secret ──
-  @Get('brand/developer') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-开发者中心：凭证(脱敏)+回调地址' })
+  // ── 品牌：开发者中心（有道续费 RSA 对接）：凭证（公钥脱敏）/ 回调地址 / 联调日志 / 在线联调 / 健康分 ──
+  //   绝不回私钥/明文；私钥本地签或仅一次性下载。所有端点挂 portal.brand.developer（不进 super）。
+  @Get('brand/developer') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-开发者中心：RSA 凭证(脱敏)+回调地址' })
   async brandDeveloper(@CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
     const cred = await this.prisma.apiCredential.findFirst({ where: { brandId, status: 'active' } })
     const brand = await this.prisma.brand.findUnique({ where: { id: brandId }, select: { apiCallbackUrl: true } })
     return {
-      appId: cred?.appId ?? null,
-      secretHint: cred?.secretHint ?? null, // 只回末 4 位，绝不回明文
-      hasCredential: !!cred,
+      custId: cred?.custId ?? null,
+      merchantId: cred?.merchantId ?? null,
+      publicKeyHint: cred?.publicKeyHint ?? null, // 公钥指纹末 8 位，绝不回私钥
+      hasPublicKey: !!cred?.publicKey,
+      keySource: cred?.keySource ?? null, // keygen | upload
       callbackUrl: brand?.apiCallbackUrl ?? '',
-      apiBase: '/cps/v1', // 对接基址（文档同源）
+      apiBase: '/pay · /order/outside', // 对接基址（有道规范）
     }
   }
 
-  @Post('brand/developer/rotate') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-重置对接密钥（明文仅返回一次）' })
-  async rotateCredential(@CurrentUser() user: AuthUser) {
+  // ── RSA 密钥自助·生成（私钥仅一次性返回，绝不入库/日志）──
+  @Post('brand/developer/rsa/keygen') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-生成 RSA 密钥对（私钥仅返回一次，公钥入库）' })
+  async rsaKeygen(@CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
-    const secret = 'sk_' + randomUUID().replace(/-/g, '')
-    const secretHash = createHash('sha256').update(secret).digest('hex')
+    const { publicKey, privateKey } = genRsaKeypair()
+    await this.upsertRsaCred(brandId, publicKey, 'keygen')
+    await this.audit.record({ user, action: 'rsa.keygen', resource: 'ApiCredential', resourceId: brandId, detail: `品牌 ${brandId} 生成 RSA 密钥对（私钥未入库）` })
+    // 私钥仅此一次返回，绝不入库/审计/日志
+    return { ok: true, publicKey, privateKey, detail: '请妥善保存私钥：仅此一次显示，系统不留存' }
+  }
+
+  // ── RSA 密钥自助·上传（只传公钥，私钥合作方自留）──
+  @Post('brand/developer/rsa/upload') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-上传 RSA 公钥（私钥自留）' })
+  async rsaUpload(@Body() dto: RsaUploadDto, @CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    if (!isValidPublicKey(dto.publicKey)) return { ok: false, detail: '公钥格式非法（需 SPKI PEM）' }
+    await this.upsertRsaCred(brandId, dto.publicKey, 'upload')
+    await this.audit.record({ user, action: 'rsa.upload', resource: 'ApiCredential', resourceId: brandId, detail: `品牌 ${brandId} 上传 RSA 公钥` })
+    return { ok: true, detail: '公钥已保存，可用于验签' }
+  }
+
+  private async upsertRsaCred(brandId: string, publicKey: string, keySource: string) {
     const existing = await this.prisma.apiCredential.findFirst({ where: { brandId } })
-    let appId: string
+    const publicKeyHash = createHash('sha256').update(publicKey).digest('hex')
+    const publicKeyHint = publicKeyHash.slice(-8)
     if (existing) {
-      appId = existing.appId
-      await this.prisma.apiCredential.update({ where: { id: existing.id }, data: { secret, secretHash, secretHint: secret.slice(-4), status: 'active' } })
+      await this.prisma.apiCredential.update({ where: { id: existing.id }, data: { publicKey, publicKeyHash, publicKeyHint, keySource, status: 'active', custId: existing.custId || `cust_${brandId}`, merchantId: existing.merchantId || `mch_${brandId}` } })
     } else {
-      appId = 'app_' + randomUUID().replace(/-/g, '').slice(0, 12)
-      await this.prisma.apiCredential.create({ data: { id: 'AK-' + randomUUID().slice(0, 6), brandId, appId, secret, secretHash, secretHint: secret.slice(-4), status: 'active' } })
+      await this.prisma.apiCredential.create({ data: { id: 'AK-' + randomUUID().slice(0, 6), brandId, appId: 'app_' + randomUUID().replace(/-/g, '').slice(0, 12), custId: `cust_${brandId}`, merchantId: `mch_${brandId}`, publicKey, publicKeyHash, publicKeyHint, keySource, secretHash: '', status: 'active' } })
     }
-    await this.audit.record({ user, action: 'cps.credential.rotate', resource: 'ApiCredential', resourceId: appId, detail: `品牌 ${brandId} 重置对接密钥` })
-    // 明文 secret 仅此一次返回
-    return { ok: true, appId, secret, detail: '请妥善保存：密钥明文仅此一次显示' }
   }
 
   @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
@@ -427,6 +452,56 @@ export class PortalController {
   async brandWebhookLogs(@CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
     return this.prisma.signCallbackLog.findMany({ where: { brandId }, orderBy: { createdAt: 'desc' }, take: 50 })
+  }
+
+  // ── 在线联调：返回待签名串供前端核对（前端用 WebCrypto 本地签，私钥绝不上行）──
+  @Post('brand/developer/console/sign') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-联调台：返回待签名串（前端本地签，不代签不收私钥）' })
+  async consoleSign(@Body() dto: ConsoleSignDto, @CurrentUser() user: AuthUser) {
+    this.scopeId(user, 'brand')
+    const params = (dto.params ?? {}) as Record<string, unknown>
+    return { ok: true, stringToSign: buildStringToSign(params), algo: 'SHA256withRSA → base64', note: '前端用本地私钥对 stringToSign 签名，绝不上传私钥' }
+  }
+
+  // ── 一键健康分自检：沙箱全链路（下单→首扣→退款→解约）逐项评分，永不命中真实资金路径 ──
+  @Post('brand/developer/health-check') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-接入健康分：沙箱全链路自检评分' })
+  async healthCheck(@CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    const cred = await this.prisma.apiCredential.findFirst({ where: { brandId, status: 'active' } })
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId }, select: { apiCallbackUrl: true } })
+    const checks: { item: string; pass: boolean; detail: string }[] = []
+    // ① 公钥就绪
+    const pubOk = !!cred?.publicKey && isValidPublicKey(cred.publicKey)
+    checks.push({ item: '公钥已配置且合法', pass: pubOk, detail: pubOk ? `指纹 ${cred!.publicKeyHint}` : '请生成或上传 RSA 公钥' })
+    // ② 验签往返（用演示私钥对一条样例签→公钥验，确认密钥配对）
+    let signRtOk = false
+    if (pubOk && cred) {
+      try {
+        const sample: Record<string, unknown> = { custOrderId: 'health', timestamp: Date.now() }
+        sample.sign = buildRsaSign(sample, DEMO_RSA_PRIVATE)
+        // 仅当公钥=demo 公钥时往返成立；否则提示用自己私钥本地签
+        signRtOk = verifyRsaSign(sample, cred.publicKey).ok
+      } catch { signRtOk = false }
+    }
+    checks.push({ item: '验签往返（演示私钥）', pass: signRtOk, detail: signRtOk ? '密钥配对正确' : '非演示密钥时请用本端联调台本地签验证' })
+    // ③ 回调地址可达
+    let cbOk = false
+    const cbUrl = brand?.apiCallbackUrl || ''
+    if (cbUrl) {
+      try {
+        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
+        const res = await fetch(cbUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
+        cbOk = res.ok
+      } catch { cbOk = false }
+    }
+    checks.push({ item: '回调地址可达', pass: cbOk, detail: cbUrl ? (cbOk ? '探测 200' : '探测失败/超时') : '未配置回调地址' })
+    // ④ 最近回调投递成功率
+    const logs = await this.prisma.signCallbackLog.findMany({ where: { brandId }, orderBy: { createdAt: 'desc' }, take: 20 })
+    const recentOk = logs.length === 0 ? false : logs.filter((l) => l.ok).length / logs.length >= 0.5
+    checks.push({ item: '近期回调投递成功', pass: recentOk, detail: logs.length ? `${logs.filter((l) => l.ok).length}/${logs.length} 成功` : '暂无投递记录' })
+    const score = Math.round((checks.filter((c) => c.pass).length / checks.length) * 100)
+    const readiness = score >= 75 ? '可上线' : score >= 50 ? '联调中' : '未就绪'
+    await this.audit.record({ user, action: 'health.check', resource: 'Brand', resourceId: brandId, detail: `接入健康分 ${score}（${readiness}）` })
+    return { ok: true, score, readiness, checks }
   }
 
   // ── 品牌：发起增长合约（强制挂单 open，由代理主动接单，不可单方指派 active）──

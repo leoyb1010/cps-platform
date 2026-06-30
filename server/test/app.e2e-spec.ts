@@ -1168,25 +1168,37 @@ describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）',
     expect(r.body.ok).toBe(true)
   })
 
-  it('开发者中心：凭证回显不含明文 secret；非品牌角色 403', async () => {
+  it('开发者中心：RSA 凭证回显不含私钥；非品牌角色 403', async () => {
     const bt = await token('brand')
     const dev = await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${bt}`).expect(200)
-    expect(dev.body.secretHint).toBeTruthy()
-    expect(dev.body.secret).toBeUndefined() // 绝不回明文
-    expect(dev.body.appId).toBe(CPS_APP)
+    expect(dev.body.publicKeyHint).toBeTruthy() // 公钥指纹脱敏
+    expect(dev.body.hasPublicKey).toBe(true)
+    expect(dev.body.privateKey).toBeUndefined() // 绝不回私钥
+    expect(dev.body.merchantId).toBe('mch_youdao')
     // 代理角色无 portal.brand.developer 权限
     const at = await token('agent')
     await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${at}`).expect(403)
   })
 
-  it('凭证轮换后旧 secret 失效（新 secret 可验签）', async () => {
+  it('RSA 密钥自助生成：私钥仅一次返回，再 GET 不回私钥', async () => {
     const bt = await token('brand')
-    const rot = await request(httpServer).post('/portal/brand/developer/rotate').set('Authorization', `Bearer ${bt}`)
-    expect(rot.body.ok).toBe(true)
-    expect(rot.body.secret).toBeTruthy() // 明文仅此一次
-    // 旧 demo secret 现已失效：用旧 secret 签名签约应 401
-    const pid = await liveProductId()
-    await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900005555' })).expect(401)
+    const gen = await request(httpServer).post('/portal/brand/developer/rsa/keygen').set('Authorization', `Bearer ${bt}`)
+    expect(gen.body.ok).toBe(true)
+    expect(gen.body.privateKey).toContain('PRIVATE KEY') // 明文私钥仅此一次
+    expect(gen.body.publicKey).toContain('PUBLIC KEY')
+    // 再 GET 不含私钥
+    const dev = await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${bt}`).expect(200)
+    expect(dev.body.privateKey).toBeUndefined()
+  })
+
+  it('联调台 console/sign 返回 stringToSign 不收私钥；健康分自检评分', async () => {
+    const bt = await token('brand')
+    const cs = await request(httpServer).post('/portal/brand/developer/console/sign').set('Authorization', `Bearer ${bt}`).send({ params: { b: 2, a: 1 } })
+    expect(cs.body.stringToSign).toBe('a=1&b=2')
+    const hc = await request(httpServer).post('/portal/brand/developer/health-check').set('Authorization', `Bearer ${bt}`)
+    expect(hc.body.ok).toBe(true)
+    expect(hc.body.score).toBeGreaterThanOrEqual(0)
+    expect(Array.isArray(hc.body.checks)).toBe(true)
   })
 })
 

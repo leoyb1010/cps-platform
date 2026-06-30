@@ -1725,22 +1725,47 @@
             "description": ""
           }
         },
-        "summary": "品牌-开发者中心：凭证(脱敏)+回调地址",
+        "summary": "品牌-开发者中心：RSA 凭证(脱敏)+回调地址",
         "tags": [
           "portal"
         ]
       }
     },
-    "/portal/brand/developer/rotate": {
+    "/portal/brand/developer/rsa/keygen": {
       "post": {
-        "operationId": "PortalController_rotateCredential",
+        "operationId": "PortalController_rsaKeygen",
         "parameters": [],
         "responses": {
           "201": {
             "description": ""
           }
         },
-        "summary": "品牌-重置对接密钥（明文仅返回一次）",
+        "summary": "品牌-生成 RSA 密钥对（私钥仅返回一次，公钥入库）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/rsa/upload": {
+      "post": {
+        "operationId": "PortalController_rsaUpload",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RsaUploadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-上传 RSA 公钥（私钥自留）",
         "tags": [
           "portal"
         ]
@@ -1781,6 +1806,46 @@
           }
         },
         "summary": "品牌-对接联调日志（webhook 投递记录，scope 收窄）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/console/sign": {
+      "post": {
+        "operationId": "PortalController_consoleSign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleSignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-联调台：返回待签名串（前端本地签，不代签不收私钥）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/health-check": {
+      "post": {
+        "operationId": "PortalController_healthCheck",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-接入健康分：沙箱全链路自检评分",
         "tags": [
           "portal"
         ]
@@ -2608,7 +2673,15 @@
         "type": "object",
         "properties": {}
       },
+      "RsaUploadDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CallbackUrlDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ConsoleSignDto": {
         "type": "object",
         "properties": {}
       },

@@ -81,9 +81,12 @@ export const portalApi = {
   agentPayoutRequests: <T = unknown[]>() => http.get<T>('/portal/agent/payout-requests'),
   notifications: <T = unknown[]>() => http.get<T>('/portal/notifications'),
   readNotif: (id: string) => http.post<{ ok: boolean }>(`/portal/notifications/${id}/read`),
-  // CPS 连续包月对接 · 开发者中心
+  // 有道续费 RSA 对接 · 开发者中心
   developer: <T = unknown>() => http.get<T>('/portal/brand/developer'),
-  rotateCredential: () => http.post<{ ok: boolean; appId: string; secret: string; detail: string }>('/portal/brand/developer/rotate'),
+  rsaKeygen: () => http.post<{ ok: boolean; publicKey: string; privateKey: string; detail: string }>('/portal/brand/developer/rsa/keygen'),
+  rsaUpload: (publicKey: string) => http.post<{ ok: boolean; detail: string }>('/portal/brand/developer/rsa/upload', { publicKey }),
   setCallbackUrl: (callbackUrl: string) => http.patch<{ ok: boolean; detail: string }>('/portal/brand/developer/callback', { callbackUrl }),
   webhookLogs: <T = unknown[]>() => http.get<T>('/portal/brand/developer/logs'),
+  consoleSign: (params: Record<string, unknown>) => http.post<{ ok: boolean; stringToSign: string; algo: string; note: string }>('/portal/brand/developer/console/sign', { params }),
+  healthCheck: () => http.post<{ ok: boolean; score: number; readiness: string; checks: { item: string; pass: boolean; detail: string }[] }>('/portal/brand/developer/health-check'),
 }
