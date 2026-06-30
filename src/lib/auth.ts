@@ -47,7 +47,7 @@ const ALL = PERMISSIONS.map((p) => p.key)
 
 /* ── 客户门户权限点（与后端 PORTAL_PERMISSIONS 镜像；real 模式以服务端下发为准）──
    独立于内部 PERMISSIONS，不并入 ALL，保持 super 内部权限计数稳定。 */
-export const BRAND_PERMS = ['portal.brand.home', 'portal.brand.orders', 'portal.brand.settlement', 'portal.brand.onboarding', 'portal.brand.tickets', 'portal.brand.contracts', 'portal.brand.products', 'portal.aigc']
+export const BRAND_PERMS = ['portal.brand.home', 'portal.brand.orders', 'portal.brand.settlement', 'portal.brand.onboarding', 'portal.brand.tickets', 'portal.brand.contracts', 'portal.brand.products', 'portal.brand.developer', 'portal.aigc']
 export const AGENT_PERMS = ['portal.agent.home', 'portal.agent.market', 'portal.agent.plans', 'portal.agent.payouts', 'portal.agent.credit', 'portal.agent.contracts', 'portal.agent.tickets', 'portal.aigc']
 
 /* ── 角色 → 权限点（与 v4 §4 预设角色一致） ── */

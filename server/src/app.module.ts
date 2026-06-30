@@ -28,6 +28,9 @@ import { ReconciliationService } from './business/reconciliation.service'
 import { SettlementService } from './business/settlement.service'
 import { ReserveReleaseService } from './business/reserve-release.service'
 import { FulfillmentService } from './business/fulfillment.service'
+import { CpsController } from './cps/cps.controller'
+import { CpsService } from './cps/cps.service'
+import { SignWebhookService } from './cps/sign-webhook.service'
 import { ScheduledTasksService } from './business/scheduled-tasks.service'
 
 @Module({
@@ -58,7 +61,7 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     // 定时任务调度（准备金到期释放、对账）。任务体在 ScheduledTasksService，测试环境内部跳过自动触发。
     ScheduleModule.forRoot(),
   ],
-  controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, HealthController],
+  controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, CpsController, HealthController],
   providers: [
     PrismaService,
     AuthService,
@@ -70,6 +73,8 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     ReserveReleaseService,
     FulfillmentService,
     ScheduledTasksService,
+    CpsService,
+    SignWebhookService,
     // 全局：限流 → 认证 → 鉴权
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

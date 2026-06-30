@@ -6,6 +6,7 @@ import { IdempotencyService } from '../common/idempotency.service'
 import { MetricsService } from '../common/metrics.service'
 import { ReconciliationService } from './reconciliation.service'
 import { ReserveReleaseService } from './reserve-release.service'
+import { CpsService } from '../cps/cps.service'
 
 /**
  * 定时任务（端点先行 + cron 后挂）。
@@ -28,6 +29,7 @@ export class ScheduledTasksService {
     private metrics: MetricsService,
     private recon: ReconciliationService,
     private reserve: ReserveReleaseService,
+    private cps: CpsService,
   ) {}
 
   /** 每日 02:07 释放所有到期准备金（与手动 POST /reserve/release-due 同逻辑）。 */
@@ -60,5 +62,13 @@ export class ScheduledTasksService {
     if (!this.enabled) return
     const r = await this.recon.run()
     if (!r.ok) this.logger.warn(`[定时] 对账发现异常：拆分不平 ${r.mismatches.length}、释放守恒不符 ${r.reserveMismatches.length}`)
+  }
+
+  /** 每日 10:30 跑一次 CPS 补扣 sweep（工作时段，避开深夜；与手动 POST /cps/retry/sweep 同逻辑）。 */
+  @Cron('30 10 * * *')
+  async cpsRetrySweep(): Promise<void> {
+    if (!this.enabled) return
+    const res = await this.cps.runRetrySweep(new Date())
+    if (res.swept > 0) this.logger.log(`[定时] CPS 补扣 sweep：扫 ${res.swept} 笔，成功 ${res.succeeded}，终止解约 ${res.exhausted}，顺延 ${res.deferred}`)
   }
 }

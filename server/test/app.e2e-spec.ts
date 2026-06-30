@@ -4,7 +4,22 @@ import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { createHmac } from 'crypto'
 import cookieParser = require('cookie-parser')
+
+// CPS 对接演示凭证（与 seed 一致），用于签名对外接口测试
+const CPS_APP = 'cps_demo_youdao'
+const CPS_SECRET = 'demo_secret_youdao_2026'
+function cpsSign(params: Record<string, unknown>): Record<string, unknown> {
+  const p = { ...params, appId: CPS_APP, timestamp: Math.floor(Date.now() / 1000) }
+  const base = Object.entries(p)
+    .filter(([k, v]) => k !== 'sign' && v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)] as [string, string])
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&')
+  return { ...p, sign: createHmac('sha256', CPS_SECRET).update(base + `&key=${CPS_SECRET}`, 'utf8').digest('hex') }
+}
 
 // 独立测试库 + 每次重建/灌种子 → 测试与开发库隔离、顺序无关、可重复
 process.env.DATABASE_URL = 'file:./test.db'
@@ -1070,6 +1085,108 @@ describe('准备金分期释放（守恒式 II/III/IV，不破恒等式 I）', (
   it('ops 无 settlement.clear 权限 → 释放 403', async () => {
     const ops = await token('ops')
     await request(httpServer).post('/reserve/RR-2406WP-2/release').set('Authorization', `Bearer ${ops}`).expect(403)
+  })
+})
+
+describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）', () => {
+  // 取一个 live 商品作签约标的
+  async function liveProductId(): Promise<string> {
+    const r = await request(httpServer).get('/market/products').expect(200)
+    return r.body[0].id
+  }
+
+  it('签约→首扣→续扣→退款→对账(恒等式不破)→解约 全链路', async () => {
+    const su = await token('admin')
+    const pid = await liveProductId()
+    // 签约（HMAC）
+    const sign = await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900008888' }))
+    expect([200, 201]).toContain(sign.status)
+    expect(sign.body.code).toBe(0)
+    const so = sign.body.data.signOrderNo
+    expect(so).toMatch(/^SIGN-/)
+    // 首扣（内部 sim, JWT）→ 落首单 + 订阅
+    const fc = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
+    expect(fc.body.ok).toBe(true)
+    expect(fc.body.period).toBe(0)
+    const ext0 = fc.body.extOrderNo
+    // 续扣 → period=1
+    const rc = await request(httpServer).post('/cps/sim/renew').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
+    expect(rc.body.ok).toBe(true)
+    expect(rc.body.period).toBe(1)
+    // 对账退款前 ok
+    const r0 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(r0.body.ok).toBe(true)
+    // 退款首扣单（HMAC, signOrderNo+orderNo）
+    const rf = await request(httpServer).post('/cps/v1/refund').send(cpsSign({ signOrderNo: so, orderNo: ext0 }))
+    expect(rf.body.code).toBe(0)
+    // 退款后对账仍 ok（结算恒等式 I 不破）
+    const r1 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(r1.body.ok).toBe(true)
+    expect(r1.body.mismatches.length).toBe(0)
+    // 解约（HMAC）
+    const u = await request(httpServer).post('/cps/v1/unsign').send(cpsSign({ signOrderNo: so }))
+    expect(u.body.code).toBe(0)
+  })
+
+  it('HMAC 错签 → 401；时间戳过期 → 401', async () => {
+    const pid = await liveProductId()
+    // 错签
+    await request(httpServer).post('/cps/v1/sign').send({ sign_content: pid, pay_channel_type: 1, mobile: '13900000000', appId: CPS_APP, timestamp: Math.floor(Date.now() / 1000), sign: 'deadbeef' }).expect(401)
+    // 时间戳过期（10 分钟前）
+    const stale = cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900000000' })
+    stale.timestamp = Math.floor(Date.now() / 1000) - 600
+    await request(httpServer).post('/cps/v1/sign').send(stale).expect(401)
+    // 未注册 appId
+    await request(httpServer).post('/cps/v1/query').send({ signOrderNo: 'X', appId: 'nope', timestamp: Math.floor(Date.now() / 1000), sign: 'x' }).expect(401)
+  })
+
+  it('幂等：同 Idempotency-Key 首扣只执行一次（不双扣）', async () => {
+    const su = await token('admin')
+    const pid = await liveProductId()
+    const so = (await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900007777' }))).body.data.signOrderNo
+    const key = 'e2e-cps-idem-' + Math.random().toString(36).slice(2)
+    const r1 = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key).send({ signOrderNo: so })
+    const r2 = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key).send({ signOrderNo: so })
+    expect(r1.body.ok).toBe(true)
+    expect(r2.body.replayed).toBe(true) // 命中首次结果，未再次扣款
+    expect(r2.body.orderId).toBe(r1.body.orderId)
+  })
+
+  it('补扣 sweep：扣款失败→补扣队列→sweep 成功落续费单，对账仍 ok', async () => {
+    const su = await token('admin')
+    const pid = await liveProductId()
+    const so = (await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900006666' }))).body.data.signOrderNo
+    await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
+    // 注入扣款失败 → 进补扣队列
+    const fail = await request(httpServer).post('/cps/sim/fail').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so, reason: '余额不足' })
+    expect(fail.body.ok).toBe(true)
+    // sweep 成功
+    const sweep = await request(httpServer).post('/cps/retry/sweep').set('Authorization', `Bearer ${su}`).send({ outcome: 'success' })
+    expect(sweep.body.succeeded).toBeGreaterThanOrEqual(1)
+    // 对账仍 ok（补扣走 ingestOrder，恒等式不破）
+    const r = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(r.body.ok).toBe(true)
+  })
+
+  it('开发者中心：凭证回显不含明文 secret；非品牌角色 403', async () => {
+    const bt = await token('brand')
+    const dev = await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${bt}`).expect(200)
+    expect(dev.body.secretHint).toBeTruthy()
+    expect(dev.body.secret).toBeUndefined() // 绝不回明文
+    expect(dev.body.appId).toBe(CPS_APP)
+    // 代理角色无 portal.brand.developer 权限
+    const at = await token('agent')
+    await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${at}`).expect(403)
+  })
+
+  it('凭证轮换后旧 secret 失效（新 secret 可验签）', async () => {
+    const bt = await token('brand')
+    const rot = await request(httpServer).post('/portal/brand/developer/rotate').set('Authorization', `Bearer ${bt}`)
+    expect(rot.body.ok).toBe(true)
+    expect(rot.body.secret).toBeTruthy() // 明文仅此一次
+    // 旧 demo secret 现已失效：用旧 secret 签名签约应 401
+    const pid = await liveProductId()
+    await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900005555' })).expect(401)
   })
 })
 

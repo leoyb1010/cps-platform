@@ -8,6 +8,7 @@ import type { AuthUser } from '../rbac/rbac'
 
 export interface AuditInput {
   user?: AuthUser | null
+  actorName?: string // 系统/中继动作（无登录用户）显式标注行为方，actorId 留空（FK 安全）
   action: string
   resource: string
   resourceId?: string
@@ -40,7 +41,7 @@ export class AuditService {
   private toData(p: AuditInput) {
     return {
       actorId: p.user?.id ?? null,
-      actorName: p.user?.name ?? '系统',
+      actorName: p.user?.name ?? p.actorName ?? '系统',
       role: p.user?.roleId ?? '',
       action: p.action,
       resource: p.resource,

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Receipt, Landmark, Package, MessageSquareWarning, FileSignature, Store, Megaphone, TrendingUp, Gauge, Repeat, Sparkles, LayoutTemplate, type LucideIcon } from 'lucide-react'
+import { LayoutDashboard, Receipt, Landmark, Package, MessageSquareWarning, FileSignature, Store, Megaphone, TrendingUp, Gauge, Repeat, Sparkles, LayoutTemplate, Webhook, type LucideIcon } from 'lucide-react'
 
 export interface PortalNavItem {
   to: string
@@ -19,6 +19,7 @@ export const BRAND_NAV: PortalNavItem[] = [
   { to: '/portal/brand/contracts', label: '我的增长合约', icon: FileSignature, perm: 'portal.brand.contracts' },
   { to: '/portal/brand/barter', label: '资源置换', icon: Repeat, perm: 'portal.brand.contracts' },
   { to: '/portal/brand/aigc', label: 'AIGC 素材', icon: Sparkles, perm: 'portal.aigc' },
+  { to: '/portal/brand/developer', label: '开发者中心', icon: Webhook, perm: 'portal.brand.developer' },
 ]
 
 // 代理商门户导航（只含代理客户该看的页，全部走 portal.agent.* 权限）

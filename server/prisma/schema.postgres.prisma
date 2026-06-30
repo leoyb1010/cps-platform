@@ -110,8 +110,23 @@ model Brand {
   renewalRate   Float     @default(0)
   complaintRate Float     @default(0)
   joinedAt      String
+  // CPS 连续包月对接：品牌方接收状态回调的地址（出站 webhook 投递目标）；凭证另存 ApiCredential
+  apiCallbackUrl String   @default("")
   createdAt     DateTime  @default(now())
   deletedAt     DateTime?
+}
+
+// CPS 对接凭证：品牌/服务商接入连续包月对接 API 的 HMAC 凭证。
+//   secret 仅创建时明文返回一次，库内只存哈希；appId 公开（请求头携带，用于定位 secret）。
+model ApiCredential {
+  id         String   @id // AK-xxxx
+  brandId    String
+  appId      String   @unique // 公开标识，请求携带 X-Cps-App-Id / body appId
+  secret     String   @default("") // 对称共享密钥（演示态明文；生产应 KMS 加密）。出站 webhook 用它签名，品牌验签
+  secretHash String // sha256(secret)，入站验签比对（纵深防御）
+  secretHint String   @default("") // 末 4 位展示，便于品牌核对，不泄漏全量
+  status     String   @default("active") // active | revoked
+  createdAt  DateTime @default(now())
 }
 
 model Agent {
@@ -166,6 +181,9 @@ model Order {
   subscriptionId String? // 聚合到订阅生命周期；存量订单为 null
   productId      String? // 履约引擎按 agentId+brandId+productId 匹配合约；存量 null
   bundleId       String? // 套餐转订单溯源：同一 Bundle 拆出的多笔 Order 共享此 id；散单为 null
+  signOrderNo    String? // CPS 连续包月：所属签约单号（一签约对多扣款）；非签约订单为 null
+  extOrderNo     String? // CPS 交易单号（支付宝侧商家单号 orderNo），退款按此定位单期
+  period         Int? // CPS 扣款期数：首订 0，续期累加；非签约订单为 null
   createdAt      DateTime @default(now())
 }
 
@@ -253,6 +271,61 @@ model Subscription {
 
   // 防并发重复建订阅（L1）：同一品牌+代理+套餐唯一。续费更新现有行而非新建。
   @@unique([brandId, agentId, plan])
+}
+
+// CPS 连续包月签约单（聚合根）：signOrderNo 贯穿整个订单周期，一对多扣款 Order。
+//   状态机 signing→active→(unsigned|expired)。模拟扣款/退款仍走既有 ingestOrder/order.refund，
+//   本表只记签约主体与下一期排程，绝不写 Settlement 恒等式五项。
+model SignOrder {
+  id             String    @id // SIGN-xxxx（= 对外 signOrderNo）
+  brandId        String
+  agentId        String    @default("") // 归因渠道（无则空）
+  productId      String? // 签约商品（定价权威来源）
+  plan           String    @default("")
+  mobile         String    @default("") // 脱敏存储（前3后4）
+  payChannel     String    @default("alipay") // 1=支付宝
+  status         String    @default("signing") // signing | active | unsigned | expired
+  amount         Float     @default(0) // 单期扣款额（服务端权威，读商品价）
+  currentPeriod  Int       @default(0) // 已扣款期数：首扣后 0，每续 +1
+  subscriptionId String? // 关联订阅生命周期（首扣成功后回填）
+  extraInfo      String    @default("") // 透传参数（回调原样返回）
+  appId          String    @default("") // 发起对接方
+  signedAt       DateTime?
+  nextChargeAt   DateTime? // 下一期扣款时间
+  unsignedAt     DateTime?
+  expireAt       DateTime? // 合约到期自动解约时间
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+}
+
+// 补扣台账：扣款失败进队列，定时 sweep 按文档规则补扣（当天1次+每周1次，3月窗口，避峰）。
+model ChargeRetry {
+  id          String    @id // CR-xxxx
+  signOrderNo String
+  brandId     String
+  amount      Float
+  period      Int       @default(0) // 补扣对应期数
+  attempt     Int       @default(0) // 已补扣次数
+  status      String    @default("pending") // pending | succeeded | exhausted | cancelled
+  reason      String    @default("") // 失败原因
+  windowStart DateTime  @default(now()) // 补扣窗口起点（+3月为截止）
+  nextRetryAt DateTime // 下次补扣时间
+  lastTriedAt DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+// 回调投递日志（出/入站）：供开发者中心「联调日志」展示。无资金语义，不进对账。
+model SignCallbackLog {
+  id          String   @id // CB-xxxx
+  signOrderNo String
+  brandId     String
+  status      Int // 1签约 2扣款成功 3解约 4退款 5扣款失败
+  direction   String   @default("outbound") // outbound（我方推品牌）| inbound（品牌推我方）
+  payload     String   @default("{}")
+  httpStatus  Int      @default(0)
+  ok          Boolean  @default(false)
+  error       String   @default("")
+  createdAt   DateTime @default(now())
 }
 
 // 风险准备金分期释放台账。本阶段仅立表 + 展示，不做释放资金动作、不改恒等式校验。

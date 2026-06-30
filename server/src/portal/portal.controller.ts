@@ -1,12 +1,15 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHash } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { presetToRange, presetToMonthKeys, type PeriodValue } from '../common/period'
 
+class CallbackUrlDto {
+  @IsString() @MaxLength(300) callbackUrl!: string
+}
 class PortalProductDto {
   @IsString() @MaxLength(60) name!: string
   @IsOptional() @IsString() @MaxLength(40) category?: string
@@ -376,6 +379,54 @@ export class PortalController {
     await this.notify('platform', null, 'product', '有新商品待审核', `${brandId} 提交商品上架待审`, '/products')
     await this.audit.record({ user, action: 'product.submit', resource: 'Product', resourceId: id, detail: `商品 ${id} 提交审核` })
     return { ok: true, detail: '已提交审核' }
+  }
+
+  // ── 品牌：开发者中心（CPS 连续包月对接）：凭证（脱敏）/ 回调地址 / 联调日志。绝不回明文 secret ──
+  @Get('brand/developer') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-开发者中心：凭证(脱敏)+回调地址' })
+  async brandDeveloper(@CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    const cred = await this.prisma.apiCredential.findFirst({ where: { brandId, status: 'active' } })
+    const brand = await this.prisma.brand.findUnique({ where: { id: brandId }, select: { apiCallbackUrl: true } })
+    return {
+      appId: cred?.appId ?? null,
+      secretHint: cred?.secretHint ?? null, // 只回末 4 位，绝不回明文
+      hasCredential: !!cred,
+      callbackUrl: brand?.apiCallbackUrl ?? '',
+      apiBase: '/cps/v1', // 对接基址（文档同源）
+    }
+  }
+
+  @Post('brand/developer/rotate') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-重置对接密钥（明文仅返回一次）' })
+  async rotateCredential(@CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    const secret = 'sk_' + randomUUID().replace(/-/g, '')
+    const secretHash = createHash('sha256').update(secret).digest('hex')
+    const existing = await this.prisma.apiCredential.findFirst({ where: { brandId } })
+    let appId: string
+    if (existing) {
+      appId = existing.appId
+      await this.prisma.apiCredential.update({ where: { id: existing.id }, data: { secret, secretHash, secretHint: secret.slice(-4), status: 'active' } })
+    } else {
+      appId = 'app_' + randomUUID().replace(/-/g, '').slice(0, 12)
+      await this.prisma.apiCredential.create({ data: { id: 'AK-' + randomUUID().slice(0, 6), brandId, appId, secret, secretHash, secretHint: secret.slice(-4), status: 'active' } })
+    }
+    await this.audit.record({ user, action: 'cps.credential.rotate', resource: 'ApiCredential', resourceId: appId, detail: `品牌 ${brandId} 重置对接密钥` })
+    // 明文 secret 仅此一次返回
+    return { ok: true, appId, secret, detail: '请妥善保存：密钥明文仅此一次显示' }
+  }
+
+  @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
+  async setCallbackUrl(@Body() dto: CallbackUrlDto, @CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: dto.callbackUrl.slice(0, 300) } })
+    await this.audit.record({ user, action: 'cps.callback.set', resource: 'Brand', resourceId: brandId, detail: `品牌 ${brandId} 配置回调地址` })
+    return { ok: true, detail: '回调地址已保存' }
+  }
+
+  @Get('brand/developer/logs') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-对接联调日志（webhook 投递记录，scope 收窄）' })
+  async brandWebhookLogs(@CurrentUser() user: AuthUser) {
+    const brandId = this.scopeId(user, 'brand')
+    return this.prisma.signCallbackLog.findMany({ where: { brandId }, orderBy: { createdAt: 'desc' }, take: 50 })
   }
 
   // ── 品牌：发起增长合约（强制挂单 open，由代理主动接单，不可单方指派 active）──

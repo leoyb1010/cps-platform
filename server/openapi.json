@@ -1716,6 +1716,76 @@
         ]
       }
     },
+    "/portal/brand/developer": {
+      "get": {
+        "operationId": "PortalController_brandDeveloper",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-开发者中心：凭证(脱敏)+回调地址",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/rotate": {
+      "post": {
+        "operationId": "PortalController_rotateCredential",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-重置对接密钥（明文仅返回一次）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/callback": {
+      "patch": {
+        "operationId": "PortalController_setCallbackUrl",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallbackUrlDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-配置回调地址（接收状态 webhook）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/portal/brand/developer/logs": {
+      "get": {
+        "operationId": "PortalController_brandWebhookLogs",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "品牌-对接联调日志（webhook 投递记录，scope 收窄）",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
     "/portal/barter": {
       "post": {
         "operationId": "PortalController_proposeBarter",
@@ -2004,6 +2074,282 @@
         ]
       }
     },
+    "/cps/v1/sign": {
+      "post": {
+        "operationId": "CpsController_sign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "CPS 连续包月·签约（HMAC 鉴权）：建签约单 + 返回签约链接",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/v1/refund": {
+      "post": {
+        "operationId": "CpsController_refund",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "CPS·退款（HMAC）：指定某期订单退款，恒等式不破",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/v1/unsign": {
+      "post": {
+        "operationId": "CpsController_unsign",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnsignDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "CPS·解约（HMAC）：停止后续扣款 + 取消补扣",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/v1/query": {
+      "post": {
+        "operationId": "CpsController_query",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "CPS·查询（HMAC）：签约单 + 各期扣款状态",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/v1/callback": {
+      "post": {
+        "operationId": "CpsController_callback",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CallbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "CPS·回调接收（HMAC）：品牌推订单状态变化通知",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/sim/first-charge": {
+      "post": {
+        "operationId": "CpsController_simFirstCharge",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimChargeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "【模拟】签约单首扣（signing→active，落首单+订阅）",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/sim/renew": {
+      "post": {
+        "operationId": "CpsController_simRenew",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimChargeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "【模拟】签约单续扣（currentPeriod+1，落续费单）",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/sim/fail": {
+      "post": {
+        "operationId": "CpsController_simFail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimFailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "【模拟】注入扣款失败 → 进补扣队列 + 推 webhook(5)",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
+    "/cps/retry/sweep": {
+      "post": {
+        "operationId": "CpsController_retrySweep",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetrySweepDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "【内部】补扣 sweep：扫待补扣单按规则补扣/终止（cron 同逻辑）",
+        "tags": [
+          "cps"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_health",
@@ -2163,6 +2509,10 @@
         "type": "object",
         "properties": {}
       },
+      "CallbackUrlDto": {
+        "type": "object",
+        "properties": {}
+      },
       "PortalContractDto": {
         "type": "object",
         "properties": {}
@@ -2192,6 +2542,38 @@
         "properties": {}
       },
       "PayDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SignDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RefundDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UnsignDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "QueryDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CallbackDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SimChargeDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "SimFailDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RetrySweepDto": {
         "type": "object",
         "properties": {}
       }

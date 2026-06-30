@@ -60,6 +60,7 @@ export const PORTAL_PERMISSIONS: PermDef[] = [
   { key: 'portal.agent.tickets', label: '代理-相关工单', group: '客户门户' }, // 代理可见自己渠道的工单并协助处理
 
   { key: 'portal.brand.products', label: '品牌-我的订阅商品', group: '客户门户' }, // 品牌上架订阅商品
+  { key: 'portal.brand.developer', label: '品牌-开发者中心(对接)', group: '客户门户' }, // CPS 连续包月对接：凭证/回调/联调日志
   { key: 'portal.aigc', label: '客户-AIGC 素材生成', group: '客户门户' }, // 品牌/代理共用的素材能力
 ]
 export const BRAND_PERMS = [...PORTAL_PERMISSIONS.filter((p) => p.key.startsWith('portal.brand.')).map((p) => p.key), 'portal.aigc']

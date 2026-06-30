@@ -29,6 +29,7 @@ import PortalLogin, { homeForScope } from './pages/PortalLogin'
 import Supermarket from './pages/market/Supermarket'
 import { BrandHome, BrandOrders, BrandSettlement, BrandOnboarding, BrandTickets, BrandContracts, BrandBarter } from './pages/portal/BrandPortal'
 import { BrandProducts } from './pages/portal/BrandProducts'
+import { BrandDeveloper } from './pages/portal/BrandDeveloper'
 import { BrandLanding } from './pages/portal/BrandLanding'
 import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentContracts, AgentTickets } from './pages/portal/AgentPortal'
 import { PortalAigc } from './pages/portal/PortalAigc'
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="/portal/brand/tickets" element={<BrandTickets />} />
         <Route path="/portal/brand/contracts" element={<BrandContracts />} />
         <Route path="/portal/brand/products" element={<BrandProducts />} />
+        <Route path="/portal/brand/developer" element={<BrandDeveloper />} />
         <Route path="/portal/brand/landing" element={<BrandLanding />} />
         <Route path="/portal/brand/barter" element={<BrandBarter />} />
         <Route path="/portal/brand/aigc" element={<PortalAigc />} />
