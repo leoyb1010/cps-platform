@@ -10,7 +10,7 @@ const db = new PrismaClient()
 // 有道对接演示凭证：固定 custId/merchantId + RSA 公钥（私钥见 demo-keys.ts，合作方自留范式）。
 // 供对外文档 curl 示例与 e2e 联调直接使用；生产由合作方在「开发者中心」自助生成密钥。
 const DEMO_API = {
-  id: 'AK-DEMO01', brandId: 'youdao', appId: 'cps_demo_youdao', secret: 'demo_secret_youdao_2026',
+  id: 'AK-DEMO01', brandId: 'youdao', appId: 'cps_demo_youdao',
   custId: 'cust_youdao', merchantId: 'mch_youdao',
 }
 
@@ -215,17 +215,14 @@ async function main() {
   for (const p of PRODUCTS) await db.product.upsert({ where: { id: p.id }, update: p, create: p })
   for (const br of BUNDLE_RULES) await db.bundleRule.upsert({ where: { id: br.id }, update: br, create: br })
   for (const n of NOTIFICATIONS) await db.notification.upsert({ where: { id: n.id }, update: n, create: n })
-  // 有道对接演示凭证（youdao）：存 RSA 公钥（私钥见 demo-keys.ts 合作方自留）；secret 旧字段留待清理批删
+  // 有道对接演示凭证（youdao）：存 RSA 公钥（私钥见 demo-keys.ts 合作方自留）
   const demoCred = {
     id: DEMO_API.id, brandId: DEMO_API.brandId, appId: DEMO_API.appId,
     custId: DEMO_API.custId, merchantId: DEMO_API.merchantId,
     publicKey: DEMO_RSA_PUBLIC,
     publicKeyHash: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex'),
     publicKeyHint: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex').slice(-8),
-    keySource: 'keygen',
-    secret: DEMO_API.secret,
-    secretHash: createHash('sha256').update(DEMO_API.secret).digest('hex'),
-    secretHint: DEMO_API.secret.slice(-4), status: 'active',
+    keySource: 'keygen', status: 'active',
   }
   await db.apiCredential.upsert({ where: { id: DEMO_API.id }, update: demoCred, create: demoCred })
   await db.org.upsert({ where: { id: 'org' }, update: {}, create: { id: 'org', name: '网易有道' } })

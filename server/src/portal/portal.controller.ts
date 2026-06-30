@@ -436,7 +436,7 @@ export class PortalController {
     if (existing) {
       await this.prisma.apiCredential.update({ where: { id: existing.id }, data: { publicKey, publicKeyHash, publicKeyHint, keySource, status: 'active', custId: existing.custId || `cust_${brandId}`, merchantId: existing.merchantId || `mch_${brandId}` } })
     } else {
-      await this.prisma.apiCredential.create({ data: { id: 'AK-' + randomUUID().slice(0, 6), brandId, appId: 'app_' + randomUUID().replace(/-/g, '').slice(0, 12), custId: `cust_${brandId}`, merchantId: `mch_${brandId}`, publicKey, publicKeyHash, publicKeyHint, keySource, secretHash: '', status: 'active' } })
+      await this.prisma.apiCredential.create({ data: { id: 'AK-' + randomUUID().slice(0, 6), brandId, appId: 'app_' + randomUUID().replace(/-/g, '').slice(0, 12), custId: `cust_${brandId}`, merchantId: `mch_${brandId}`, publicKey, publicKeyHash, publicKeyHint, keySource, status: 'active' } })
     }
   }
 

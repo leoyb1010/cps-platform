@@ -2139,148 +2139,6 @@
         ]
       }
     },
-    "/cps/v1/sign": {
-      "post": {
-        "operationId": "CpsController_sign",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SignDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "CPS 连续包月·签约（HMAC 鉴权）：建签约单 + 返回签约链接",
-        "tags": [
-          "cps"
-        ]
-      }
-    },
-    "/cps/v1/refund": {
-      "post": {
-        "operationId": "CpsController_refund",
-        "parameters": [
-          {
-            "name": "idempotency-key",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefundDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "CPS·退款（HMAC）：指定某期订单退款，恒等式不破",
-        "tags": [
-          "cps"
-        ]
-      }
-    },
-    "/cps/v1/unsign": {
-      "post": {
-        "operationId": "CpsController_unsign",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UnsignDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "CPS·解约（HMAC）：停止后续扣款 + 取消补扣",
-        "tags": [
-          "cps"
-        ]
-      }
-    },
-    "/cps/v1/query": {
-      "post": {
-        "operationId": "CpsController_query",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QueryDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "CPS·查询（HMAC）：签约单 + 各期扣款状态",
-        "tags": [
-          "cps"
-        ]
-      }
-    },
-    "/cps/v1/callback": {
-      "post": {
-        "operationId": "CpsController_callback",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CallbackDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "summary": "CPS·回调接收（HMAC）：品牌推订单状态变化通知",
-        "tags": [
-          "cps"
-        ]
-      }
-    },
     "/cps/sim/first-charge": {
       "post": {
         "operationId": "CpsController_simFirstCharge",
@@ -2384,7 +2242,7 @@
             "description": ""
           }
         },
-        "summary": "【模拟】注入扣款失败 → 进补扣队列 + 推 webhook(5)",
+        "summary": "【模拟】注入扣款失败 → 进补扣队列 + 推 webhook(代扣失败)",
         "tags": [
           "cps"
         ]
@@ -2717,26 +2575,6 @@
         "type": "object",
         "properties": {}
       },
-      "SignDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "RefundDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "UnsignDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "QueryDto": {
-        "type": "object",
-        "properties": {}
-      },
-      "CallbackDto": {
-        "type": "object",
-        "properties": {}
-      },
       "SimChargeDto": {
         "type": "object",
         "properties": {}
@@ -2750,6 +2588,14 @@
         "properties": {}
       },
       "OrderDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "RefundDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UnsignDto": {
         "type": "object",
         "properties": {}
       }

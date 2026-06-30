@@ -1,232 +1,187 @@
-# CPS 连续包月（先签约后代扣）对接规范
+# 有道会员续费对接规范（RSA）
 
-> 适用对象：接入本平台连续包月 CPS 推广的**品牌方**与**服务商**。
-> 本文档与平台「品牌门户 → 开发者中心」页同源，接口可在 Swagger UI（`/docs`，tag `cps`）在线查阅。
+> 适用对象：接入有道会员续费支付的**合作方**（产品 / 开发 / 测试）。
+> 本文档与平台「品牌门户 → 开发者中心」同源，接口可在 Swagger UI（`/docs`，tag `youdao`）查阅。
 
 ---
 
 ## 1. 概述与角色
 
-连续包月（先签约后代扣）是一种「用户一次签约、平台周期自动扣款」的订阅模式。三方角色：
-
 | 角色 | 职责 |
 |---|---|
 | **用户（C 端）** | 在推广落地页签约，授权周期代扣 |
-| **服务商** | 投放引流、承接权益核销与售后 |
-| **品牌方** | 提供会员权益与支付能力 |
-| **CPS 平台（本平台）** | 中台：提供签约/退款/解约/查询标准接口 + 状态回调 + 补扣调度 |
+| **合作方** | 投放引流、调用有道续费接口、接收状态回调 |
+| **有道（本平台）** | 提供签约/退款/解约/查询标准接口 + 状态回调 + 补扣调度 |
 
-对接基址：`/cps/v1`（生产环境为 `https://<平台域名>/cps/v1`）。
-
----
-
-## 2. 接入流程
-
-1. **申请凭证**：在「品牌门户 → 开发者中心」生成对接凭证，获得 `appId` 与 `secret`（**明文仅显示一次**，请妥善保存）。
-2. **配置回调地址**：在开发者中心填写 `callbackUrl`，用于接收订单状态变化通知（出站 webhook）。
-3. **联调**：用沙箱商品走「签约 → 扣款 → 退款 → 解约」全流程，在「联调日志」核对回调投递。
-4. **上线**：联调通过后切换生产凭证。
+**域名**
+- 测试：`https://dict-paycenter-test.youdao.com/client`
+- 正式：`https://dict-paycenter.youdao.com/client`
+- 本系统（模拟）：`/pay/outside`、`/order/outside` 前缀。
 
 ---
 
-## 3. 鉴权与签名规范（HMAC-SHA256）
+## 2. 鉴权与签名（RSA · SHA256withRSA）
 
-所有对外接口（签约/退款/解约/查询/回调）均需签名。算法与支付宝/微信代扣同构：
+### 2.1 密钥交换
+合作方生成一对 **RSA 2048** 公私钥（PKCS8 私钥**自留**，SPKI 公钥发给有道）。可在「开发者中心」一键生成（私钥仅下载一次），或自行用 openssl：
 
-**签名步骤**
-
-1. 取请求体中的业务字段，**剔除 `sign` 字段** 以及值为 `null`/`undefined`/空串的字段。
-2. 按字段名（key）**升序**排序，拼接成 `k1=v1&k2=v2&…&kn=vn`。对象/数组类型的值先 `JSON.stringify`。
-3. 末尾追加 `&key=<secret>`（secret 固定尾接，不参与排序）。
-4. 计算 `sign = HMAC_SHA256(stringToSign, secret)`，结果取**小写十六进制**。
-
-**请求需携带**：`appId`（定位密钥）、`timestamp`（秒级或毫秒级 Unix 时间戳）、`sign`。
-
-**防重放**：服务端校验 `timestamp` 与服务端时钟偏移须 ≤ **300 秒**，超出拒绝。
-
-**签名伪代码**
-
-```js
-function buildSign(params, secret) {
-  const base = Object.entries(params)
-    .filter(([k, v]) => k !== 'sign' && v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
-    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .map(([k, v]) => `${k}=${v}`)
-    .join('&')
-  return hmacSHA256(base + `&key=${secret}`, secret).toLowerCase() // hex
-}
+```bash
+openssl genpkey -out private.pem -algorithm RSA -pkeyopt rsa_keygen_bits:2048
+openssl rsa -in private.pem -out public.pem -pubout
 ```
 
-**鉴权失败返回**（HTTP 401）：`{ "code": 401, "message": "签名校验失败" }`，可能的 message：`缺少 appId` / `未注册的对接方 appId` / `请求时间戳过期或偏移过大` / `签名校验失败`。
+### 2.2 签名规则
+1. 业务参数按字段名 **key 字母序**排列，以 `key=value` 形式用 `&` 连接，得待签名串。**空值与 `sign` 不参与签名**。例：`a=a1&b=b1&c=c1`。
+2. 用私钥 `SHA256withRSA` 对待签名串签名，得 signvalue。
+3. `sign = base64(signvalue)`。验签时规则一致（有道用合作方公钥验）。
 
----
+**防重放**：携带 `timestamp`（秒/毫秒级 Unix），服务端校验偏移 ≤ **300 秒**。
+**签名错误**返回 `code:403`（HTTP 200 + body code）。
 
-## 4. 接口详情
-
-### 4.1 签约接口
-
-- **功能**：连续包月会员签约，用于走支付宝签约。
-- **方法**：`POST /cps/v1/sign`
-
-| 字段 | 类型 | 必传 | 含义 |
-|---|---|---|---|
-| sign_content | string | 是 | 签约商品 ID（品牌方提供，平台读其价格） |
-| pay_channel_type | number | 是 | 1=支付宝 |
-| mobile | string | 是 | 用户手机号（平台脱敏存储，不留全量 PII） |
-| extra_info | string | 否 | 透传参数，回调时原样返回，JSON 串 |
-| appId / timestamp / sign | - | 是 | 鉴权 |
-
-**响应**
-
-```json
-{ "code": 0, "msg": "success", "data": { "signOrderNo": "SIGN-xxxx", "url": "签约链接" } }
+### 2.3 签名代码参考（Java）
+```java
+Signature signature = Signature.getInstance("SHA256withRSA");
+signature.initSign(privateKey); // PKCS8 私钥
+signature.update(source.getBytes(StandardCharsets.UTF_8));
+String sign = Base64.getEncoder().encodeToString(signature.sign());
 ```
-
-- `signOrderNo`：**签约单号，贯穿整个订单周期**，一个签约单号对应多个交易单号。
-- `url`：签约确认/收银台链接。
-
-### 4.2 退款接口
-
-- **功能**：指定用户某一期首订或续费订单退款。
-- **方法**：`POST /cps/v1/refund`
-
-| 字段 | 类型 | 必传 | 含义 |
-|---|---|---|---|
-| signOrderNo | string | 是 | 签约单号 |
-| orderNo | string | 是 | 交易单号（某一期扣款的商家交易单号） |
-| appId / timestamp / sign | - | 是 | 鉴权 |
-
-**响应**：`{ "code": 0, "msg": "success", "amount": 19, "period": 0 }`
-
-### 4.3 解约接口
-
-- **功能**：给用户会员解约，停止后续扣款并取消补扣。
-- **方法**：`POST /cps/v1/unsign`
-
-| 字段 | 类型 | 必传 | 含义 |
-|---|---|---|---|
-| signOrderNo | string | 是 | 签约单号 |
-| appId / timestamp / sign | - | 是 | 鉴权 |
-
-**响应**：`{ "code": 0, "msg": "success" }`
-
-### 4.4 查询接口
-
-- **功能**：查询签约单及各期扣款状态（对账用）。
-- **方法**：`POST /cps/v1/query`
-
-| 字段 | 类型 | 必传 | 含义 |
-|---|---|---|---|
-| signOrderNo | string | 是 | 签约单号 |
-| appId / timestamp / sign | - | 是 | 鉴权 |
-
-**响应**
-
-```json
-{ "code": 0, "msg": "success", "data": {
-  "signOrderNo": "SIGN-xxxx", "status": "active", "plan": "...", "amount": 19,
-  "currentPeriod": 1, "nextChargeAt": "...", "mobile": "139****1234",
-  "charges": [ { "orderNo": "TXN...", "type": "first", "amount": 19, "period": 0, "time": "..." } ]
-} }
-```
-
-### 4.5 回调接口（平台接收）
-
-- **功能**：品牌方调用此接口，向平台传递订单状态变化通知。
-- **方法**：`POST /cps/v1/callback`
-
-| 字段 | 类型 | 必传 | 含义 |
-|---|---|---|---|
-| sign_content | string | 否 | 商品 ID |
-| signOrderNo | string | 是 | 签约单号（任何回调都要传） |
-| orderNo | string | 否 | 交易单号（扣款/退款成功回调传，其他为空） |
-| status | int | 是 | 状态：见 §5 |
-| amount | number | 否 | 业务金额（扣款/退款传） |
-| period | int | 否 | 扣款期数：首订 0，续期累加 |
-| operateTime | string | 否 | 业务时间（用于对账，强烈建议传准确值） |
-| extra_info | string | 否 | 透传 |
-| appId / timestamp / sign | - | 是 | 鉴权 |
-
-> **出站 webhook（平台 → 品牌）**：平台在签约/扣款/续费/退款/解约发生时，会以相同的 `status` 枚举与 HMAC 签名，主动 `POST` 到你在开发者中心配置的 `callbackUrl`。请按 §3 验签后处理，并以 HTTP 200 应答。
+> Node / Python / curl 模板见「开发者中心 → SDK / 代码」一键生成。
 
 ---
 
-## 5. 订单状态机与 status 枚举
+## 3. 接口详情
 
-| status | 含义 | orderNo | amount | period |
-|---|---|---|---|---|
-| 1 | 签约成功 | 空 | 0 | 0 |
-| 2 | 扣款成功 | 必传 | 必传 | 首扣 0，续期累加 |
-| 3 | 解约成功 | 空 | 0 | 0 |
-| 4 | 退款成功 | 必传 | 必传 | 对应期 |
-| 5 | 扣款失败 | 空/对应 | 0 | 对应期 |
+### 3.1 续费下单 `POST [baseUrl]/pay/outside/order`（form-data）
 
-**关键点**
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| custId | String | Y | 业务方 id（联系开发获取） |
+| merchantId | String | Y | 商户 id（联系开发获取） |
+| goodsId | String | Y | 商品 id（定价权威来源） |
+| custOrderId | String | Y | 合作方订单号（≤64，唯一，作本次签约唯一标志） |
+| phone | String | Y | 下单手机号 |
+| payType | String | Y | WEIXIN / ALIPAY |
+| platform | String | Y | android / web / native / wechatmp |
+| signType | String | Y | payAfterSigning（签约后扣款） |
+| deviceId | String | Y | 设备唯一标志 |
+| source | String | N | 下单来源 |
+| passbackParams | String | N | 额外信息（json，回调原样返回） |
+| sign | — | Y | 见签名算法 |
 
-- **签约单号贯穿整个订单周期**：签约、解约用签约单号；首订、续订、退款用「签约单号 + 交易单号」。
-- **period**：首次扣款传 0，续期 +1，其他类型回调传 0。
-- **operateTime**：任何回调都应传，尤其扣款成功——直接影响跨天/跨月对账口径。
+**响应**：`{ "code":0, "msg":"OK", "data":{ "isAuto":true, "payInfo":{ "orderId":"...", "orderParam":"..." } } }`
+- `orderId`：有道订单号（= 签约单号，后续解约/查询用）；`orderParam`：支付宝/微信下单参数。
+
+### 3.2 退款 `POST [baseUrl]/order/outside/refund`（form-data）
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| custId / merchantId | String | Y | 同上 |
+| orderId | String | Y | 词典订单号（退款订单 / 交易单号） |
+| sign | — | Y | 签名 |
+
+**响应**：`{ "code":0, "msg":"OK" }`
+
+### 3.3 解约 `POST [baseUrl]/order/outside/unsign`（form-data）
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| custId / merchantId | String | Y | 同上 |
+| orderId | String | Y | 签约下单时有道返回的 orderId |
+| sign | — | Y | 签名 |
+
+### 3.4 订单状态查询 `GET [baseUrl]/order/outside/orderQuery`
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| merchantId | String | Y | 商户 id |
+| orderId | String | Y | 有道返回的订单号 |
+| sign | — | Y | 签名 |
+
+**响应**：`{ "code":0, "msg":"OK", "data":{ "orderStatus":0 } }`
+`orderStatus`：**0 创建 / 1 已支付 / 2 已通知 / 3 已退款**。
+
+### 3.5 续费状态回调（合作方提供 url，有道 POST）`application/json`
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| custOrderId | String | Y | 合作方订单号 |
+| orderId | String | Y | 词典侧订单号（语义随 status，见下） |
+| status | Integer | Y | 见 §4 |
+| subMsg | String | Y | 状态相关信息（status=4/5 为失败原因） |
+| effectiveTime | Long | Y | 13 位毫秒级时间戳（状态生效时间） |
+| price | Long | Y | 金额（**单位：分**，代扣/退款） |
+| sign | — | Y | 平台用有道私钥签名，合作方用有道公钥验 |
+
+合作方应答 `{ "code":0, "msg":"OK" }`。
 
 ---
 
-## 6. 补扣机制
+## 4. 回调 status 枚举
 
-扣款失败（网络异常、渠道异常、余额不足等）时，平台自动触发补扣，提升成功率、避免用户重复办理。
+| status | 含义 | orderId 语义 |
+|---|---|---|
+| 0 | 已解约 | 首笔签约订单 |
+| 1 | 签约中（签约成功） | 首笔签约订单 |
+| 2 | 代扣（扣款成功） | 本次代扣生成订单 |
+| 3 | 退款 | 具体某笔退款的订单 |
+| 4 | 代扣失败 | 本次代扣生成订单 |
+| 5 | 退款失败 | 具体某笔退款的订单 |
+
+---
+
+## 5. 补扣机制
+
+扣款失败（网络异常、渠道异常、余额不足等）时，平台自动触发补扣：
 
 | 维度 | 规则 |
 |---|---|
-| 补扣周期 | 自扣款失败日起，持续补扣 **3 个月** |
-| 补扣频率 | 当天失败当天再补 1 次；之后每周定时 1 次 |
-| 执行时段 | 工作时段执行，**避开 22:00 ~ 次日 07:00** |
-| 终止条件 | 满足任一即止：① 扣款成功；② 用户主动解约；③ 3 个月内均未成功 → 自动解约；④ 合约到期自动解约 |
+| 补扣周期 | 自失败日起持续 **3 个月** |
+| 补扣频率 | 当天失败当天再补 1 次；之后每周 1 次 |
+| 执行时段 | 工作时段，**避开 22:00 ~ 次日 07:00** |
+| 终止条件 | 扣款成功 / 主动解约 / 3 个月未成功自动解约 / 合约到期解约 |
 
-补扣成功会照常推送 `status=2`；3 个月未果自动解约会推送 `status=3`。
-
----
-
-## 7. 错误码
-
-| code | 含义 |
-|---|---|
-| 0 | 成功 |
-| 401 | 鉴权失败（缺 appId / 未注册 / 时间戳过期 / 签名错误） |
-| 40004 | 签约商品不存在或未上架 |
-| 40005 | 退款失败（原扣款单不存在或已退款） |
-| 40006 | 解约失败（签约单不存在） |
+补扣成功推 `status=2`；3 个月未果自动解约推 `status=0`。
 
 ---
 
-## 8. 联调清单（FAQ）
+## 6. 返回码
 
-- **签名一直 401？** 检查：① 拼接串是否剔除了 `sign` 与空值；② key 是否升序；③ 是否尾接 `&key=<secret>`；④ `timestamp` 是否在 300 秒内；⑤ 取的是 hex 小写。
-- **回调收不到？** 确认开发者中心 `callbackUrl` 已保存、可公网访问、返回 HTTP 200；在「联调日志」查看投递记录与 HTTP 状态。
-- **金额能否由调用方传？** 不能。金额由平台服务端按签约商品定价权威计算，调用方传金额会被忽略/拒绝。
-- **同一笔重复请求会重复扣款吗？** 不会。扣款/退款接口幂等（可带 `Idempotency-Key` 头），重复请求返回首次结果。
-- **手机号会泄漏吗？** 不会。平台脱敏存储（`139****1234`），回调与查询均为脱敏值。
+| code | message | 说明 |
+|---|---|---|
+| 0 | ok | 成功 |
+| -1 | fail | 失败 |
+| 107 | 下单频率过高 | |
+| 121 | 手机号非法 | |
+| 122 | 手机号注册账号失败 | |
+| 123 | 合作方不存在 | merchantId 未注册 |
+| 124 | 商品不可用 | |
+| 125 | 合作方订单重复 | custOrderId 重复 |
+| 126 | 订单不存在 | |
+| 127 | 订单退款失败 | |
+| 403 | 签名错误 | |
+| 500 | 服务器错误 | |
 
 ---
 
-## 附录 · 全链路 curl 示例（沙箱）
+## 7. 接入流程与自动化（开发者中心）
 
-> `appId`/`secret` 为演示凭证；生产请用开发者中心生成的真实凭证。`商品ID` 取自品牌已上架的 live 商品。
+「品牌门户 → 开发者中心」提供全套自助能力：
+1. **凭证密钥**：一键生成 RSA 密钥对（私钥仅下载一次）或上传公钥；配置回调地址。
+2. **在线联调**：填参数 → 浏览器本地用私钥签名（私钥绝不上传）→ 看待签名串与请求/响应。
+3. **SDK / 代码**：按当前凭证与参数一键生成 curl / Node / Java / Python 签名+请求代码（私钥占位符）。
+4. **接入健康分**：一键沙箱全链路自检（公钥/验签/回调可达/投递成功率），给出 0-100 就绪分。
+5. **联调日志**：回调投递记录（状态/HTTP/结果/时间）。
+
+---
+
+## 附录 · curl 全链路示例（沙箱）
+
+> 演示凭证 `merchantId=mch_youdao`、`custId=cust_youdao`，私钥见开发者中心生成；`goodsId` 取品牌已上架 live 商品。
 
 ```bash
-# 1. 签约（先用脚本按 §3 计算 sign）
-curl -X POST $BASE/cps/v1/sign -H 'Content-Type: application/json' \
-  -d '{"sign_content":"<商品ID>","pay_channel_type":1,"mobile":"13900001234",
-       "appId":"<appId>","timestamp":<ts>,"sign":"<sign>"}'
-# → { code:0, data:{ signOrderNo, url } }
-
-# 2. 查询对账
-curl -X POST $BASE/cps/v1/query -H 'Content-Type: application/json' \
-  -d '{"signOrderNo":"<so>","appId":"<appId>","timestamp":<ts>,"sign":"<sign>"}'
-
-# 3. 退款某期
-curl -X POST $BASE/cps/v1/refund -H 'Content-Type: application/json' \
-  -d '{"signOrderNo":"<so>","orderNo":"<交易单号>","appId":"<appId>","timestamp":<ts>,"sign":"<sign>"}'
-
-# 4. 解约
-curl -X POST $BASE/cps/v1/unsign -H 'Content-Type: application/json' \
-  -d '{"signOrderNo":"<so>","appId":"<appId>","timestamp":<ts>,"sign":"<sign>"}'
+# 待签名串（key 升序、剔空值与 sign）→ 私钥 SHA256withRSA → base64
+STR='custId=cust_youdao&custOrderId=CO-123&deviceId=d1&goodsId=<商品ID>&merchantId=mch_youdao&payType=ALIPAY&phone=13900000000&platform=android&signType=payAfterSigning&timestamp=<ts>'
+SIGN=$(printf '%s' "$STR" | openssl dgst -sha256 -sign private.pem | openssl base64 -A)
+curl -X POST $BASE/pay/outside/order \
+  -d 'custId=cust_youdao' -d 'merchantId=mch_youdao' -d 'goodsId=<商品ID>' \
+  -d 'custOrderId=CO-123' -d 'phone=13900000000' -d 'payType=ALIPAY' \
+  -d 'platform=android' -d 'signType=payAfterSigning' -d 'deviceId=d1' \
+  -d "timestamp=<ts>" -d "sign=$SIGN"
+# → { code:0, data:{ payInfo:{ orderId } } }
 ```

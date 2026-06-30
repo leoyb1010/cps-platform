@@ -4,21 +4,26 @@ import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { createHmac } from 'crypto'
+import { createSign } from 'crypto'
+import { DEMO_RSA_PRIVATE, DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
 import cookieParser = require('cookie-parser')
 
-// CPS 对接演示凭证（与 seed 一致），用于签名对外接口测试
-const CPS_APP = 'cps_demo_youdao'
-const CPS_SECRET = 'demo_secret_youdao_2026'
-function cpsSign(params: Record<string, unknown>): Record<string, unknown> {
-  const p = { ...params, appId: CPS_APP, timestamp: Math.floor(Date.now() / 1000) }
-  const base = Object.entries(p)
+// 有道对接演示凭证（与 seed 一致），RSA 签名对外接口测试
+const YD_MCH = 'mch_youdao'
+const YD_CUST = 'cust_youdao'
+function ydStringToSign(params: Record<string, unknown>): string {
+  return Object.entries(params)
     .filter(([k, v]) => k !== 'sign' && v !== null && v !== undefined && v !== '')
     .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)] as [string, string])
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([k, v]) => `${k}=${v}`)
     .join('&')
-  return { ...p, sign: createHmac('sha256', CPS_SECRET).update(base + `&key=${CPS_SECRET}`, 'utf8').digest('hex') }
+}
+// 用演示私钥 RSA SHA256 签名（合作方一侧）
+function ydSign(params: Record<string, unknown>): Record<string, unknown> {
+  const p = { ...params, custId: YD_CUST, merchantId: YD_MCH, timestamp: Math.floor(Date.now() / 1000) }
+  const signer = createSign('sha256'); signer.update(ydStringToSign(p), 'utf8')
+  return { ...p, sign: signer.sign(DEMO_RSA_PRIVATE, 'base64') }
 }
 
 // 独立测试库 + 每次重建/灌种子 → 测试与开发库隔离、顺序无关、可重复
@@ -1088,21 +1093,26 @@ describe('准备金分期释放（守恒式 II/III/IV，不破恒等式 I）', (
   })
 })
 
-describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）', () => {
+describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () => {
   // 取一个 live 商品作签约标的
   async function liveProductId(): Promise<string> {
     const r = await request(httpServer).get('/market/products').expect(200)
     return r.body[0].id
   }
 
-  it('签约→首扣→续扣→退款→对账(恒等式不破)→解约 全链路', async () => {
+  // 有道下单（form-data，RSA 签）→ 返回 orderId
+  async function ydOrder(goodsId: string, mobile: string): Promise<string> {
+    const co = 'CO-' + Math.random().toString(36).slice(2, 10)
+    const r = await request(httpServer).post('/pay/outside/order').type('form')
+      .send(ydSign({ goodsId, custOrderId: co, phone: mobile, payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'dev-1' }) as Record<string, string>)
+    return r.body.data.payInfo.orderId
+  }
+
+  it('下单→首扣→续扣→退款→对账(恒等式不破)→解约 全链路（RSA）', async () => {
     const su = await token('admin')
     const pid = await liveProductId()
-    // 签约（HMAC）
-    const sign = await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900008888' }))
-    expect([200, 201]).toContain(sign.status)
-    expect(sign.body.code).toBe(0)
-    const so = sign.body.data.signOrderNo
+    // 下单（RSA, form-data）
+    const so = await ydOrder(pid, '13900008888')
     expect(so).toMatch(/^SIGN-/)
     // 首扣（内部 sim, JWT）→ 落首单 + 订阅
     const fc = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
@@ -1113,37 +1123,54 @@ describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）',
     const rc = await request(httpServer).post('/cps/sim/renew').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
     expect(rc.body.ok).toBe(true)
     expect(rc.body.period).toBe(1)
+    // 查询 orderStatus
+    const q = await request(httpServer).get('/order/outside/orderQuery').query(ydSign({ orderId: so }) as Record<string, string>)
+    expect(q.body.code).toBe(0)
+    expect(q.body.data.orderStatus).toBe(2)
     // 对账退款前 ok
     const r0 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
     expect(r0.body.ok).toBe(true)
-    // 退款首扣单（HMAC, signOrderNo+orderNo）
-    const rf = await request(httpServer).post('/cps/v1/refund').send(cpsSign({ signOrderNo: so, orderNo: ext0 }))
+    // 退款（RSA, orderId=交易单号）
+    const rf = await request(httpServer).post('/order/outside/refund').type('form').send(ydSign({ orderId: ext0 }) as Record<string, string>)
     expect(rf.body.code).toBe(0)
     // 退款后对账仍 ok（结算恒等式 I 不破）
     const r1 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
     expect(r1.body.ok).toBe(true)
     expect(r1.body.mismatches.length).toBe(0)
-    // 解约（HMAC）
-    const u = await request(httpServer).post('/cps/v1/unsign').send(cpsSign({ signOrderNo: so }))
+    // 解约（RSA）
+    const u = await request(httpServer).post('/order/outside/unsign').type('form').send(ydSign({ orderId: so }) as Record<string, string>)
     expect(u.body.code).toBe(0)
   })
 
-  it('HMAC 错签 → 401；时间戳过期 → 401', async () => {
+  it('RSA 错签 → 403；时间戳过期 → 403；未注册 merchantId → 123', async () => {
     const pid = await liveProductId()
     // 错签
-    await request(httpServer).post('/cps/v1/sign').send({ sign_content: pid, pay_channel_type: 1, mobile: '13900000000', appId: CPS_APP, timestamp: Math.floor(Date.now() / 1000), sign: 'deadbeef' }).expect(401)
-    // 时间戳过期（10 分钟前）
-    const stale = cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900000000' })
-    stale.timestamp = Math.floor(Date.now() / 1000) - 600
-    await request(httpServer).post('/cps/v1/sign').send(stale).expect(401)
-    // 未注册 appId
-    await request(httpServer).post('/cps/v1/query').send({ signOrderNo: 'X', appId: 'nope', timestamp: Math.floor(Date.now() / 1000), sign: 'x' }).expect(401)
+    const bad = await request(httpServer).post('/pay/outside/order').type('form')
+      .send({ custId: YD_CUST, merchantId: YD_MCH, goodsId: pid, custOrderId: 'CO-bad', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd', timestamp: String(Math.floor(Date.now() / 1000)), sign: 'deadbeef' })
+    expect(bad.body.code).toBe(403)
+    // 时间戳过期
+    const stale = ydSign({ goodsId: pid, custOrderId: 'CO-stale', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>
+    stale.timestamp = String(Math.floor(Date.now() / 1000) - 600)
+    const staleRes = await request(httpServer).post('/pay/outside/order').type('form').send(stale)
+    expect(staleRes.body.code).toBe(403)
+    // 未注册 merchantId → 123 合作方不存在（有道码表）
+    const nope = await request(httpServer).get('/order/outside/orderQuery').query({ merchantId: 'nope', orderId: 'X', sign: 'x', timestamp: String(Math.floor(Date.now() / 1000)) })
+    expect(nope.body.code).toBe(123)
+  })
+
+  it('合作方订单号重复 → 125', async () => {
+    const pid = await liveProductId()
+    const co = 'CO-dup-' + Math.random().toString(36).slice(2, 8)
+    const p1 = await request(httpServer).post('/pay/outside/order').type('form').send(ydSign({ goodsId: pid, custOrderId: co, phone: '13900001111', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
+    expect(p1.body.code).toBe(0)
+    const p2 = await request(httpServer).post('/pay/outside/order').type('form').send(ydSign({ goodsId: pid, custOrderId: co, phone: '13900001111', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
+    expect(p2.body.code).toBe(125)
   })
 
   it('幂等：同 Idempotency-Key 首扣只执行一次（不双扣）', async () => {
     const su = await token('admin')
     const pid = await liveProductId()
-    const so = (await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900007777' }))).body.data.signOrderNo
+    const so = await ydOrder(pid, '13900007777')
     const key = 'e2e-cps-idem-' + Math.random().toString(36).slice(2)
     const r1 = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key).send({ signOrderNo: so })
     const r2 = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key).send({ signOrderNo: so })
@@ -1155,7 +1182,7 @@ describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）',
   it('补扣 sweep：扣款失败→补扣队列→sweep 成功落续费单，对账仍 ok', async () => {
     const su = await token('admin')
     const pid = await liveProductId()
-    const so = (await request(httpServer).post('/cps/v1/sign').send(cpsSign({ sign_content: pid, pay_channel_type: 1, mobile: '13900006666' }))).body.data.signOrderNo
+    const so = await ydOrder(pid, '13900006666')
     await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
     // 注入扣款失败 → 进补扣队列
     const fail = await request(httpServer).post('/cps/sim/fail').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so, reason: '余额不足' })
@@ -1189,6 +1216,8 @@ describe('CPS 连续包月对接（HMAC + 模拟全链路，恒等式不破）',
     // 再 GET 不含私钥
     const dev = await request(httpServer).get('/portal/brand/developer').set('Authorization', `Bearer ${bt}`).expect(200)
     expect(dev.body.privateKey).toBeUndefined()
+    // 恢复 demo 公钥，避免污染共享 youdao 凭证（其他 RSA 测试依赖 demo 私钥验签）
+    await request(httpServer).post('/portal/brand/developer/rsa/upload').set('Authorization', `Bearer ${bt}`).send({ publicKey: DEMO_RSA_PUBLIC })
   })
 
   it('联调台 console/sign 返回 stringToSign 不收私钥；健康分自检评分', async () => {

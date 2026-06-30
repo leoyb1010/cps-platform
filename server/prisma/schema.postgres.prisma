@@ -129,10 +129,6 @@ model ApiCredential {
   publicKeyHash String @default("") // sha256(publicKey)，防篡改
   publicKeyHint String @default("") // 公钥指纹末 8 位展示，不泄漏全量
   keySource     String @default("") // keygen（系统生成）| upload（合作方上传）
-  // ── HMAC 旧字段（清理批删除）──
-  secret     String   @default("") // 对称共享密钥（演示态明文；生产应 KMS 加密）。出站 webhook 用它签名，品牌验签
-  secretHash String // sha256(secret)，入站验签比对（纵深防御）
-  secretHint String   @default("") // 末 4 位展示，便于品牌核对，不泄漏全量
   status     String   @default("active") // active | revoked
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt

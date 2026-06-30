@@ -41,11 +41,6 @@ export class CpsService {
     private webhook: SignWebhookService,
   ) {}
 
-  // ── 凭证：按 appId 取 secret（验签用）+ 按 brandId 取归属 ──
-  async credentialByAppId(appId: string) {
-    return this.prisma.apiCredential.findFirst({ where: { appId, status: 'active' } })
-  }
-
   // ── 签约：建 SignOrder(signing)，生成 signOrderNo + 模拟收银台 url ──
   async sign(args: { appId: string; brandId: string; signContent: string; mobile: string; payChannel: number; extraInfo?: string }) {
     // 服务端权威定价：以签约商品（sign_content=商品ID）的续费价为单期扣款额；商品须存在且 live。
