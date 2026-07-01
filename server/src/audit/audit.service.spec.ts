@@ -31,6 +31,8 @@ describe('AuditService · fail-closed（同事务）', () => {
     // 准备一个 pending 结算单 + 清空审计表（隔离前序状态）
     await prisma.auditLog.deleteMany({})
     await prisma.settlement.deleteMany({})
+    // Settlement.brandId 现有 @relation(onDelete:Restrict)，需先备好真实品牌行满足引用完整性
+    await prisma.brand.upsert({ where: { id: 'b' }, update: {}, create: { id: 'b', name: '审计测试品牌', mark: 'B', category: '测试', feeRate: 40, period: 7, reservePct: 10, joinedAt: '测试' } })
     await prisma.settlement.create({ data: { id: 'S-X', period: '2406', brandId: 'b', gross: 100, brandShare: 50, platformFee: 30, agentPayout: 20, status: 'pending' } })
 
     // 模拟资金事务：先把结算置 cleared，再写一条"非法"审计(超长 action 触发约束? 用强制抛错代替)
