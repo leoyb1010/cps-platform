@@ -28,9 +28,9 @@ afterAll(async () => {
 
 describe('AuditService · fail-closed（同事务）', () => {
   it('recordInTx 失败 → 整个业务事务回滚（无审计不放行）', async () => {
-    // 准备一个 pending 结算单 + 清空审计表（隔离前序状态）
+    // 隔离：只清本用例自己的行（不 deleteMany 全表，避免污染共享 e2e 的 seed 结算单）
     await prisma.auditLog.deleteMany({})
-    await prisma.settlement.deleteMany({})
+    await prisma.settlement.deleteMany({ where: { id: 'S-X' } })
     // Settlement.brandId 现有 @relation(onDelete:Restrict)，需先备好真实品牌行满足引用完整性
     await prisma.brand.upsert({ where: { id: 'b' }, update: {}, create: { id: 'b', name: '审计测试品牌', mark: 'B', category: '测试', feeRate: 40, period: 7, reservePct: 10, joinedAt: '测试' } })
     await prisma.settlement.create({ data: { id: 'S-X', period: '2406', brandId: 'b', gross: 100, brandShare: 50, platformFee: 30, agentPayout: 20, status: 'pending' } })

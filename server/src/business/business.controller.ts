@@ -12,6 +12,7 @@ import { ReserveReleaseService } from './reserve-release.service'
 import { FulfillmentService } from './fulfillment.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { splitProportional, sum } from '../common/money'
+import { ScopeService } from './scope.service'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
@@ -158,6 +159,7 @@ export class BusinessController {
     private settle: SettlementService,
     private reserve: ReserveReleaseService,
     private fulfillment: FulfillmentService,
+    private sc: ScopeService,
   ) {}
 
   // 对账：核对退款流水↔结算冲账（定时任务亦调用同方法；此处供手动触发）
@@ -228,105 +230,16 @@ export class BusinessController {
   // 关键安全语义：非 platform 用户访问其 scope「无法表达」的资源时，
   //   返回不可能匹配条件（DENY），而非 {}（放行全部）——避免越权泄漏。
   //   key 取值：'brandId'|'agentId'（按外键过滤）、'id-brand'|'id-agent'（按主键过滤）。
-  private static DENY = { id: '__scope_denied__' }
-  private scope(user: AuthUser, field: 'brandId' | 'agentId' | 'id-brand' | 'id-agent'): Record<string, unknown> {
-    if (!user || user.scopeType === 'platform') return {}
-    if (!user.scopeId) return BusinessController.DENY // 非平台但无 scopeId：保守拒绝
-
-    if (user.scopeType === 'brand') {
-      if (field === 'brandId') return { brandId: user.scopeId }
-      if (field === 'id-brand') return { id: user.scopeId }
-      // 品牌方不拥有代理/按代理键的资源 → 拒绝
-      return BusinessController.DENY
-    }
-    if (user.scopeType === 'agent') {
-      if (field === 'agentId') return { agentId: user.scopeId }
-      if (field === 'id-agent') return { id: user.scopeId }
-      // 代理不拥有品牌/号池/结算（按品牌键的资源）→ 拒绝
-      return BusinessController.DENY
-    }
-    return BusinessController.DENY
-  }
-
-  // 同时含 brandId 与 agentId 外键的资源（订单/工单）：
-  //   品牌方按 brandId 收窄、代理按 agentId 收窄、平台不收窄。单一条件，不与 DENY 合并。
-  private scopeOwned(user: AuthUser): Record<string, unknown> {
-    if (!user || user.scopeType === 'platform') return {}
-    if (!user.scopeId) return BusinessController.DENY
-    if (user.scopeType === 'brand') return { brandId: user.scopeId }
-    if (user.scopeType === 'agent') return { agentId: user.scopeId }
-    return BusinessController.DENY
-  }
-
-  // 写端点归属校验（纵深防御）：非平台用户改某行前，断言该行属于其 scope。
-  //   平台用户直接放行；客户写端点在 stage 2+ 上线时强制调用，杜绝越权改他人数据。
-  //   语义：OR——任一维度命中即放行。用于「校验既存行归属」（行的 brandId/agentId 来自 DB，
-  //   品牌方天然拥有牵涉某代理的工单/订单，故只需任一维度命中）。
-  private assertOwns(user: AuthUser, ownerBrandId?: string | null, ownerAgentId?: string | null) {
-    if (!user || user.scopeType === 'platform') return
-    if (user.scopeType === 'brand' && ownerBrandId && ownerBrandId === user.scopeId) return
-    if (user.scopeType === 'agent' && ownerAgentId && ownerAgentId === user.scopeId) return
-    throw new ForbiddenException('无权操作不属于当前账户的资源')
-  }
-
-  // 创建端点归属校验（纵深防御，严格版）：归属字段来自客户 DTO 而非既存行，
-  //   故 OR 语义不够——品牌方传自己的 brandId + 任意 agentId 会被 assertOwns 放行（短路）。
-  //   这里强制：非平台创建者提供的每个维度都必须是自己（品牌方不得单方指派他人代理、
-  //   代理不得归属他人品牌），杜绝伪造他人业绩/跨租户归因。平台创建者放行。
-  private assertCreateAttribution(user: AuthUser, brandId?: string | null, agentId?: string | null) {
-    if (!user || user.scopeType === 'platform') return
-    if (user.scopeType === 'brand') {
-      if (brandId !== user.scopeId) throw new ForbiddenException('品牌方只能为自己的品牌创建')
-      if (agentId) throw new ForbiddenException('品牌方不得单方指派代理，请由代理主动接单')
-      return
-    }
-    if (user.scopeType === 'agent') {
-      if (agentId !== user.scopeId) throw new ForbiddenException('代理只能以自己的身份创建')
-      return
-    }
-    throw new ForbiddenException('无权创建不属于当前账户的资源')
-  }
-
-  private assertPlatform(user: AuthUser) {
-    if (!user || user.scopeType !== 'platform') throw new ForbiddenException('仅平台账户可执行该操作')
-  }
-
-  private async reserveScope(user: AuthUser): Promise<Record<string, unknown>> {
-    if (!user || user.scopeType === 'platform') return {}
-    if (!user.scopeId) return BusinessController.DENY
-    if (user.scopeType === 'agent') return { agentId: user.scopeId }
-    if (user.scopeType === 'brand') {
-      const settlements = await this.prisma.settlement.findMany({ where: { brandId: user.scopeId }, select: { id: true } })
-      return settlements.length ? { settlementId: { in: settlements.map((s) => s.id) } } : BusinessController.DENY
-    }
-    return BusinessController.DENY
-  }
-
-  private async assertReserveOwns(user: AuthUser, rrId: string) {
-    if (!user || user.scopeType === 'platform') return
-    const rr = await this.prisma.reserveRelease.findUnique({ where: { id: rrId } })
-    if (!rr) return
-    if (user.scopeType === 'agent') return this.assertOwns(user, null, rr.agentId)
-    if (user.scopeType === 'brand') {
-      const s = await this.prisma.settlement.findUnique({ where: { id: rr.settlementId }, select: { brandId: true } })
-      return this.assertOwns(user, s?.brandId ?? null, null)
-    }
-    throw new ForbiddenException('无权操作不属于当前账户的资源')
-  }
-
-  private barterScope(user: AuthUser): Record<string, unknown> {
-    if (!user || user.scopeType === 'platform') return { deletedAt: null }
-    if (user.scopeType === 'brand' && user.scopeId) {
-      return { deletedAt: null, OR: [{ initiatorBrandId: user.scopeId }, { counterpartyBrandId: user.scopeId }] }
-    }
-    return { ...BusinessController.DENY, deletedAt: null }
-  }
-
-  private assertBarterOwns(user: AuthUser, deal: { initiatorBrandId: string; counterpartyBrandId: string }) {
-    if (!user || user.scopeType === 'platform') return
-    if (user.scopeType === 'brand' && user.scopeId && (deal.initiatorBrandId === user.scopeId || deal.counterpartyBrandId === user.scopeId)) return
-    throw new ForbiddenException('无权操作不属于当前账户的资源')
-  }
+  // 逻辑收敛到 ScopeService（P1-1 瘦身），此处仅薄委托，保持各 handler 的 this.xxx(...) 调用不变。
+  private scope(u: AuthUser, f: 'brandId' | 'agentId' | 'id-brand' | 'id-agent') { return this.sc.scope(u, f) }
+  private scopeOwned(u: AuthUser) { return this.sc.scopeOwned(u) }
+  private assertOwns(u: AuthUser, b?: string | null, a?: string | null) { return this.sc.assertOwns(u, b, a) }
+  private assertCreateAttribution(u: AuthUser, b?: string | null, a?: string | null) { return this.sc.assertCreateAttribution(u, b, a) }
+  private assertPlatform(u: AuthUser) { return this.sc.assertPlatform(u) }
+  private reserveScope(u: AuthUser) { return this.sc.reserveScope(u) }
+  private assertReserveOwns(u: AuthUser, rrId: string) { return this.sc.assertReserveOwns(u, rrId) }
+  private barterScope(u: AuthUser) { return this.sc.barterScope(u) }
+  private assertBarterOwns(u: AuthUser, deal: { initiatorBrandId: string; counterpartyBrandId: string }) { return this.sc.assertBarterOwns(u, deal) }
 
   // ── reads ──（软删除：deletedAt=null 默认过滤）──
   @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表（按 scope 收窄，排除已删除）' })
@@ -803,12 +716,7 @@ export class BusinessController {
   }
 
   // 通知可见性 OR 语义：精确 userId OR (scopeType+scopeId 命中) OR platform 广播（仅平台账户）
-  private notifWhere(user: AuthUser): Record<string, unknown> {
-    const or: Record<string, unknown>[] = [{ userId: user.id }]
-    if (user.scopeType === 'platform') or.push({ scopeType: 'platform' })
-    else if (user.scopeId) or.push({ scopeType: user.scopeType, scopeId: user.scopeId })
-    return { OR: or }
-  }
+  private notifWhere(u: AuthUser) { return this.sc.notifWhere(u) }
 
   // ── 正向订单写入（履约入口）：触发履约引擎累加 + 订阅 upsert ──
   // 这是 achievedGmv 唯一被推进的入口；绝不触碰结算恒等式五项。
