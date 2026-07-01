@@ -4,6 +4,7 @@ import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString } from 'class-validat
 import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { Public } from '../auth/auth.guard'
+import { sum, applyDiscountPct } from '../common/money'
 
 // 订阅产品超市（公开层）：面向终端用户，无需登录。
 // 浏览上架商品 → 自由搭配多选 → 服务端权威算价（组合优惠 + 互斥校验）→ 生成 Bundle 套餐。
@@ -124,8 +125,8 @@ export class MarketController {
     if (conflicts.length > 0) {
       return { ok: false, detail: '存在互斥商品，不能同时选购', conflicts, validIds: found, listPrice: 0, discountPct: 0, finalPrice: 0, ruleId: '' }
     }
-    // 列表价（首单口径合计）
-    const listPrice = +products.reduce((s, p) => s + p.firstPrice, 0).toFixed(2)
+    // 列表价（首单口径合计，Decimal 精确求和无浮点尾差）
+    const listPrice = sum(products.map((p) => p.firstPrice))
     // 命中组合优惠：取满件折扣中件数门槛≤当前件数、折扣最大的一条
     const rules = await this.prisma.bundleRule.findMany({ where: { active: true, kind: 'count_off' } })
     let best: { id: string; discountPct: number } | null = null
@@ -137,9 +138,9 @@ export class MarketController {
         }
       } catch { /* ignore */ }
     }
-    // 防御性 clamp（S3）：即便规则数据异常，折扣锁 0-100、最终价不为负
+    // 防御性 clamp（S3）：即便规则数据异常，折扣锁 0-100、最终价不为负（Decimal 精确，无浮点尾差）
     const discountPct = Math.min(100, Math.max(0, best?.discountPct ?? 0))
-    const finalPrice = Math.max(0, +(listPrice * (1 - discountPct / 100)).toFixed(2))
+    const finalPrice = applyDiscountPct(listPrice, discountPct)
     return { ok: true, validIds: found, listPrice, discountPct, finalPrice, ruleId: best?.id ?? '', conflicts: [] as { group: string; productIds: string[] }[] }
   }
 }

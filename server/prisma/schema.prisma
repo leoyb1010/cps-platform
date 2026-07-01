@@ -113,6 +113,9 @@ model Brand {
   apiCallbackUrl String   @default("")
   createdAt     DateTime  @default(now())
   deletedAt     DateTime?
+  // 资金链路引用完整性：0 悬挂已体检；onDelete Restrict 禁止删除有订单/结算的品牌（配合软删除 deletedAt）
+  orders        Order[]
+  settlements   Settlement[]
 }
 
 // 有道续费对接凭证（RSA）：品牌/服务商接入续费 API 的凭证。
@@ -176,7 +179,8 @@ model Order {
   id             String   @id
   time           String
   brandId        String
-  agentId        String
+  brand          Brand    @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  agentId        String // 注：可为哨兵「未知」（CPS 无归因单），故不加 Agent 关系约束
   channel        String
   type           String // first | renew | refund | chargeback
   amount         Float
@@ -192,12 +196,18 @@ model Order {
   createdAt      DateTime @default(now())
 
   @@index([refundedOrderId])
+  @@index([brandId])
+  @@index([agentId])
+  @@index([subscriptionId])
+  @@index([signOrderNo])
+  @@index([extOrderNo]) // 退款按交易号定位单期，必须有索引
 }
 
 model Settlement {
   id                 String  @id
   period             String
   brandId            String
+  brand              Brand   @relation(fields: [brandId], references: [id], onDelete: Restrict)
   gross              Float
   brandShare         Float
   platformFee        Float
@@ -211,6 +221,10 @@ model Settlement {
   agentShareSnapshot Float   @default(0) // 冲账比例快照位（本阶段仅留位，回填 0）
   reserveReleased    Float   @default(0) // 已释放准备金累计
   reserveClawedBack  Float   @default(0) // 已追偿准备金累计
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+
+  @@unique([period, brandId]) // 同品牌同账期唯一，防重复结算单
 }
 
 model Ticket {
