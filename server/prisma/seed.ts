@@ -4,6 +4,7 @@ import * as argon2 from 'argon2'
 import { createHash } from 'crypto'
 import { ROLE_PRESETS, SEED_USERS } from '../src/rbac/permissions'
 import { DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
+import { pubHint } from '../src/youdao/rsa-signature'
 
 const db = new PrismaClient()
 
@@ -221,7 +222,7 @@ async function main() {
     custId: DEMO_API.custId, merchantId: DEMO_API.merchantId,
     publicKey: DEMO_RSA_PUBLIC,
     publicKeyHash: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex'),
-    publicKeyHint: createHash('sha256').update(DEMO_RSA_PUBLIC).digest('hex').slice(-8),
+    publicKeyHint: pubHint(DEMO_RSA_PUBLIC), // 单点收敛：指纹口径与 portal/校验一致
     keySource: 'keygen', status: 'active',
   }
   await db.apiCredential.upsert({ where: { id: DEMO_API.id }, update: demoCred, create: demoCred })

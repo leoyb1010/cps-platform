@@ -376,6 +376,13 @@ export class BusinessController {
     if (q.periods && q.periods.length > 0) filters.OR = q.periods.map((p) => ({ period: { startsWith: p } }))
     else if (q.period) filters.period = { startsWith: q.period }
     const where = Object.assign(filters, this.scope(user, 'brandId'))
+    // 脱敏边界：非 platform scope（如品牌只读审计 brandaudit）用字段白名单，绝不返回 platformFee/agentPayout/reversal/frozen。
+    if ((user.scopeType ?? 'platform') !== 'platform') {
+      return this.prisma.settlement.findMany({
+        where,
+        select: { id: true, brandId: true, period: true, gross: true, brandShare: true, reserve: true, status: true },
+      })
+    }
     return this.prisma.settlement.findMany({ where })
   }
 
@@ -443,6 +450,7 @@ export class BusinessController {
   // ── 工单退款 → 逆向冲账 → 代理分润/信用分（核心联动）· 幂等 + 事务内状态闸 ──
   @Post('tickets/:id/refund') @RequirePerms('ticket.handle') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '工单退款，联动逆向冲账与代理分润/信用分 · 幂等' })
   async refundTicket(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    // 工单退款的防重放靠事务内 updateMany 条件认领（status!=resolved）串行化，无需缺省幂等键（否则会与既有对账态冲突）。
     const { result, replayed } = await this.idem.run(idemKey, 'ticket.refund', async () => {
       const t = await this.prisma.ticket.findUnique({ where: { id } })
       if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
@@ -463,7 +471,7 @@ export class BusinessController {
       const claimed = await this.prisma.$transaction(async (tx) => {
         const c = await tx.ticket.updateMany({ where: { id, status: { not: 'resolved' } }, data: { status: 'resolved', slaLeftMin: 0 } })
         if (c.count === 0) return false
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '' } })
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '', extOrderNo: order?.id ?? null } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收并扣信用分（工单退款较重）
         const rev = await this.settle.applyRefundReversal(tx, { brandId: t.brandId, amount })
         share = rev.share
@@ -585,15 +593,17 @@ export class BusinessController {
   // ── 订单退款（无工单）· 幂等 ───────────────
   @Post('orders/:id/refund') @RequirePerms('order.refund') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '订单退款（订单冲正→结算冲账→代理分润回收）· 幂等' })
   async refundOrder(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
-    const { result, replayed } = await this.idem.run(idemKey, 'order.refund', async () => {
+    // 缺省确定性幂等键：无 Idempotency-Key 时按原单 id 串行化，防止并发双退（对齐 cps.refund）。
+    const { result, replayed } = await this.idem.run(idemKey ?? `order.refund:${id}`, 'order.refund', async () => {
       const amount = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({ where: { id } })
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
         this.assertOwns(user, order.brandId, order.agentId)
-        const existingRefund = await tx.order.findFirst({ where: { brandId: order.brandId, agentId: order.agentId, plan: order.plan, type: 'refund', amount: -Math.abs(order.amount) } })
+        // 去重按原单 id 精确匹配（extOrderNo 回填被退原单 id），避免四字段模糊匹配误拦另一张同构合法订单退款。
+        const existingRefund = await tx.order.findFirst({ where: { type: 'refund', extOrderNo: id } })
         if (existingRefund) return null
         const amt = Math.abs(order.amount)
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid } })
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, extOrderNo: id } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收（订单退款不扣信用分）
         const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
         const share = rev.share

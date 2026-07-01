@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { presetToRange, presetToMonthKeys, type PeriodValue } from '../common/period'
-import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign } from '../youdao/rsa-signature'
+import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign, pubHint } from '../youdao/rsa-signature'
 import { buildStringToSign } from '../cps/signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
 
@@ -432,7 +432,7 @@ export class PortalController {
   private async upsertRsaCred(brandId: string, publicKey: string, keySource: string) {
     const existing = await this.prisma.apiCredential.findFirst({ where: { brandId } })
     const publicKeyHash = createHash('sha256').update(publicKey).digest('hex')
-    const publicKeyHint = publicKeyHash.slice(-8)
+    const publicKeyHint = pubHint(publicKey) // 单点收敛：与 seed/校验的指纹口径一致（sha256 末 8 位）
     if (existing) {
       await this.prisma.apiCredential.update({ where: { id: existing.id }, data: { publicKey, publicKeyHash, publicKeyHint, keySource, status: 'active', custId: existing.custId || `cust_${brandId}`, merchantId: existing.merchantId || `mch_${brandId}` } })
     } else {

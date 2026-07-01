@@ -10,10 +10,6 @@ export const YD_STATUS = {
   REFUND_FAIL: 5,  // 退款失败
 } as const
 
-export const YD_STATUS_LABEL: Record<number, string> = {
-  0: '已解约', 1: '签约中', 2: '代扣', 3: '退款', 4: '代扣失败', 5: '退款失败',
-}
-
 // 订单状态查询 orderStatus：0创建 1已支付 2已通知 3已退款。
 export const YD_ORDER_STATUS = { CREATED: 0, PAID: 1, NOTIFIED: 2, REFUNDED: 3 } as const
 

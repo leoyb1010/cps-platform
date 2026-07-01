@@ -66,7 +66,9 @@ export class YoudaoController {
     const a = await this.authn(dto)
     if (!a.ok) return a.err
     const { brandId } = a
-    // 合作方订单号唯一（有道规范 125 合作方订单重复）
+    // 合作方订单号唯一（有道规范 125 合作方订单重复）：顺序重复由 findFirst 命中返 125。
+    // 并发同 custOrderId 的极窄窗口下可能各判空建两单（sign 阶段不扣款、首扣按 signOrderNo 幂等不双扣），
+    // 影响仅多一张签约单，可接受；如需强一致可在 SignOrder.custOrderId 上加部分唯一索引（deletedAt is null 且非空）。
     const dup = await this.prisma.signOrder.findFirst({ where: { custOrderId: dto.custOrderId, deletedAt: null } })
     if (dup) return ydErr(YD_CODE.ORDER_DUP)
     const payChannel = dto.payType === 'ALIPAY' ? 1 : 2

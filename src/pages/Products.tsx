@@ -45,8 +45,11 @@ export default function Products() {
   }
   const addRule = async () => {
     if (!rf.name.trim()) { toast({ tone: 'info', text: '填写规则名称' }); return }
-    const r = await bizApi.addBundleRule({ name: rf.name.trim(), kind: 'count_off', params: { minItems: rf.minItems, discountPct: rf.discountPct }, active: true })
-    if (r.ok) { toast({ tone: 'good', text: '组合优惠规则已新增' }); setRuleOpen(false); setRf({ name: '', minItems: 2, discountPct: 10 }); rulesApi.reload() }
+    try {
+      const r = await bizApi.addBundleRule({ name: rf.name.trim(), kind: 'count_off', params: { minItems: rf.minItems, discountPct: rf.discountPct }, active: true })
+      if (r.ok) { toast({ tone: 'good', text: '组合优惠规则已新增' }); setRuleOpen(false); setRf({ name: '', minItems: 2, discountPct: 10 }); rulesApi.reload() }
+      else toast({ tone: 'alert', text: r.detail ?? '新增失败（参数越界？折扣需 0-100、最少件数 ≥1）' })
+    } catch { toast({ tone: 'alert', text: '新增失败，请重试' }) }
   }
 
   return (
@@ -95,7 +98,7 @@ export default function Products() {
         </TableShell>
       </Card>
 
-      <ProductDrawer product={active} anchor={pop.anchorRect} onClose={() => { setOpenId(null); pop.close() }} onReview={review} />
+      <ProductDrawer key={active?.id ?? 'none'} product={active} anchor={pop.anchorRect} onClose={() => { setOpenId(null); pop.close() }} onReview={review} />
 
       <Modal open={ruleOpen} onClose={() => setRuleOpen(false)} width={460} title="新增组合优惠规则" footer={<><Button variant="ghost" onClick={() => setRuleOpen(false)}>取消</Button><Button variant="primary" onClick={addRule}>新增</Button></>}>
         <div className="mb-3 text-[12px] text-ink-3">满件折扣：用户在超市选满 N 件商品，组合套餐享对应折扣。</div>

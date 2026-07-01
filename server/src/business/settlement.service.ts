@@ -40,10 +40,17 @@ export class SettlementService {
     const share = s ? Math.min(rawShare, s.agentPayout) : rawShare
     if (s) {
       const status = s.status === 'cleared' ? 'reconciling' : s.status
-      const reconcileDiff = s.status === 'cleared' || s.status === 'reconciling' ? s.reconcileDiff + share : s.reconcileDiff
+      const bumpDiff = s.status === 'cleared' || s.status === 'reconciling'
+      // 原子增量写，避免并发退款「读后写绝对量」互相覆盖（lost update）致一笔冲账被静默吞掉。
+      // reversal 与 agentPayout 增减同一 share，恒等式 I 天然守衡；status/reconcileDiff 幂等收敛不受并发影响。
       await tx.settlement.update({
         where: { id: s.id },
-        data: { reversal: s.reversal + share, agentPayout: s.agentPayout - share, status, reconcileDiff },
+        data: {
+          reversal: { increment: share },
+          agentPayout: { decrement: share },
+          status,
+          ...(bumpDiff ? { reconcileDiff: { increment: share } } : {}),
+        },
       })
     }
     return { share, settlement: s }

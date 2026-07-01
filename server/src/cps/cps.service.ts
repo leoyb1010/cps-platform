@@ -43,8 +43,8 @@ export class CpsService {
 
   // ── 签约：建 SignOrder(signing)，生成 signOrderNo + 模拟收银台 url ──
   async sign(args: { appId: string; brandId: string; signContent: string; mobile: string; payChannel: number; extraInfo?: string }) {
-    // 服务端权威定价：以签约商品（sign_content=商品ID）的续费价为单期扣款额；商品须存在且 live。
-    const product = await this.prisma.product.findFirst({ where: { id: args.signContent, deletedAt: null } })
+    // 服务端权威定价：以签约商品（sign_content=商品ID）的续费价为单期扣款额；商品须存在且 live（未过审/下架不可签约扣款）。
+    const product = await this.prisma.product.findFirst({ where: { id: args.signContent, deletedAt: null, status: 'live' } })
     if (!product) return { code: 40004, msg: '签约商品不存在或未上架', data: null }
     const amount = product.renewPrice || product.firstPrice
     const so = 'SIGN-' + shortId()
@@ -66,11 +66,9 @@ export class CpsService {
     const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } })
     if (!so) return { ok: false, detail: '签约单不存在' }
     if (so.status === 'unsigned' || so.status === 'expired') return { ok: false, detail: '签约单已失效' }
-    // 已首扣的二次触发：带幂等键则交由 charge() 的幂等层回放首次结果（不双扣）；无键则按状态拒绝。
-    if (so.currentPeriod > 0 || so.status === 'active') {
-      if (!idemKey) return { ok: false, detail: '已完成首扣，请走续扣' }
-    }
-    const r = await this.charge(so.id, 0, 'first', idemKey)
+    // 首扣幂等键强制绑定签约单（忽略调用方任意键），确保二次首扣——无论携带何种 Idempotency-Key——都命中同一键回放首次结果，
+    // 绝不以 period=0 再次落单、双计 GMV。续扣走 renewCharge。
+    const r = await this.charge(so.id, 0, 'first', `first:${so.id}`)
     // 签约成功回调（1）+ 扣款成功回调（2），由 charge 内部推 2；这里补 1（仅首次，回放不重推）。
     if (r.ok && !(r as { replayed?: boolean }).replayed) await this.webhook.deliver(so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
     return r
@@ -128,15 +126,21 @@ export class CpsService {
     const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } })
     if (!so) return { ok: false, detail: '签约单不存在' }
     if (so.status !== 'active') return { ok: false, detail: '仅生效签约单可注入扣款失败' }
-    const existing = await this.prisma.chargeRetry.findFirst({ where: { signOrderNo: so.id, status: 'pending' } })
-    if (existing) return { ok: false, detail: '已有进行中的补扣任务' }
-    const cr = 'CR-' + shortId()
-    await this.prisma.chargeRetry.create({
-      data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period: so.currentPeriod + 1, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
+    const period = so.currentPeriod + 1
+    // 幂等层按 (签约单, 期数) 串行化：ChargeRetry 无 (signOrderNo,pending) 唯一约束，
+    // 裸 findFirst+create 并发注入会落多条同期 pending → sweep 双计续费单。幂等记录键 DB 唯一，提供原子闸。
+    const { result } = await this.idem.run(`${so.id}:fail:${period}`, 'cps.charge.fail', async () => {
+      const existing = await this.prisma.chargeRetry.findFirst({ where: { signOrderNo: so.id, status: 'pending' } })
+      if (existing) return { ok: false, detail: '已有进行中的补扣任务' }
+      const cr = 'CR-' + shortId()
+      await this.prisma.chargeRetry.create({
+        data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
+      })
+      await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
+      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { amount: so.amount, period, operateTime: new Date(), subMsg: reason })
+      return { ok: true, detail: '已记录扣款失败并进入补扣队列', retryId: cr }
     })
-    await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
-    await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { amount: so.amount, period: so.currentPeriod + 1, operateTime: new Date(), subMsg: reason })
-    return { ok: true, detail: '已记录扣款失败并进入补扣队列', retryId: cr }
+    return result
   }
 
   // ── 退款（幂等）：按 signOrderNo+extOrderNo 反查 Order，走既有逆向冲账，恒等式不破 ──

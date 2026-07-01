@@ -85,7 +85,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
     catch { toast({ tone: 'alert', text: '上传失败' }) }
   }
   const saveCb = async () => {
-    try { const r = await portalApi.setCallbackUrl(callbackValue); if (r.ok) { toast({ tone: 'good', text: '回调地址已保存' }); setCbUrl(null) } }
+    try { const r = await portalApi.setCallbackUrl(callbackValue); if (r.ok) { toast({ tone: 'good', text: '回调地址已保存' }); setCbUrl(null); reload() } else toast({ tone: 'alert', text: r.detail ?? '保存失败' }) }
     catch { toast({ tone: 'alert', text: '保存失败' }) }
   }
 

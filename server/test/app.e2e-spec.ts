@@ -343,6 +343,24 @@ describe('数据级 RBAC (scope)', () => {
     await request(httpServer).get('/config').set('Authorization', `Bearer ${ba}`).expect(403)
   })
 
+  it('内部 /settlements 对 brand-scope 脱敏：不返回 platformFee/agentPayout/reversal/frozen', async () => {
+    const ba = await token('brandaudit') // audit 角色 + scope=brand:youdao，有 settlement.read
+    const rows = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${ba}`).expect(200)).body
+    expect(rows.length).toBeGreaterThan(0)
+    for (const s of rows) {
+      expect(s.brandId).toBe('youdao') // scope 收窄
+      expect(s).not.toHaveProperty('platformFee')
+      expect(s).not.toHaveProperty('agentPayout')
+      expect(s).not.toHaveProperty('reversal')
+      expect(s).not.toHaveProperty('frozen')
+      expect(s).toHaveProperty('gross') // 白名单字段保留
+    }
+    // 平台 scope 仍见全字段（对照）
+    const su = await token('admin')
+    const full = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`).expect(200)).body
+    expect(full.some((s: any) => 'agentPayout' in s)).toBe(true)
+  })
+
   it('误授 contract.write 时创建归属强校验：品牌方不得单方指派他人代理（attribution 纵深防御）', async () => {
     const su = await token('admin')
     const roles = await request(httpServer).get('/roles').set('Authorization', `Bearer ${su}`).expect(200)
@@ -1165,6 +1183,15 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(p1.body.code).toBe(0)
     const p2 = await request(httpServer).post('/pay/outside/order').type('form').send(ydSign({ goodsId: pid, custOrderId: co, phone: '13900001111', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
     expect(p2.body.code).toBe(125)
+  })
+
+  it('未过审商品不可签约扣款：pending/draft goodsId → 124（商品不可用）', async () => {
+    // PRD-ZH-01 = pending、PRD-KP-01 = draft（见 seed），均非 live，不得被签约
+    for (const gid of ['PRD-ZH-01', 'PRD-KP-01']) {
+      const r = await request(httpServer).post('/pay/outside/order').type('form')
+        .send(ydSign({ goodsId: gid, custOrderId: 'CO-nolive-' + Math.random().toString(36).slice(2, 8), phone: '13900002222', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
+      expect(r.body.code).toBe(124)
+    }
   })
 
   it('幂等：同 Idempotency-Key 首扣只执行一次（不双扣）', async () => {

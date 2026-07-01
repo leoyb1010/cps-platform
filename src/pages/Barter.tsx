@@ -96,19 +96,29 @@ export default function Barter() {
         </div>
       </Card>
 
-      <BarterDrawer deal={active} anchor={pop.anchorRect} onClose={() => { setOpenId(null); pop.close() }} onStatus={async (id, status) => { await bizApi.setBarterStatus(id, status); toast({ tone: 'good', text: `置换 ${id} 已更新` }); setOpenId(null); barterApi.reload() }} />
+      <BarterDrawer deal={active} anchor={pop.anchorRect} onClose={() => { setOpenId(null); pop.close() }} onStatus={async (id, status) => {
+        try {
+          const r = await bizApi.setBarterStatus(id, status)
+          if (r?.ok === false) { toast({ tone: 'alert', text: r.detail || '更新失败' }); return }
+          toast({ tone: 'good', text: `置换 ${id} 已更新` }); setOpenId(null); barterApi.reload()
+        } catch { toast({ tone: 'alert', text: '更新失败，请重试' }) }
+      }} />
       {newOpen && <NewBarterModal brands={brands.filter((b) => b.status === 'live')} onClose={() => setNewOpen(false)} onDone={() => { toast({ tone: 'good', text: '置换单已发起' }); barterApi.reload() }} />}
     </>
   )
 }
 
 function NewBarterModal({ brands, onClose, onDone }: { brands: { id: string; name: string }[]; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
   const [form, setForm] = useState({ initiatorBrandId: brands[0]?.id ?? '', counterpartyBrandId: brands[1]?.id ?? '', resourceType: '广告位', myQuota: 500000, counterpartyQuota: 500000, invoiceStatus: 'pending' })
   const [terms, setTerms] = useState({ valuation: '', deliveryWindow: '', note: '' })
   const submit = async () => {
-    if (form.initiatorBrandId === form.counterpartyBrandId) { onClose(); return }
-    await bizApi.addBarter({ ...form, terms })
-    onClose(); onDone()
+    if (form.initiatorBrandId === form.counterpartyBrandId) { toast({ tone: 'alert', text: '发起方与对手品牌不能相同' }); return }
+    try {
+      const r = await bizApi.addBarter({ ...form, terms })
+      if (r?.ok === false) { toast({ tone: 'alert', text: r.detail || '发起失败' }); return }
+      onClose(); onDone()
+    } catch { toast({ tone: 'alert', text: '发起失败，请重试' }) }
   }
   return (
     <Modal open onClose={onClose} width={500} title="发起资源置换" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" onClick={submit}>发起</Button></>}>

@@ -67,4 +67,19 @@ describe('有道 RSA 签名（SHA256WithRSA）', () => {
     expect(pubHint(publicKey)).toMatch(/^[a-f0-9]{8}$/)
     expect(pubHint(publicKey)).toBe(pubHint(publicKey))
   })
+
+  it('isValidPublicKey 拒绝私钥 PEM（防私钥误入库）', () => {
+    expect(isValidPublicKey(privateKey)).toBe(false) // 私钥能派生公钥但必须被拒
+    expect(isValidPublicKey('not a key')).toBe(false)
+    expect(isValidPublicKey(publicKey)).toBe(true)
+  })
+
+  it('verifyRsaSign：缺 timestamp 一律失败（防重放硬化）', () => {
+    const p: Record<string, unknown> = { custOrderId: 'X', merchantId: 'm' }
+    p.sign = buildRsaSign(p, privateKey) // 不含 timestamp 的合法签名
+    expect(verifyRsaSign(p, publicKey).ok).toBe(false) // 缺 timestamp → 拒
+    const p2: Record<string, unknown> = { custOrderId: 'X', merchantId: 'm', timestamp: Math.floor(Date.now() / 1000) }
+    p2.sign = buildRsaSign(p2, privateKey)
+    expect(verifyRsaSign(p2, publicKey).ok).toBe(true) // 带 timestamp → 通过
+  })
 })

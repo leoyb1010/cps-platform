@@ -1,4 +1,4 @@
-import { createSign, createVerify, generateKeyPairSync, createHash, createPublicKey } from 'crypto'
+import { createSign, createVerify, generateKeyPairSync, createHash, createPublicKey, createPrivateKey } from 'crypto'
 import { buildStringToSign, type SignParams, type VerifyResult } from '../cps/signature'
 
 /**
@@ -36,15 +36,15 @@ export function verifyRsaSign(
   const provided = params.sign
   if (typeof provided !== 'string' || provided.length === 0) return { ok: false, reason: '缺少签名 sign' }
 
+  // 防重放硬化：timestamp 必带且在时钟偏移窗内，否则验签失败——缺省会使固定 base 串的签名永久有效、可重放。
   const skewSec = opts.skewSec ?? 300
   const ts = params.timestamp
-  if (ts !== undefined && ts !== null && ts !== '') {
-    const tsNum = Number(ts)
-    if (!Number.isFinite(tsNum)) return { ok: false, reason: 'timestamp 非法' }
-    const tsSec = tsNum > 1e12 ? Math.floor(tsNum / 1000) : tsNum
-    const nowSec = Math.floor((opts.now ?? Date.now()) / 1000)
-    if (Math.abs(nowSec - tsSec) > skewSec) return { ok: false, reason: '请求时间戳过期或偏移过大' }
-  }
+  if (ts === undefined || ts === null || ts === '') return { ok: false, reason: '缺少时间戳 timestamp' }
+  const tsNum = Number(ts)
+  if (!Number.isFinite(tsNum)) return { ok: false, reason: 'timestamp 非法' }
+  const tsSec = tsNum > 1e12 ? Math.floor(tsNum / 1000) : tsNum
+  const nowSec = Math.floor((opts.now ?? Date.now()) / 1000)
+  if (Math.abs(nowSec - tsSec) > skewSec) return { ok: false, reason: '请求时间戳过期或偏移过大' }
 
   const base = buildStringToSign(params)
   try {
@@ -73,12 +73,22 @@ export function pubHint(publicKeyPem: string): string {
   return createHash('sha256').update(publicKeyPem).digest('hex').slice(-8)
 }
 
-/** 校验是否为合法 SPKI 公钥 PEM（上传公钥时用）。 */
+/**
+ * 校验是否为合法 SPKI 公钥 PEM（上传公钥时用）。
+ * 拒绝私钥 PEM：createPublicKey 会从 PKCS8/PKCS1 私钥派生公钥并返回成功，
+ * 若不拦截，品牌误粘私钥会被明文写入 publicKey 字段（违背「私钥绝不入库」红线）。
+ */
 export function isValidPublicKey(publicKeyPem: string): boolean {
   try {
     createPublicKey(publicKeyPem)
-    return true
   } catch {
     return false
+  }
+  // 能被当作私钥解析 → 是私钥 PEM，拒绝。
+  try {
+    createPrivateKey(publicKeyPem)
+    return false
+  } catch {
+    return true
   }
 }
