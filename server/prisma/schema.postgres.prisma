@@ -193,6 +193,11 @@ model Order {
   createdAt      DateTime @default(now())
 
   @@index([refundedOrderId])
+  @@index([brandId])
+  @@index([agentId])
+  @@index([subscriptionId])
+  @@index([signOrderNo])
+  @@index([extOrderNo]) // 退款按交易号定位单期，必须有索引
 }
 
 model Settlement {
@@ -212,6 +217,10 @@ model Settlement {
   agentShareSnapshot Float   @default(0) // 冲账比例快照位（本阶段仅留位，回填 0）
   reserveReleased    Float   @default(0) // 已释放准备金累计
   reserveClawedBack  Float   @default(0) // 已追偿准备金累计
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @default(now()) @updatedAt
+
+  @@unique([period, brandId]) // 同品牌同账期唯一，防重复结算单
 }
 
 model Ticket {

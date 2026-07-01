@@ -11,6 +11,7 @@ import { SettlementService } from './settlement.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { FulfillmentService } from './fulfillment.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
+import { splitProportional, sum } from '../common/money'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
@@ -911,24 +912,10 @@ export class BusinessController {
     if (products.length !== pids.length) return { ok: false, detail: '套餐内有商品已下架或不可组合，请用户重新组合后再受理' }
 
     const ordered = pids.map((pid) => products.find((p) => p.id === pid)).filter(Boolean) as typeof products
-    const listSum = ordered.reduce((s, p) => s + p.firstPrice, 0)
     const final = bundle.finalPrice
-    // 服务端权威分摊：按 firstPrice 比例分；末项 = final − 前 n−1 之和，吸收四舍五入残差。
-    // 残差可正可负（toFixed 进位会令前项之和略超 final），不可 clamp 到 0，否则 ∑ 会大于 final（多收钱/虚增 GMV）。
-    const alloc: number[] = []
-    for (let i = 0; i < ordered.length - 1; i++) {
-      const a = listSum > 0 ? +(final * ordered[i].firstPrice / listSum).toFixed(2) : +(final / ordered.length).toFixed(2)
-      alloc.push(a)
-    }
-    alloc.push(+(final - alloc.reduce((s, x) => s + x, 0)).toFixed(2)) // 末项残差校正，保证 ∑ = final
-    // 若末项被前项进位挤成负数，把缺口从“当前最大项”扣除，保持 ∑ 不变且各项 ≥ 0
-    if (alloc[alloc.length - 1] < 0 && alloc.length > 1) {
-      const deficit = alloc[alloc.length - 1]
-      alloc[alloc.length - 1] = 0
-      let maxIdx = 0
-      for (let i = 1; i < alloc.length - 1; i++) if (alloc[i] > alloc[maxIdx]) maxIdx = i
-      alloc[maxIdx] = +(alloc[maxIdx] + deficit).toFixed(2) // deficit 为负 → 扣减
-    }
+    // 服务端权威分摊：按 firstPrice 比例分，末项吸收舍入残差保证 ∑ = final（Decimal 精确，无浮点尾差）。
+    // splitProportional 内部：前 n−1 项按占比 round2，末项 = final − 已分配，天然 ≥ 0 且和恒等于 final。
+    const alloc = splitProportional(final, ordered.map((p) => p.firstPrice))
     const type = dto.type ?? 'first'
     const channel = dto.channel ?? 'wechat'
 
@@ -945,7 +932,7 @@ export class BusinessController {
           const r = await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: p.brandId, agentId: dto.agentId, productId: p.id, amount: alloc[i], type, plan: p.name })
           out.push({ orderId: oid, productId: p.id, brandId: p.brandId, amount: alloc[i], matchedContractId: r.matchedContractId, subscriptionId: r.subscriptionId })
         }
-        const totalAllocated = +out.reduce((s, r) => s + r.amount, 0).toFixed(2)
+        const totalAllocated = sum(out.map((r) => r.amount))
         await this.audit.recordInTx(tx, { user, action: 'bundle.fulfill', resource: 'Bundle', resourceId: id, detail: `套餐 ${id} 受理 → 拆 ${out.length} 笔订单 ¥${totalAllocated} 经 ${dto.agentId} 履约` })
         return { ok: true, bundleId: id, orderIds: out.map((r) => r.orderId), matched: out, totalAllocated }
       })
