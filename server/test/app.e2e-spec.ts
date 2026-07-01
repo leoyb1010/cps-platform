@@ -1160,6 +1160,28 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(u.body.code).toBe(0)
   })
 
+  it('C1 跨路径退款只冲账一次：order.refund 与 cps.refund 同锚去重，对账不破', async () => {
+    const su = await token('admin')
+    const pid = await liveProductId()
+    const so = await ydOrder(pid, '13900005555')
+    const fc = await request(httpServer).post('/cps/sim/first-charge').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so })
+    expect(fc.body.ok).toBe(true)
+    const oid = fc.body.orderId as string // 内部订单 O-xxx
+    const txn = fc.body.extOrderNo as string // 交易号 TXN
+    const r0 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(r0.body.ok).toBe(true)
+    // 路径①：内部 order.refund 按原单 id
+    const rf1 = await request(httpServer).post(`/orders/${oid}/refund`).set('Authorization', `Bearer ${su}`)
+    expect(rf1.body.ok).toBe(true)
+    // 路径②：有道 cps.refund 按交易号 → 应被同锚去重拒绝（不二次冲账）
+    const rf2 = await request(httpServer).post('/order/outside/refund').type('form').send(ydSign({ orderId: txn }) as Record<string, string>)
+    expect(rf2.body.code).not.toBe(0) // 拒绝：原单已退
+    // 对账仍 ok、零差错（无双冲账）
+    const r1 = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(r1.body.ok).toBe(true)
+    expect(r1.body.mismatches.length).toBe(0)
+  })
+
   it('RSA 错签 → 403；时间戳过期 → 403；未注册 merchantId → 123', async () => {
     const pid = await liveProductId()
     // 错签

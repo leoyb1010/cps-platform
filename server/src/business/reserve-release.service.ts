@@ -34,25 +34,21 @@ export class ReserveReleaseService {
     if (!rr) return { ok: false, detail: '释放计划不存在' }
     if (rr.status !== 'scheduled') return { ok: false, detail: `释放计划状态为 ${rr.status}，不可释放` }
 
-    // 抢占：仅当仍 scheduled 时翻为 released（防并发/重复）
+    // 抢占：仅当仍 scheduled 且 amount 未被并发 clawback 缩减时翻为 released（乐观锁，防按 stale 额重复释放）。
     const c = await tx.reserveRelease.updateMany({
-      where: { id: rrId, status: 'scheduled' },
+      where: { id: rrId, status: 'scheduled', amount: rr.amount },
       data: { status: 'released', releasedAt: at, releasedAmount: rr.amount },
     })
-    if (c.count === 0) return { ok: false, detail: '释放计划已被处理' }
+    if (c.count === 0) return { ok: false, detail: '释放计划已被处理或额度已变更' }
 
-    // settlement 累计已释放（不动 reserve / agentPayout → 恒等式 I 不变）；同步 frozen 维持守恒式 II
-    const s = await tx.settlement.findUnique({ where: { id: rr.settlementId } })
-    if (s) {
-      const reserveReleased = s.reserveReleased + rr.amount
-      const frozen = this.frozenOf({ reserve: s.reserve, reserveReleased, reserveClawedBack: s.reserveClawedBack })
-      await tx.settlement.update({ where: { id: s.id }, data: { reserveReleased, frozen } })
-    }
-    // 释放额进入代理可提现池
-    const a = await tx.agent.findUnique({ where: { id: rr.agentId } })
-    if (a) {
-      await tx.agent.update({ where: { id: a.id }, data: { payoutPending: a.payoutPending + rr.amount } })
-    }
+    // settlement 累计已释放（不动 reserve / agentPayout → 恒等式 I 不变）；frozen 原子递减维持守恒式 II，
+    // reserveReleased 原子递增：避免与并发 clawback 的「读快照写绝对量」互相覆盖（lost update）。
+    await tx.settlement.update({
+      where: { id: rr.settlementId },
+      data: { reserveReleased: { increment: rr.amount }, frozen: { decrement: rr.amount } },
+    })
+    // 释放额进入代理可提现池（原子递增）
+    await tx.agent.update({ where: { id: rr.agentId }, data: { payoutPending: { increment: rr.amount } } }).catch(() => undefined)
     return { ok: true, amount: rr.amount, settlementId: rr.settlementId, detail: `释放 ¥${rr.amount}（${rr.stage}）→ 代理 ${rr.agentId} 可提现池` }
   }
 
@@ -87,12 +83,11 @@ export class ReserveReleaseService {
       clawed += take
     }
     if (clawed > 0) {
-      const s = await tx.settlement.findUnique({ where: { id: settlementId } })
-      if (s) {
-        const reserveClawedBack = s.reserveClawedBack + clawed
-        const frozen = this.frozenOf({ reserve: s.reserve, reserveReleased: s.reserveReleased, reserveClawedBack })
-        await tx.settlement.update({ where: { id: s.id }, data: { reserveClawedBack, frozen } })
-      }
+      // 原子递增 reserveClawedBack + 递减 frozen，避免与并发 release 的 lost update（守恒式 II）。
+      await tx.settlement.update({
+        where: { id: settlementId },
+        data: { reserveClawedBack: { increment: clawed }, frozen: { decrement: clawed } },
+      })
     }
     return { clawed }
   }

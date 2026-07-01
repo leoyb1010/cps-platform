@@ -43,8 +43,16 @@ export class FulfillmentService {
         subscriptionId = existing.id
       } else if (o.type === 'first') {
         const subId = 'SUB-' + o.id.replace(/^O-?/, '')
-        await tx.subscription.create({ data: { id: subId, brandId: o.brandId, agentId: o.agentId, productId: o.productId ?? null, userRef: 'u_' + o.id.slice(-4) + '••' + o.id.slice(0, 2), plan: o.plan, status: 'active', firstOrderId: o.id, currentPeriod: 1, mrr: o.amount } })
-        subscriptionId = subId
+        try {
+          await tx.subscription.create({ data: { id: subId, brandId: o.brandId, agentId: o.agentId, productId: o.productId ?? null, userRef: 'u_' + o.id.slice(-4) + '••' + o.id.slice(0, 2), plan: o.plan, status: 'active', firstOrderId: o.id, currentPeriod: 1, mrr: o.amount } })
+          subscriptionId = subId
+        } catch (e) {
+          // 并发同 (brandId,agentId,plan) 首扣撞 @@unique(P2002)：不整单回滚，回查既有订阅认领（等价于命中 existing 分支）。
+          if ((e as { code?: string }).code === 'P2002') {
+            const raced = await tx.subscription.findFirst({ where: { brandId: o.brandId, agentId: o.agentId, plan: o.plan } })
+            subscriptionId = raced?.id
+          } else throw e
+        }
       }
     }
     return { matchedContractId, subscriptionId }

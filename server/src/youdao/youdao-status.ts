@@ -17,6 +17,7 @@ export const YD_ORDER_STATUS = { CREATED: 0, PAID: 1, NOTIFIED: 2, REFUNDED: 3 }
 export function toOrderStatus(so: { status: string }, hasCharge: boolean, hasRefund: boolean): number {
   if (hasRefund) return YD_ORDER_STATUS.REFUNDED
   if (hasCharge) return YD_ORDER_STATUS.NOTIFIED // 已支付且已回调通知
-  if (so.status === 'active' || so.status === 'unsigned') return YD_ORDER_STATUS.PAID
+  // 「签约未扣款即解约」（unsigned 且无扣款记录）应为 0 创建，不能误判为 1 已支付。
+  if (so.status === 'active') return YD_ORDER_STATUS.PAID
   return YD_ORDER_STATUS.CREATED
 }

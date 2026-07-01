@@ -39,9 +39,11 @@ export default function Products() {
   const liveCount = products.filter((p) => p.status === 'live').length
 
   const review = async (id: string, action: 'approve' | 'reject', note?: string) => {
-    const r = await bizApi.reviewProduct(id, action, note)
-    if (r.ok) { toast({ tone: 'good', text: r.detail ?? '操作完成' }); setOpenId(null); productsApi.reload() }
-    else toast({ tone: 'alert', text: r.detail ?? '操作失败' })
+    try {
+      const r = await bizApi.reviewProduct(id, action, note)
+      if (r.ok) { toast({ tone: 'good', text: r.detail ?? '操作完成' }); setOpenId(null); productsApi.reload() }
+      else toast({ tone: 'alert', text: r.detail ?? '操作失败' })
+    } catch { toast({ tone: 'alert', text: '操作失败，请重试' }) }
   }
   const addRule = async () => {
     if (!rf.name.trim()) { toast({ tone: 'info', text: '填写规则名称' }); return }

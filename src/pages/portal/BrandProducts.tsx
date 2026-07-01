@@ -22,9 +22,11 @@ export function BrandProducts() {
   const [newOpen, setNewOpen] = useState(false)
 
   const submit = async (id: string) => {
-    const r = await portalApi.submitProduct(id)
-    if (r.ok) { toast({ tone: 'good', text: '已提交审核，平台通过后即上架超市' }); reload() }
-    else toast({ tone: 'alert', text: r.detail })
+    try {
+      const r = await portalApi.submitProduct(id)
+      if (r.ok) { toast({ tone: 'good', text: '已提交审核，平台通过后即上架超市' }); reload() }
+      else toast({ tone: 'alert', text: r.detail })
+    } catch { toast({ tone: 'alert', text: '提交失败，请重试' }) }
   }
 
   return (

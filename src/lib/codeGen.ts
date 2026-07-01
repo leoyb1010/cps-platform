@@ -9,6 +9,9 @@ export interface CodeGenInput {
 }
 
 const PRIV_PLACEHOLDER = '<YOUR_RSA_PRIVATE_KEY.pem>'
+// timestamp 哨兵：codegen 传入此占位，各语言模板替换为「运行时取当前秒级时间戳」的表达式，
+// 避免把渲染时刻的死值烤进样例——复制几分钟后 timestamp 超出 skewSec(300s) 会被验签拒（403）。
+export const TS_SENTINEL = '__TS__'
 
 function sortedPairs(params: Record<string, string>): [string, string][] {
   return Object.entries(params)
@@ -20,10 +23,12 @@ export function stringToSign(params: Record<string, string>): string {
 }
 
 export function genCurl(i: CodeGenInput): string {
-  const sts = stringToSign(i.params)
+  const sts = stringToSign(i.params).replace(TS_SENTINEL, '\'"$TS"\'') // 在单引号 STR 内切出 shell 变量
   const fields = sortedPairs(i.params)
-  const formArgs = fields.map(([k, v]) => `  -d '${k}=${v}' \\`).join('\n')
-  return `# 1. 待签名串（key 升序、剔除空值与 sign）
+  const formArgs = fields.map(([k, v]) => `  -d '${k}=${v === TS_SENTINEL ? '\'"$TS"\'' : v}' \\`).join('\n')
+  return `# 0. 当前秒级时间戳（勿用固定值，超出 300s 会被验签拒）
+TS=$(date +%s)
+# 1. 待签名串（key 升序、剔除空值与 sign）
 STR='${sts}'
 # 2. 用私钥 SHA256withRSA 签名 → base64
 SIGN=$(printf '%s' "$STR" | openssl dgst -sha256 -sign ${PRIV_PLACEHOLDER} | openssl base64 -A)
@@ -34,10 +39,12 @@ ${formArgs}
 }
 
 export function genNode(i: CodeGenInput): string {
+  const paramsJson = JSON.stringify(i.params, null, 2).replace(`"${TS_SENTINEL}"`, 'String(Math.floor(Date.now() / 1000))')
   return `import { createSign } from 'crypto'
 import { readFileSync } from 'fs'
 
-const params = ${JSON.stringify(i.params, null, 2)}
+// timestamp 运行时生成（勿用固定值，超出 300s 会被验签拒）
+const params = ${paramsJson}
 const privateKey = readFileSync('${PRIV_PLACEHOLDER}', 'utf8')
 
 // 1. 待签名串
@@ -55,8 +62,10 @@ console.log(await res.json())`
 }
 
 export function genJava(i: CodeGenInput): string {
+  // timestamp 运行时拼接（勿用固定值，超出 300s 会被验签拒）
+  const javaBase = stringToSign(i.params).replace(TS_SENTINEL, '" + (System.currentTimeMillis() / 1000) + "')
   return `// 待签名串：参数按 key 升序，k=v& 拼接，剔除空值与 sign
-String base = "${stringToSign(i.params)}";
+String base = "${javaBase}";
 // SHA256withRSA 签名 → base64
 Signature signature = Signature.getInstance("SHA256withRSA");
 signature.initSign(privateKey); // PKCS8 私钥
@@ -66,11 +75,13 @@ String sign = Base64.getEncoder().encodeToString(signature.sign());
 }
 
 export function genPython(i: CodeGenInput): string {
+  const pyParams = JSON.stringify(i.params).replace(`"${TS_SENTINEL}"`, 'str(int(time.time()))')
   return `from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-import base64, requests
+import base64, requests, time
 
-params = ${JSON.stringify(i.params)}
+# timestamp 运行时生成（勿用固定值，超出 300s 会被验签拒）
+params = ${pyParams}
 with open('${PRIV_PLACEHOLDER}', 'rb') as f:
     private_key = serialization.load_pem_private_key(f.read(), password=None)
 

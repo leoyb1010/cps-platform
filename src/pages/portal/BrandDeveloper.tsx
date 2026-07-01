@@ -5,7 +5,7 @@ import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'
-import { LANGS, stringToSign, type CodeGenInput } from '../../lib/codeGen'
+import { LANGS, stringToSign, TS_SENTINEL, type CodeGenInput } from '../../lib/codeGen'
 
 interface DevConfig {
   custId: string | null
@@ -211,7 +211,7 @@ function CodeTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { end
   const [epIdx, setEpIdx] = useState(0)
   const [lang, setLang] = useState<string>('curl')
   const ep = endpoints[epIdx]
-  const params = buildParams(ep.fields, {}, merchantId, custId)
+  const params = buildParams(ep.fields, {}, merchantId, custId, true)
   const input: CodeGenInput = { baseUrl: `https://dict-paycenter-test.youdao.com/client`, path: ep.path, method: ep.method, params }
   const gen = LANGS.find((l) => l.key === lang)!.gen
   const code = gen(input)
@@ -305,10 +305,11 @@ function LogsTab() {
 
 // ── 辅助 ──
 const PLACEHOLDER: Record<string, string> = { goodsId: '商品 ID', custOrderId: '合作方订单号', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: '设备唯一标志', orderId: '有道订单号' }
-function buildParams(fields: string[], vals: Record<string, string>, merchantId: string, custId: string): Record<string, string> {
+function buildParams(fields: string[], vals: Record<string, string>, merchantId: string, custId: string, forCode = false): Record<string, string> {
   const p: Record<string, string> = {}
   for (const f of fields) p[f] = f === 'merchantId' ? merchantId : f === 'custId' ? custId : (vals[f] ?? PLACEHOLDER[f] ?? '')
-  p.timestamp = String(Math.floor(Date.now() / 1000))
+  // 联调台走真实秒级时间戳；SDK 代码生成用哨兵，由各语言模板替换为运行时表达式（避免死值过期被验签拒）。
+  p.timestamp = forCode ? TS_SENTINEL : String(Math.floor(Date.now() / 1000))
   return p
 }
 function Kv({ label, val, copy, copied, tag }: { label: string; val: string | null; copy: (t: string, tag: string) => void; copied: string; tag: string }) {

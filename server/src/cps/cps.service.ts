@@ -133,11 +133,12 @@ export class CpsService {
       const existing = await this.prisma.chargeRetry.findFirst({ where: { signOrderNo: so.id, status: 'pending' } })
       if (existing) return { ok: false, detail: '已有进行中的补扣任务' }
       const cr = 'CR-' + shortId()
+      const txn = 'TXN' + shortId() // 本次代扣交易号：DEDUCT_FAIL(4) 回调 orderId 用它（与代扣成功 2 的 orderId 语义一致），便于合作方按期次关联
       await this.prisma.chargeRetry.create({
         data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
       })
       await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
-      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { amount: so.amount, period, operateTime: new Date(), subMsg: reason })
+      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { orderNo: txn, amount: so.amount, period, operateTime: new Date(), subMsg: reason })
       return { ok: true, detail: '已记录扣款失败并进入补扣队列', retryId: cr }
     })
     return result
@@ -150,10 +151,11 @@ export class CpsService {
       const r = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findFirst({ where: { signOrderNo, extOrderNo, type: { in: ['first', 'renew'] } } })
         if (!order) return null
-        const dupe = await tx.order.findFirst({ where: { signOrderNo, extOrderNo, type: 'refund' } })
+        // 跨路径统一去重锚：按被退原单 id（refundedOrderId），与 order.refund 同锚，防同一笔被两条路径各退一次。
+        const dupe = await tx.order.findFirst({ where: { type: 'refund', refundedOrderId: order.id } })
         if (dupe) return null
         const amt = Math.abs(order.amount)
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period } })
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period, refundedOrderId: order.id } })
         const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
         await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
         if (rev.settlement) await this.reserve.clawback(tx, rev.settlement.id, rev.share)
