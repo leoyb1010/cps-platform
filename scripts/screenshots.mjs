@@ -10,20 +10,23 @@ const ADMIN = { id: 'U-001', name: '李运营', account: 'admin', roleId: 'super
 const BRAND = { id: 'U-101', name: '有道品牌运营', account: 'brand', roleId: 'brand', scopeType: 'brand', scopeId: 'youdao' }
 const AGENT = { id: 'U-201', name: '量子增长工作室', account: 'agent', roleId: 'agent', scopeType: 'agent', scopeId: 'A-2041' }
 
-/** @type {{name:string; hash:string; height:number; theme?:'light'|'dark'; auth?:object|null; expert?:boolean}[]} */
+/** @type {{name:string; hash:string; height:number; theme?:'light'|'dark'; auth?:object|null; expert?:boolean; coachDone?:boolean}[]} */
 const SHOTS = [
-  { name: 'dashboard', hash: '#/', height: 1640, expert: true },
-  { name: 'dashboard-dark', hash: '#/', height: 1640, theme: 'dark', expert: true },
+  { name: 'dashboard', hash: '#/', height: 1720, expert: true },
+  { name: 'dashboard-dark', hash: '#/', height: 1720, theme: 'dark', expert: true },
   { name: 'login', hash: '#/login', height: 900, auth: null },
-  { name: 'market', hash: '#/market', height: 1330, auth: null },
   { name: 'settlement', hash: '#/settlement', height: 1150 },
-  { name: 'merchants', hash: '#/merchants', height: 1050 },
-  { name: 'risk', hash: '#/risk', height: 1080 },
+  { name: 'settlement-run', hash: '#/settlement/run', height: 760 },
+  { name: 'incident-room', hash: '#/risk/incident/M-BL-01', height: 900 },
+  { name: 'market', hash: '#/market', height: 1330, auth: null },
   { name: 'analytics', hash: '#/analytics', height: 1100 },
-  { name: 'portal-brand', hash: '#/portal/brand', height: 860, auth: BRAND },
+  { name: 'merchants', hash: '#/merchants', height: 1050 },
+  { name: 'portal-brand', hash: '#/portal/brand', height: 900, auth: BRAND },
+  { name: 'portal-plaza', hash: '#/portal/brand/plaza', height: 760, auth: BRAND },
+  { name: 'portal-insights', hash: '#/portal/brand/insights', height: 1080, auth: BRAND },
   { name: 'portal-agent', hash: '#/portal/agent', height: 1160, auth: AGENT },
+  { name: 'agent-landing', hash: '#/portal/agent/landing', height: 1080, auth: AGENT },
   { name: 'members', hash: '#/members', height: 950 },
-  { name: 'audit', hash: '#/audit', height: 950 },
 ]
 
 mkdirSync(OUT, { recursive: true })
@@ -43,6 +46,7 @@ for (const s of SHOTS) {
       if (auth) localStorage.setItem('cps-auth-v1', JSON.stringify(auth))
       localStorage.setItem('cps-theme-v1', theme ?? 'light')
       if (expert) localStorage.setItem('cps-prefs-v1', 'expert')
+      localStorage.setItem('cps-coach-done-console', '1') // 截图不弹引导遮罩
     },
     { auth, theme: s.theme, expert: s.expert },
   )

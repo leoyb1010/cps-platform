@@ -37,21 +37,21 @@
 
 ![经营总览 · 暗色主题](docs/screenshots/dashboard-dark.png)
 
-<div align="center"><sub>暗色主题 —— 令牌级三态换肤（明亮 / 暗色 / 跟随系统），全站零组件改动整体适配</sub></div>
+<div align="center"><sub>暗色主题 + 异动播报晨报 + 实时事件流 —— 令牌级三态换肤，全站零组件改动整体适配</sub></div>
 
 <br/>
 
-| 登录 · 品牌叙事分栏 | C 端订阅超市 · 组合算价 |
+| 结算工作台 · 五步 Checklist | 风险处置舱 · 影响预演 |
 |:---:|:---:|
-| ![登录](docs/screenshots/login.png) | ![订阅超市](docs/screenshots/market.png) |
-| **清结算 · 分润瀑布 / 双路径** | **商户号 · 号池健康状态机** |
-| ![清结算](docs/screenshots/settlement.png) | ![号池](docs/screenshots/merchants.png) |
-| **品牌方门户 · 我的经营** | **代理商门户 · 我的投放** |
-| ![品牌门户](docs/screenshots/portal-brand.png) | ![代理门户](docs/screenshots/portal-agent.png) |
-| **风控中心 · 三道防线** | **数据 · 归因 / R-NSC 分解** |
-| ![风控](docs/screenshots/risk.png) | ![归因](docs/screenshots/analytics.png) |
-| **成员与角色 · RBAC 矩阵** | **操作审计 · append-only 留痕** |
-| ![成员](docs/screenshots/members.png) | ![审计](docs/screenshots/audit.png) |
+| ![结算工作台](docs/screenshots/settlement-run.png) | ![处置舱](docs/screenshots/incident-room.png) |
+| **资源广场 · 平台开放业务橱窗** | **投放透视 · 代理投放脱敏聚合** |
+| ![资源广场](docs/screenshots/portal-plaza.png) | ![投放透视](docs/screenshots/portal-insights.png) |
+| **代理推广页工坊 · 归因落地页** | **C 端订阅超市 · 组合算价** |
+| ![推广页工坊](docs/screenshots/agent-landing.png) | ![订阅超市](docs/screenshots/market.png) |
+| **清结算 · 资金流向 Sankey** | **数据 · 归因 / LTV 预测带** |
+| ![清结算](docs/screenshots/settlement.png) | ![归因](docs/screenshots/analytics.png) |
+| **登录 · 品牌叙事分栏** | **品牌方门户 · 分组导航** |
+| ![登录](docs/screenshots/login.png) | ![品牌门户](docs/screenshots/portal-brand.png) |
 
 ---
 
@@ -250,6 +250,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
+| **v9 · 动线化 · 实时化 · 智能化** | 铁律：功能可专业、操作必小白（规整而非删减）。**B0 规整**：控制台分组折叠(一项不减)、门户分组导航(资源平台/接单大厅)、密度切换、3 步引导。**B1 动线**：C 端**落地页生成器**(移动优先+归因闭环+合规模块)、结算工作台(五步 Checklist+对账解释器)、**风险处置舱**(影响预演)、分润 Sankey、⌘K 动作化、行动队列、代码分割。**B2 门户深化**：资源广场、投放透视、异动播报、接单模拟器、实时事件流。**B3 智能**：Ask 平台(模板制)、LTV 预测带、品牌白标、i18n 骨架。执行方案见 [`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) |
 | **v8 · 全面审查 + 体验升级** | 三路对抗式审查修 40+ 缺陷（工单退款跨路径双冲账 P0 / 幂等键资源绑定 / CPS 跨品牌签约 / 配置契约漂移 / 刷新令牌互踢 / 权限路由守卫）；**暗色模式**（令牌级三态主题）；登录页品牌叙事重设计；**演示模式全入口打通**（订阅超市本地货架算价 + 品牌/代理门户演示数据层 + 门户演示账户）；图表健壮性（单点/负值/标签防重叠）；焦点陷阱与无障碍；README 截图流水线 |
 | **v7 · 前端审计 + v6 收尾** | 前端首轮对抗式审计修 4 缺陷（switchRole 伪造 super / 创建并发丢失 / useApi 脚枪 / seq 碰撞）；X-Request-Id 入站清洗；创建写以服务端 id 为准 |
 | **v6 · 运维成熟度** | 批次A 可观测性（请求追踪 ID + prom-client + 健康升级 + 优雅停机）；批次B 唯一约束 + 对账任务；批次C 审计旁路 + 依赖扫描 + PII 脱敏 |
@@ -278,7 +279,7 @@ cps-platform/
 
 ## 📚 规划文档
 
-**下一轮路线图**：[`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) —— 执行级方案：复杂度治理铁律（小白测试/复杂度预算）· B0 先做减法（导航 19→6/今天三件事/术语人话化）· 动线化（结算工作台/处置舱/行动队列/⌘K 动作化）· 实时化（SSE 事件通道/风控页去静态化）· 智能化（对账解释器/异动播报/Ask 模板制），每项含原因、想法、小白形态、文件级落点与验收标准。
+**路线图**：[`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) 全批次已交付（B0 规整 · B1 动线与落地页 · B2 门户深化 · B3 智能与平台化，见文末交付总结）。核心原则「功能可专业、操作必小白 —— 规整而非删减」。v10 收尾项（需真实后端演示）：SSE 真通道 · presence · 乐观锁 · 对外 webhook 总线。
 
 历史产品/技术规划文档已归档至 [`docs/planning/`](docs/planning/)：产品升级计划 v2 · 优化升级计划 v3 · 后端技术方案 v4 · 商业化就绪清单 v5 · 下一轮升级规划 v6。对外接口规范见 [`docs/cps-连续包月对接规范.md`](docs/cps-连续包月对接规范.md)。
 
