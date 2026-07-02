@@ -53,8 +53,9 @@ const AgentCredit = lazy(() => import('./pages/portal/AgentPortal').then((m) => 
 const AgentContracts = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentContracts })))
 const AgentTickets = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentTickets })))
 const PortalAigc = lazy(() => import('./pages/portal/PortalAigc').then((m) => ({ default: m.PortalAigc })))
-const ComingSoon = lazy(() => import('./pages/portal/ComingSoon').then((m) => ({ default: m.ComingSoon })))
 const AgentLanding = lazy(() => import('./pages/portal/AgentLanding').then((m) => ({ default: m.AgentLanding })))
+const BrandPlaza = lazy(() => import('./pages/portal/BrandPlaza').then((m) => ({ default: m.BrandPlaza })))
+const BrandInsights = lazy(() => import('./pages/portal/BrandInsights').then((m) => ({ default: m.BrandInsights })))
 
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
 // 未知 scopeType（新增租户类型/脏数据）不得落到 platform 默认——那等于放进内部控制台外壳，
@@ -127,8 +128,8 @@ export default function App() {
         <Route path="/portal/brand/landing" element={<BrandLanding />} />
         <Route path="/portal/brand/barter" element={<BrandBarter />} />
         <Route path="/portal/brand/aigc" element={<PortalAigc />} />
-        <Route path="/portal/brand/insights" element={<ComingSoon title="投放透视" desc="按商品聚合代理投放数据：谁在投、投得怎样、转化与退款——看清自己的商品在平台上的表现。（B2 上线）" />} />
-        <Route path="/portal/brand/plaza" element={<ComingSoon title="资源广场" desc="平台开放业务橱窗：可接的增长合约挂单 + 可置换的品牌资源。在这里参与平台化联运。（B2 上线）" />} />
+        <Route path="/portal/brand/insights" element={<BrandInsights />} />
+        <Route path="/portal/brand/plaza" element={<BrandPlaza />} />
       </Route>
 
       {/* 代理商门户 */}

@@ -11,6 +11,7 @@ import {
   GlassWater,
   Activity,
   ShieldHalf,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardTitle, Badge, Button, Segmented, CountUp, BrandMark, TONE } from '../components/ui/primitives'
 import { CrosshairChart, Meter } from '../components/ui/charts'
@@ -29,6 +30,7 @@ import {
   type ActionItem,
 } from '../lib/store'
 import { HEALTH_TONE } from '../lib/dict'
+import { buildInsights } from '../lib/insights'
 import {
   kpi,
   series,
@@ -150,6 +152,9 @@ export default function Dashboard() {
         <button onClick={() => { resetStore(); toast({ tone: 'info', text: '数据已重置' }) }} className="ml-auto rounded-md px-2.5 py-1 font-medium text-ink-4 hover:text-ink">重置数据</button>
       </div>
       )}
+
+      {/* 异动播报：规则模板生成的 3 句话晨报，每句可下钻。数字来自规则引擎（防幻觉）。 */}
+      <DailyBrief nav={nav} />
 
       {/* ───────── 层 1 · 风险与行动 ───────── */}
       <Card style={rev(0.08)}>
@@ -449,4 +454,30 @@ function MiniBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'warn' |
 }
 function QualBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'alert' | 'info' }) {
   return <div className="rounded-md bg-surface-muted py-2 text-center"><div className={cx('tnum text-[14px] font-semibold', TONE[tone].ink)}>{v}</div><div className="mt-0.5 text-[10.5px] text-ink-5">{k}</div></div>
+}
+
+/* 异动播报（晨报）：规则模板从 store 派生 3 句话，每句带下钻链接。 */
+function DailyBrief({ nav }: { nav: (to: string) => void }) {
+  const s = useStore()
+  const items = buildInsights(s)
+  const dot: Record<string, string> = { alert: 'var(--color-alert)', warn: 'var(--color-warn)', good: 'var(--color-good)', info: 'var(--color-info)' }
+  return (
+    <div className="mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-card)]" style={rev(0.06)}>
+      <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">
+        <span className="grid h-6 w-6 place-items-center rounded-md bg-brand-soft text-brand-ink"><Sparkles size={13} /></span>
+        <span className="text-[13px] font-semibold text-ink">异动播报</span>
+        <span className="text-[11px] text-ink-4">规则引擎 · 数字可溯源</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-ink-5"><span className="h-1.5 w-1.5 rounded-full bg-good" style={{ animation: 'blink 1.6s ease-in-out infinite' }} /> 今日</span>
+      </div>
+      <div className="divide-y divide-line/60">
+        {items.map((it) => (
+          <button key={it.id} onClick={() => nav(it.to)} className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-muted">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: dot[it.tone] }} />
+            <span className="flex-1 text-[12.5px] leading-relaxed text-ink-2">{it.text}</span>
+            <ArrowRight size={13} className="mt-0.5 shrink-0 text-ink-4" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
