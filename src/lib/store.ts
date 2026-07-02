@@ -762,7 +762,7 @@ export function selectActions(s: StoreState): ActionItem[] {
     })
   }
   const paused = s.merchants.find((m) => m.state === 'paused' || m.state === 'fused')
-  if (paused) out.push({ id: 'pool', tone: 'warn', title: `${paused.id} ${paused.state === 'fused' ? '已熔断' : '已暂停新签'}`, sub: `投诉 ${paused.complaintRate.toFixed(2)}% · 建议核查并切量`, to: '/merchants' })
+  if (paused) out.push({ id: 'pool', tone: 'warn', title: `${paused.id} ${paused.state === 'fused' ? '已熔断' : '已暂停新签'}`, sub: `投诉 ${paused.complaintRate.toFixed(2)}% · 建议核查并切量`, to: `/risk/incident/${paused.id}` })
   const fraud = s.agents.find((a) => a.status === 'throttled' || a.status === 'frozen')
   if (fraud) out.push({ id: 'fraud', tone: 'info', title: `代理 ${fraud.id} 风险预警`, sub: `信用分 ${fraud.creditScore} · ${fraud.status === 'frozen' ? '已冻结' : '已降权'}，待复核`, to: '/risk' })
   const diff = s.settlements.find((x) => x.reconcileDiff > 0)

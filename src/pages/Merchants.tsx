@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Zap, ShieldAlert, Activity, Layers, ArrowRight } from 'lucide-react'
 import {
   Card,
@@ -44,6 +45,7 @@ export default function Merchants() {
   const { merchants, brands } = useStore()
   const expert = useViewMode() === 'expert'
   const toast = useToast()
+  const nav = useNavigate()
   const [filter, setFilter] = useState<'all' | 'risk'>('all')
   const [openId, setOpenId] = useState<string | null>(null)
   const pop = useAnchoredPopover()
@@ -257,11 +259,17 @@ export default function Merchants() {
                     <span className={m.weight === 0 ? 'text-alert-ink' : 'text-ink'}>{m.weight}</span>
                   </Td>
                   <Td right>
-                    {m.state === 'fused' ? (
-                      <button onClick={() => { setMerchantState(m.id, 'healthy', '健康'); toast({ tone: 'good', text: `${m.id} 已恢复进单` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-good-ink hover:bg-good-soft">恢复</button>
-                    ) : (
-                      <button onClick={() => { setMerchantState(m.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${m.id} 已熔断下线` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-alert-ink hover:bg-alert-soft">熔断</button>
-                    )}
+                    <span className="inline-flex items-center gap-1">
+                      {/* 非健康号：进处置舱（聚合上下文 + 影响预演 + 留痕，比逐个按钮更稳） */}
+                      {m.state !== 'healthy' && (
+                        <button onClick={(e) => { e.stopPropagation(); nav(`/risk/incident/${m.id}`) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-brand hover:bg-brand-soft">处置舱</button>
+                      )}
+                      {m.state === 'fused' ? (
+                        <button onClick={() => { setMerchantState(m.id, 'healthy', '健康'); toast({ tone: 'good', text: `${m.id} 已恢复进单` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-good-ink hover:bg-good-soft">恢复</button>
+                      ) : (
+                        <button onClick={() => { setMerchantState(m.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${m.id} 已熔断下线` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-alert-ink hover:bg-alert-soft">熔断</button>
+                      )}
+                    </span>
                   </Td>
                 </Row>
               )
