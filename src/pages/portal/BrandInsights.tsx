@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { BarChart3, TrendingUp, Users, AlertTriangle } from 'lucide-react'
 import { PageHeader, Card, CardTitle, Badge, BrandMark } from '../../components/ui/primitives'
+import { EmptyNotice } from '../../components/portal/kit'
 import { portalApi } from '../../lib/portalApi'
+import { isRealApi } from '../../lib/http'
 import { money, pct } from '../../lib/format'
 
 /**
@@ -18,9 +20,10 @@ const AGENT_ROWS = [
   { agent: 'A-3372', tier: '个人', firstOrders: 2300, gmv: 690000, renewal: 60.1, complaint: 0.58, refund: 3.3, material: 5 },
   { agent: 'A-4410', tier: '个人', firstOrders: 900, gmv: 260000, renewal: 52.4, complaint: 1.02, refund: 5.4, material: 3 },
 ]
+// 两表同口径：商品维度 GMV 合计 = 代理维度合计（¥4.91M），避免自相矛盾
 const PRODUCT_ROWS = [
-  { name: '词典 VIP 连续包月', agents: 4, gmv: 3210000, conv: 3.4, ltv: 104 },
-  { name: '词典 VIP 年卡', agents: 2, gmv: 1180000, conv: 2.1, ltv: 168 },
+  { name: '词典 VIP 连续包月', agents: 4, gmv: 3570000, conv: 3.4, ltv: 104 },
+  { name: '词典 VIP 年卡', agents: 2, gmv: 1340000, conv: 2.1, ltv: 168 },
 ]
 
 export function BrandInsights() {
@@ -29,15 +32,25 @@ export function BrandInsights() {
   const totalGmv = AGENT_ROWS.reduce((s, a) => s + a.gmv, 0)
   const maxGmv = Math.max(1, ...AGENT_ROWS.map((a) => a.gmv))
 
+  // 真实模式无聚合端点，不摆假数据冒充真实投放
+  if (isRealApi) {
+    return (
+      <>
+        <PageHeader title="投放透视" desc="你的商品被哪些代理在投、投得怎样。代理身份已脱敏为编号，仅展示投放量级与质量。" />
+        <EmptyNotice title="投放透视聚合端点接入中" body="按商品 / 按代理的投放聚合依赖服务端 scoped 端点，接入后此处展示真实投放量级与质量。" />
+      </>
+    )
+  }
+
   return (
     <>
-      <PageHeader title="投放透视" desc="你的商品被哪些代理在投、投得怎样。代理身份已脱敏为编号，仅展示投放量级与质量。" />
+      <PageHeader title="投放透视" desc="你的商品被哪些代理在投、投得怎样。代理身份已脱敏为编号，仅展示投放量级与质量。" actions={<Badge tone="neutral">演示数据</Badge>} />
       {(() => (
           <>
             {/* KPI */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Kpi icon={<Users size={15} />} label="在投代理" value={String(AGENT_ROWS.length)} sub="覆盖企业 + 个人" />
-              <Kpi icon={<TrendingUp size={15} />} label="代理带来 GMV" value={money(totalGmv)} sub={`占品牌 ${sum.gmvMtd ? Math.round((totalGmv / sum.gmvMtd) * 100) : 62}%`} />
+              <Kpi icon={<TrendingUp size={15} />} label="代理带来 GMV" value={money(totalGmv)} sub={sum.gmvMtd ? `占品牌 ${Math.round((totalGmv / sum.gmvMtd) * 100)}%` : undefined} />
               <Kpi icon={<BarChart3 size={15} />} label="平均续费率" value={pct(AGENT_ROWS.reduce((s, a) => s + a.renewal, 0) / AGENT_ROWS.length)} sub="代理投放留存质量" />
               <Kpi icon={<AlertTriangle size={15} />} label="高投诉代理" value={String(AGENT_ROWS.filter((a) => a.complaint >= 1).length)} sub="投诉率 ≥1%，需关注" tone={AGENT_ROWS.some((a) => a.complaint >= 1) ? 'warn' : 'good'} />
             </div>
@@ -98,12 +111,12 @@ export function BrandInsights() {
   )
 }
 
-function Kpi({ icon, label, value, sub, tone = 'neutral' }: { icon: React.ReactNode; label: string; value: string; sub: string; tone?: 'neutral' | 'warn' | 'good' }) {
+function Kpi({ icon, label, value, sub, tone = 'neutral' }: { icon: React.ReactNode; label: string; value: string; sub?: string; tone?: 'neutral' | 'warn' | 'good' }) {
   return (
     <Card>
       <div className="flex items-center gap-1.5 text-[12px] text-ink-3"><span className={tone === 'warn' ? 'text-warn-ink' : 'text-ink-4'}>{icon}</span>{label}</div>
       <div className="tnum mt-1.5 text-[22px] font-semibold text-ink">{value}</div>
-      <div className="mt-1 text-[11.5px] text-ink-4">{sub}</div>
+      {sub && <div className="mt-1 text-[11.5px] text-ink-4">{sub}</div>}
     </Card>
   )
 }

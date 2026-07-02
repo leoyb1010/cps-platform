@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Check, ShieldCheck, Sparkles, Wallet, CheckCircle2, AlertCircle, Info } from 'lucide-react'
 import { marketApi, type MarketProduct, type Quote } from '../../lib/marketApi'
@@ -22,28 +22,36 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true)
   const [phase, setPhase] = useState<'browse' | 'paying' | 'done'>('browse')
   const [err, setErr] = useState('')
+  const seq = useRef(0)
 
   useEffect(() => {
+    // :id 变化先整体复位（避免 /land/A 支付完成态残留到 /land/B）；seq 防 A 的慢响应落到 B
+    const s = ++seq.current
+    setPhase('browse'); setProducts([]); setQuote(null); setErr(''); setLoading(true)
     if (!page) { setLoading(false); return }
     recordLandingView(page.id)
     marketApi.products()
       .then((all) => {
         const mine = page.productIds.map((pid) => all.find((p) => p.id === pid)).filter(Boolean) as MarketProduct[]
+        if (s !== seq.current) return null
         setProducts(mine)
         return marketApi.quote(page.productIds)
       })
-      .then((q) => setQuote(q))
-      .catch(() => setErr('商品加载失败，请刷新重试'))
-      .finally(() => setLoading(false))
+      .then((q) => { if (q && s === seq.current) setQuote(q) })
+      .catch(() => { if (s === seq.current) setErr('商品加载失败，请刷新重试') })
+      .finally(() => { if (s === seq.current) setLoading(false) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const theme = page?.theme ?? '#f5333b'
   const hasContinuous = products.some((p) => isContinuous(p.billingCycle))
   const savedPct = quote?.ok && quote.listPrice > 0 ? Math.round((1 - quote.finalPrice / quote.listPrice) * 100) : 0
+  // 套餐可跨品牌（页面 brandId 只是第一个商品的品牌），页眉按实际品牌数渲染
+  const pageBrands = [...new Set(products.map((p) => p.brandKey))]
 
   const pay = async () => {
     if (!page || !quote?.ok) return
+    if (!getLandingPage(page.id)) { setErr('该落地页已下线'); return } // 页面可能已被创建者删除
     setPhase('paying'); setErr('')
     try {
       const bundle = await marketApi.createBundle(page.productIds)
@@ -71,17 +79,34 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-canvas" style={{ ['--lp' as string]: theme }}>
       <div className="mx-auto min-h-screen max-w-[440px] bg-surface shadow-[var(--shadow-pop)]">
-        {/* 页眉：品牌认证条（embed 去掉） */}
+        {/* 页眉：品牌认证条（embed 去掉）。多品牌套餐叠加展示品牌标并以平台担保背书，不冒用单一品牌认证 */}
         {!embed && (
           <div className="flex items-center gap-2.5 border-b border-line px-5 py-3.5">
-            <BrandMark brand={page.brandId} size={30} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                {brandName(page.brandId)}
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-good-soft px-1.5 py-0.5 text-[10px] font-medium text-good-ink"><ShieldCheck size={10} /> 官方认证</span>
-              </div>
-              <div className="text-[10.5px] text-ink-4">平台担保结算 · 随时可退</div>
-            </div>
+            {pageBrands.length > 1 ? (
+              <>
+                <div className="flex shrink-0 -space-x-2">
+                  {pageBrands.slice(0, 3).map((b) => <span key={b} className="rounded-full ring-2 ring-surface"><BrandMark brand={b} size={30} /></span>)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                    多品牌联合套餐
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-good-soft px-1.5 py-0.5 text-[10px] font-medium text-good-ink"><ShieldCheck size={10} /> 平台担保</span>
+                  </div>
+                  <div className="text-[10.5px] text-ink-4">平台担保结算 · 随时可退</div>
+                </div>
+              </>
+            ) : (
+              <>
+                <BrandMark brand={page.brandId} size={30} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                    {brandName(page.brandId)}
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-good-soft px-1.5 py-0.5 text-[10px] font-medium text-good-ink"><ShieldCheck size={10} /> 官方认证</span>
+                  </div>
+                  <div className="text-[10.5px] text-ink-4">平台担保结算 · 随时可退</div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -123,6 +148,14 @@ export default function LandingPage() {
               </div>
             )}
           </div>
+
+          {/* 报价失效（商品下架/互斥调整）：给出明确出口，不留死胡同 */}
+          {quote && !quote.ok && (
+            <div className="mt-5 rounded-xl border border-alert/25 bg-alert-soft/40 p-4 text-center">
+              <div className="text-[13px] font-medium text-alert-ink">{quote.detail || '套餐商品已调整，暂不可购买'}</div>
+              <a href="#/market" className="mt-2 inline-block text-[12.5px] font-medium hover:underline" style={{ color: theme }}>去订阅超市逛逛 →</a>
+            </div>
+          )}
 
           {/* 价格 + CTA */}
           {quote?.ok && (
@@ -171,7 +204,7 @@ export default function LandingPage() {
           <div className="mt-5 flex items-center justify-center gap-1.5 text-[11px] text-ink-4">
             <ShieldCheck size={12} className="text-good-ink" /> 平台担保结算 · 资金清结算合规 · 支持随时退订
           </div>
-          {page.agentId && <div className="mt-2 text-center text-[10px] text-ink-5">演示模式 · 模拟支付不会真实扣款</div>}
+          <div className="mt-2 text-center text-[10px] text-ink-5">演示模式 · 模拟支付不会真实扣款</div>
         </div>
       </div>
     </div>

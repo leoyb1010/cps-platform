@@ -82,7 +82,7 @@ export const portalApi = {
     isRealApi ? http.post<{ ok: boolean; id?: string }>('/portal/brand/products', body) : demo().then((d) => d.addBrandProduct(body)),
   submitProduct: (id: string) => (isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/brand/products/${id}/submit`) : demo().then((d) => d.submitProduct(id))),
   proposeContract: (body: { agentId?: string; productId?: string; settleModel: string; targetGmv?: number; settleParams?: Record<string, unknown>; userLimit?: Record<string, unknown>; ltvWindow?: string; complaintLiability?: string; reservePct?: number }) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string }>('/portal/contracts', body) : demo().then((d) => d.proposeContract(body)),
+    isRealApi ? http.post<{ ok: boolean; id?: string; detail?: string }>('/portal/contracts', body) : demo().then((d) => d.proposeContract(body)),
   proposeBarter: (body: { counterpartyBrandId: string; resourceType: string; myQuota: number; counterpartyQuota: number; invoiceStatus?: string; terms?: Record<string, unknown> }) =>
     isRealApi ? http.post<{ ok: boolean; id?: string }>('/portal/barter', body) : demo().then((d) => d.proposeBarter(body)),
   respondBarter: (id: string, action: 'accept' | 'reject') =>

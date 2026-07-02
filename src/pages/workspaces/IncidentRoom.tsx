@@ -17,7 +17,9 @@ export default function IncidentRoom() {
   const { mid = '' } = useParams()
   const nav = useNavigate()
   const toast = useToast()
-  const { merchants, orders } = useStore()
+  // 单次 useStore：hooks 必须无条件且次数恒定——曾在 JSX 三元里按分支调用 useStore()，
+  // 留痕从空变非空时 hooks 数量改变，React 直接崩掉整个控制台（无 ErrorBoundary 时白屏）。
+  const { merchants, orders, activity } = useStore()
   const m = merchants.find((x) => x.id === mid)
 
   if (!m) {
@@ -30,8 +32,10 @@ export default function IncidentRoom() {
   }
 
   const brand = brandById(m.brandId)
-  const siblings = merchants.filter((x) => x.brandId === m.brandId && x.id !== m.id && x.state !== 'fused')
+  // 承接方要能真的接量：熔断/暂停新签的兄弟号不算改道池（文案承诺"健康兄弟号"）
+  const siblings = merchants.filter((x) => x.brandId === m.brandId && x.id !== m.id && x.state !== 'fused' && x.state !== 'paused')
   const relatedOrders = orders.filter((o) => o.mid === m.id).slice(0, 6)
+  const trail = activity.filter((a) => a.text.includes(m.id))
   // 影响预演：熔断该号 → 其权重份额按健康兄弟号权重比例改道
   const sibWeight = siblings.reduce((s, x) => s + x.weight, 0)
   const reroute = siblings.map((x) => ({ id: x.id, share: sibWeight > 0 ? (x.weight / sibWeight) : 0 }))
@@ -153,10 +157,10 @@ export default function IncidentRoom() {
               <Zap size={14} className="text-brand" /><span className="text-[13px] font-semibold">处置留痕</span>
             </div>
             <div className="max-h-[220px] overflow-y-auto px-4 py-2">
-              {useStore().activity.filter((a) => a.text.includes(m.id)).length === 0 ? (
+              {trail.length === 0 ? (
                 <div className="px-2 py-6 text-center text-[12px] text-ink-4">尚无处置记录 · 执行动作后在此留痕</div>
               ) : (
-                useStore().activity.filter((a) => a.text.includes(m.id)).map((it) => (
+                trail.map((it) => (
                   <div key={it.id} className="flex items-start gap-2.5 px-2 py-2">
                     <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `var(--color-${it.tone === 'neutral' ? 'ink-4' : it.tone})` }} />
                     <div className="min-w-0 flex-1"><div className="text-[12px] leading-snug text-ink-2">{it.text}</div><div className="tnum text-[10.5px] text-ink-5">{it.t}</div></div>

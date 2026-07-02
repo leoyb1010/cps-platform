@@ -709,69 +709,9 @@ export interface ActionItem {
   ticketId?: string
 }
 
-// 行动队列状态叠加层：派生待办(selectActions)是权威来源，这里只叠加人工流转态。
-// 认领/延后/完成不改业务数据，只影响待办如何呈现与协作（谁在处理、延后到何时）。
-export type ActionState = 'open' | 'claimed' | 'snoozed' | 'done'
-export interface ActionMeta {
-  state: ActionState
-  owner?: string
-  snoozeUntil?: number // epoch ms；到点自动回队
-  updatedAt: number
-}
-// 演示态存内存 + localStorage；真实态 B2 接 ActionItem 表。用独立键，随 store 生命周期。
-const ACTION_KEY = 'cps-actions-v1'
-let actionMeta: Record<string, ActionMeta> = (() => {
-  try {
-    const raw = localStorage.getItem(ACTION_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {
-    /* ignore */
-  }
-  return {}
-})()
-const actionListeners = new Set<() => void>()
-function persistActions() {
-  try {
-    localStorage.setItem(ACTION_KEY, JSON.stringify(actionMeta))
-  } catch {
-    /* ignore */
-  }
-  actionListeners.forEach((l) => l())
-}
-export function actionMetaOf(id: string): ActionMeta {
-  const m = actionMeta[id]
-  // 延后到点 → 自动回 open
-  if (m?.state === 'snoozed' && m.snoozeUntil && m.snoozeUntil <= Date.now()) return { state: 'open', updatedAt: m.updatedAt }
-  return m ?? { state: 'open', updatedAt: 0 }
-}
-export function claimAction(id: string, owner: string) {
-  actionMeta = { ...actionMeta, [id]: { state: 'claimed', owner, updatedAt: Date.now() } }
-  persistActions()
-}
-export function snoozeAction(id: string, hours = 4) {
-  actionMeta = { ...actionMeta, [id]: { state: 'snoozed', snoozeUntil: Date.now() + hours * 3600_000, updatedAt: Date.now() } }
-  persistActions()
-}
-export function completeAction(id: string) {
-  actionMeta = { ...actionMeta, [id]: { state: 'done', updatedAt: Date.now() } }
-  persistActions()
-  const next = { ...state }
-  commit({ ...next, activity: logActivity(next, `待办「${id}」已标记完成`, 'good') })
-}
-export function reopenAction(id: string) {
-  actionMeta = { ...actionMeta, [id]: { state: 'open', updatedAt: Date.now() } }
-  persistActions()
-}
-export function useActionMeta(): Record<string, ActionMeta> {
-  return useSyncExternalStore(
-    (l) => {
-      actionListeners.add(l)
-      return () => actionListeners.delete(l)
-    },
-    () => actionMeta,
-    () => actionMeta,
-  )
-}
+// 行动队列（认领/延后/完成叠加层）：曾在此落了一版无消费者的脚手架，且 id 按类别单例
+// （snooze 'pool' 会把未来另一个商户号的告警一起藏掉）。调试轮按「僵尸代码移除」处理；
+// 待办四态作为用户可见功能，留待下一批以 `类别:资源id` 键位 + UI 一体化重做。
 
 export function selectActions(s: StoreState): ActionItem[] {
   const out: ActionItem[] = []

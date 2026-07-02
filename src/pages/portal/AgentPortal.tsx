@@ -257,7 +257,9 @@ export function AgentCredit() {
   )
 }
 
-type ContractRow = { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number }
+type ContractRow = { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number; reservePct?: number; agentSharePct?: number | null }
+// 结算模型机器键 → 人话（表格与模拟器共用；直接渲染 'floor_tiered' 是给用户看代码）
+const SETTLE_MODEL_LABEL: Record<string, string> = { cps_share: 'CPS 分成', floor_tiered: '保底 + 阶梯', mutual_quota: '互销额度' }
 export function AgentContracts() {
   const toast = useToast()
   const [rows, setRows] = useState<ContractRow[] | null>(null)
@@ -291,7 +293,7 @@ export function AgentContracts() {
                 <Row key={c.id}>
                   <Td className="pl-3 text-[12.5px] font-medium text-ink">{c.id}</Td>
                   <Td className="text-[12px] text-ink-3">{c.brandId}</Td>
-                  <Td>{c.settleModel}</Td>
+                  <Td>{SETTLE_MODEL_LABEL[c.settleModel] ?? c.settleModel}{c.agentSharePct ? <span className="ml-1 text-[11px] text-ink-4">· {c.agentSharePct}%</span> : null}</Td>
                   <Td right mono>{money(c.targetGmv)}</Td>
                   <Td right><Badge tone={claimable ? 'info' : c.status === 'active' || c.status === 'fulfilling' ? 'good' : 'neutral'}>{claimable ? '挂单中' : c.status}</Badge></Td>
                   <Td right>
@@ -310,42 +312,59 @@ export function AgentContracts() {
   )
 }
 
-/* 接单模拟器：拖 GMV 滑杆 → 实时估分润/准备金占用/违约风险。把"划不划算"从心算变滑杆。 */
+/* 接单模拟器：拖 GMV 滑杆 → 实时估分润/准备金占用/违约风险。把"划不划算"从心算变滑杆。
+   数字纪律：分成比例取合约真实 agentSharePct（品牌发单时给的），不再拍脑袋 35%；
+   准备金取合约 reservePct；互销额度模型没有 CPS 分成语义——不给假算，改为解释卡。 */
 function BidSimulator({ c, busy, onClose, onConfirm }: { c: ContractRow; busy: boolean; onClose: () => void; onConfirm: () => void }) {
-  const [gmv, setGmv] = useState(Math.round(c.targetGmv * 0.6))
-  // 分润估算：CPS 分成默认 35%，保底+阶梯默认 32%（与资源广场口径一致）
-  const sharePct = c.settleModel.includes('保底') ? 0.32 : 0.35
+  const safeTarget = Math.max(c.targetGmv, 10000) // 防 targetGmv=0 的滑杆 min=max 失真（后端已拦，防御兜底）
+  const [gmv, setGmv] = useState(Math.round(safeTarget * 0.6))
+  const isQuota = c.settleModel === 'mutual_quota'
+  const isTiered = c.settleModel === 'floor_tiered'
+  // 分润比例：合约真实值优先；无值时按模型给保守默认并明示"估"
+  const shareFromContract = c.agentSharePct != null && c.agentSharePct > 0
+  const sharePct = (shareFromContract ? c.agentSharePct! : isTiered ? 28 : 30) / 100
+  const reservePct = (c.reservePct ?? 10) / 100
   const payout = Math.round(gmv * sharePct)
-  const reservePct = 0.1
   const reserve = Math.round(payout * reservePct)
   const net = payout - reserve
-  const hitTarget = gmv >= c.targetGmv
-  const risk = gmv < c.targetGmv * 0.5 ? '偏低：达不到目标 GMV 可能触发违约条款' : gmv >= c.targetGmv ? '达标：可拿满额分润，无违约风险' : '中等：接近目标，注意投放节奏'
-  const riskTone = gmv < c.targetGmv * 0.5 ? 'alert' : gmv >= c.targetGmv ? 'good' : 'warn'
+  const hitTarget = gmv >= safeTarget
+  const risk = gmv < safeTarget * 0.5 ? '偏低：达不到目标 GMV 可能触发违约条款' : hitTarget ? '达标：可拿满额分润，无违约风险' : '中等：接近目标，注意投放节奏'
+  const riskTone = gmv < safeTarget * 0.5 ? 'alert' : hitTarget ? 'good' : 'warn'
   const T = { alert: 'text-alert-ink', warn: 'text-warn-ink', good: 'text-good-ink' } as const
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center px-4" style={{ animation: 'fadeIn .2s both' }}>
       <div className="absolute inset-0 bg-ink/45" onClick={onClose} />
       <div className="relative w-full max-w-[440px] rounded-2xl bg-surface p-5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .2s both' }}>
         <div className="mb-1 text-[15px] font-semibold text-ink">接单模拟器 · {c.id}</div>
-        <div className="text-[12px] text-ink-4">{c.brandId} · {c.settleModel} · 目标 GMV {money(c.targetGmv)}</div>
+        <div className="text-[12px] text-ink-4">{c.brandId} · {SETTLE_MODEL_LABEL[c.settleModel] ?? c.settleModel} · 目标 GMV {money(c.targetGmv)}</div>
 
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between text-[12.5px]"><span className="text-ink-2">预估你能做到的 GMV</span><span className="tnum font-semibold text-brand">{money(gmv)}</span></div>
-          <input type="range" min={Math.round(c.targetGmv * 0.2)} max={Math.round(c.targetGmv * 1.5)} step={10000} value={gmv} onChange={(e) => setGmv(Number(e.target.value))} className="w-full accent-brand" />
-          <div className="mt-0.5 flex justify-between text-[10px] text-ink-5"><span>{money(Math.round(c.targetGmv * 0.2))}</span><span>目标 {money(c.targetGmv)}</span><span>{money(Math.round(c.targetGmv * 1.5))}</span></div>
-        </div>
+        {isQuota ? (
+          /* 互销额度：以量换量，不存在 CPS 分成——给解释而不是假数字 */
+          <div className="mt-4 rounded-xl border border-line bg-surface-muted/50 p-4 text-[12.5px] leading-relaxed text-ink-2">
+            该合约为<b>互销额度</b>模型：双方以约定额度互相导量（如曝光位 × 会员权益），
+            不按 GMV 分成结算，收益体现在你自有业务的转化上。确认接单前请核对额度与结算口径条款。
+          </div>
+        ) : (
+          <>
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-[12.5px]"><span className="text-ink-2">预估你能做到的 GMV</span><span className="tnum font-semibold text-brand">{money(gmv)}</span></div>
+              <input type="range" min={Math.round(safeTarget * 0.2)} max={Math.round(safeTarget * 1.5)} step={10000} value={gmv} onChange={(e) => setGmv(Number(e.target.value))} className="w-full accent-brand" />
+              <div className="mt-0.5 flex justify-between text-[10px] text-ink-5"><span>{money(Math.round(safeTarget * 0.2))}</span><span>目标 {money(c.targetGmv)}</span><span>{money(Math.round(safeTarget * 1.5))}</span></div>
+            </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <SimBox k="预估分润" v={money(payout)} sub={`${Math.round(sharePct * 100)}% 分成`} />
-          <SimBox k="准备金占用" v={money(reserve)} sub={`${Math.round(reservePct * 100)}% 冻结`} />
-          <SimBox k="预估净入" v={money(net)} sub="释放后可提" highlight />
-        </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <SimBox k="预估分润" v={money(payout)} sub={`${Math.round(sharePct * 100)}% 分成${shareFromContract ? '（合约值）' : '（估）'}`} />
+              <SimBox k="准备金占用" v={money(reserve)} sub={`${Math.round(reservePct * 100)}% 冻结`} />
+              <SimBox k="预估净入" v={money(net)} sub="释放后可提" highlight />
+            </div>
+            {isTiered && <p className="mt-2 text-[10.5px] leading-relaxed text-ink-4">保底 + 阶梯模型为线性近似估算：实际结算按达标区间阶梯计费，达标越多单位分成越高。</p>}
 
-        <div className={cx('mt-3 rounded-lg px-3 py-2 text-[12px]', hitTarget ? 'bg-good-soft/50' : riskTone === 'alert' ? 'bg-alert-soft/50' : 'bg-warn-soft/50')}>
-          <span className={cx('font-medium', T[riskTone])}>风险提示：</span>
-          <span className="text-ink-3">{risk}</span>
-        </div>
+            <div className={cx('mt-3 rounded-lg px-3 py-2 text-[12px]', hitTarget ? 'bg-good-soft/50' : riskTone === 'alert' ? 'bg-alert-soft/50' : 'bg-warn-soft/50')}>
+              <span className={cx('font-medium', T[riskTone])}>风险提示：</span>
+              <span className="text-ink-3">{risk}</span>
+            </div>
+          </>
+        )}
 
         <div className="mt-4 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-muted">再看看</button>

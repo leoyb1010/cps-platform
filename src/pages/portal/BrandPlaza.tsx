@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { LayoutGrid, FileSignature, Repeat, ArrowRight, TrendingUp, Handshake, Megaphone } from 'lucide-react'
 import { PageHeader, Card, Badge, Button, BrandMark, Segmented } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
+import { EmptyNotice } from '../../components/portal/kit'
+import { isRealApi } from '../../lib/http'
 import { money } from '../../lib/format'
 
 /**
@@ -28,11 +30,21 @@ export function BrandPlaza() {
   const nav = useNavigate()
   const [tab, setTab] = useState<'contracts' | 'barter'>('contracts')
 
+  // 真实模式无挂单端点，不摆假数据充实时行情
+  if (isRealApi) {
+    return (
+      <>
+        <PageHeader title="资源广场" desc="平台开放业务橱窗。在这里参与平台化联运：接他牌发布的增长合约，或用你的资源与其他品牌置换。" />
+        <EmptyNotice title="资源广场实时挂单需后端支持，敬请期待" body="挂单撮合依赖 /portal/plaza scoped 端点下发脱敏摘要，接入后此处展示实时可接业务。" />
+      </>
+    )
+  }
+
   return (
     <>
       <PageHeader
         title="资源广场"
-        desc="平台开放业务橱窗。在这里参与平台化联运：接他牌发布的增长合约，或用你的资源与其他品牌置换。"
+        desc="平台开放业务橱窗。在这里参与平台化联运：接他牌发布的增长合约，或用你的资源与其他品牌置换。以下挂单为演示数据。"
         actions={<Button variant="primary" onClick={() => nav('/portal/brand/contracts')}><Megaphone size={14} /> 我要发布合约</Button>}
       />
 
@@ -66,7 +78,10 @@ export function BrandPlaza() {
                   <BrandMark brand={c.from} mark={c.from.slice(0, 1)} size={28} />
                   <span className="text-[13px] font-semibold text-ink">{c.from}</span>
                 </div>
-                {c.tag && <Badge tone="brand">{c.tag}</Badge>}
+                <div className="flex items-center gap-1.5">
+                  {c.tag && <Badge tone="brand">{c.tag}</Badge>}
+                  <Badge tone="neutral">示例挂单</Badge>
+                </div>
               </div>
               <div className="mt-3 space-y-1.5 text-[12px]">
                 <Row k="结算模型" v={c.settleModel} />
@@ -74,7 +89,7 @@ export function BrandPlaza() {
                 <Row k="目标 GMV" v={<span className="tnum">{money(c.targetGmv)}</span>} />
                 <Row k="LTV 窗口" v={c.window} />
               </div>
-              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => toast({ tone: 'good', text: `已发起接单意向 · ${c.id}` })}>
+              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => toast({ tone: 'good', text: '已登记接单意向（演示）· 运营将与你联系' })}>
                 <Handshake size={14} /> 接单
               </Button>
             </Card>
@@ -89,14 +104,17 @@ export function BrandPlaza() {
                   <BrandMark brand={r.from} mark={r.from.slice(0, 1)} size={28} />
                   <span className="text-[13px] font-semibold text-ink">{r.from}</span>
                 </div>
-                <Badge tone={r.invoice === '可开票' ? 'good' : 'warn'}>{r.invoice}</Badge>
+                <div className="flex items-center gap-1.5">
+                  <Badge tone={r.invoice === '可开票' ? 'good' : 'warn'}>{r.invoice}</Badge>
+                  <Badge tone="neutral">示例挂单</Badge>
+                </div>
               </div>
               <div className="mt-3 space-y-1.5 text-[12px]">
                 <Row k="可置换资源" v={<span className="font-medium text-ink">{r.resource}</span>} />
                 <Row k="额度" v={<span className="tnum">{r.quota}</span>} />
                 <Row k="期望换取" v={r.want} />
               </div>
-              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => { toast({ tone: 'good', text: `已发起置换提议 · ${r.id}` }); nav('/portal/brand/barter') }}>
+              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => { toast({ tone: 'good', text: '已复制意向到资源置换页（演示）' }); nav('/portal/brand/barter') }}>
                 <Repeat size={14} /> 发起置换
               </Button>
             </Card>

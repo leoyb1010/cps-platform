@@ -31,6 +31,7 @@ import {
 } from '../lib/data'
 import { useStore, setMerchantState, addMerchant } from '../lib/store'
 import { useViewMode } from '../lib/prefs'
+import { useCan } from '../lib/auth'
 import { money, int, pct, cx } from '../lib/format'
 
 const STATES: { key: MerchantState; desc: string }[] = [
@@ -44,6 +45,9 @@ const STATES: { key: MerchantState; desc: string }[] = [
 export default function Merchants() {
   const { merchants, brands } = useStore()
   const expert = useViewMode() === 'expert'
+  // 状态干预（处置舱/熔断/恢复）需 merchant.write：只读角色（audit 等）不渲染动作，
+  // 否则点处置舱被路由守卫静默弹回总览、点熔断在演示态还真的会生效。
+  const canWrite = useCan()('merchant.write')
   const toast = useToast()
   const nav = useNavigate()
   const [filter, setFilter] = useState<'all' | 'risk'>('all')
@@ -261,14 +265,15 @@ export default function Merchants() {
                   <Td right>
                     <span className="inline-flex items-center gap-1">
                       {/* 非健康号：进处置舱（聚合上下文 + 影响预演 + 留痕，比逐个按钮更稳） */}
-                      {m.state !== 'healthy' && (
+                      {canWrite && m.state !== 'healthy' && (
                         <button onClick={(e) => { e.stopPropagation(); nav(`/risk/incident/${m.id}`) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-brand hover:bg-brand-soft">处置舱</button>
                       )}
-                      {m.state === 'fused' ? (
+                      {canWrite && (m.state === 'fused' ? (
                         <button onClick={() => { setMerchantState(m.id, 'healthy', '健康'); toast({ tone: 'good', text: `${m.id} 已恢复进单` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-good-ink hover:bg-good-soft">恢复</button>
                       ) : (
                         <button onClick={() => { setMerchantState(m.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${m.id} 已熔断下线` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-alert-ink hover:bg-alert-soft">熔断</button>
-                      )}
+                      ))}
+                      {!canWrite && <span className="text-[11.5px] text-ink-5">只读</span>}
                     </span>
                   </Td>
                 </Row>

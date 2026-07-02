@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Search, CheckCircle2, Clock, ShieldCheck, ArrowLeft, ShoppingBag } from 'lucide-react'
+import { Search, CheckCircle2, Clock, ShieldCheck, ArrowLeft, ShoppingBag, XCircle } from 'lucide-react'
+import { useToast } from '../../components/ui/overlays'
 import { money } from '../../lib/format'
 
 /**
@@ -8,7 +9,7 @@ import { money } from '../../lib/format'
  * 合规三步退订（原因→挽留报价→确认），路径不超过 3 步（事前防线要求）。
  */
 
-interface SubItem { name: string; status: 'active' | 'pending'; renewAt: string; price: number }
+interface SubItem { name: string; status: 'active' | 'pending' | 'cancelled'; renewAt: string; price: number }
 
 // 演示：任意套餐号都给一份可信进度（3 项，2 已开通 1 开通中）
 function demoProgress(): { bundleId: string; items: SubItem[] } {
@@ -23,15 +24,25 @@ function demoProgress(): { bundleId: string; items: SubItem[] } {
 }
 
 export default function MySubscriptions() {
+  const toast = useToast()
   const [code, setCode] = useState('')
   const [tail, setTail] = useState('')
+  const [touched, setTouched] = useState(false)
   const [result, setResult] = useState<ReturnType<typeof demoProgress> | null>(null)
   const [unsubName, setUnsubName] = useState<string | null>(null)
 
+  const codeOk = !!code.trim()
+  const tailOk = tail.length === 4
   const query = () => {
-    // 演示：任意非空输入即返回；真实态调 /market/me
-    if (!code.trim()) return
+    // 演示：套餐号非空 + 尾号 4 位即返回；真实态调 /market/me
+    setTouched(true)
+    if (!codeOk || !tailOk) return
     setResult(demoProgress())
+  }
+  // 确认退订：条目置为 cancelled（到期不续），当前周期权益保留
+  const confirmUnsub = (name: string) => {
+    setResult((r) => (r ? { ...r, items: r.items.map((it) => (it.name === name ? { ...it, status: 'cancelled' as const } : it)) } : r))
+    toast({ tone: 'good', text: '已退订，当前周期结束后不再扣费' })
   }
 
   return (
@@ -52,17 +63,19 @@ export default function MySubscriptions() {
                   <label className="mb-1 block text-[12px] font-medium text-ink-2">套餐号</label>
                   <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="B-XXXXXX（支付成功页可见）"
                     className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-[13px] outline-none focus:border-brand" />
+                  {touched && !codeOk && <p className="mt-1 text-[11px] text-alert-ink">请输入套餐号</p>}
                 </div>
                 <div>
                   <label className="mb-1 block text-[12px] font-medium text-ink-2">手机尾号 4 位</label>
                   <input value={tail} onChange={(e) => setTail(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="下单手机号后 4 位"
                     className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-[13px] outline-none focus:border-brand tnum" />
+                  {touched && !tailOk && <p className="mt-1 text-[11px] text-alert-ink">请输入 4 位手机尾号</p>}
                 </div>
                 <button onClick={query} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-[14px] font-semibold text-white transition-colors hover:bg-brand-hover">
                   <Search size={15} /> 查询进度
                 </button>
               </div>
-              <div className="mt-5 flex items-center justify-center gap-1.5 text-[11px] text-ink-4"><ShieldCheck size={12} className="text-good-ink" /> 演示模式 · 任意输入即可查看示例进度</div>
+              <div className="mt-5 flex items-center justify-center gap-1.5 text-[11px] text-ink-4"><ShieldCheck size={12} className="text-good-ink" /> 演示模式 · 输入套餐号与尾号即可查看示例进度</div>
             </>
           ) : (
             <>
@@ -79,15 +92,15 @@ export default function MySubscriptions() {
                   <div key={it.name} className="rounded-xl border border-line bg-surface p-3.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {it.status === 'active' ? <CheckCircle2 size={16} className="text-good-ink" /> : <Clock size={16} className="text-warn-ink" />}
+                        {it.status === 'active' ? <CheckCircle2 size={16} className="text-good-ink" /> : it.status === 'cancelled' ? <XCircle size={16} className="text-ink-4" /> : <Clock size={16} className="text-warn-ink" />}
                         <span className="text-[13px] font-medium text-ink">{it.name}</span>
                       </div>
-                      <span className={it.status === 'active' ? 'rounded-full bg-good-soft px-2 py-0.5 text-[10.5px] font-medium text-good-ink' : 'rounded-full bg-warn-soft px-2 py-0.5 text-[10.5px] font-medium text-warn-ink'}>
-                        {it.status === 'active' ? '已开通' : '开通中'}
+                      <span className={it.status === 'active' ? 'rounded-full bg-good-soft px-2 py-0.5 text-[10.5px] font-medium text-good-ink' : it.status === 'cancelled' ? 'rounded-full bg-surface-sunken px-2 py-0.5 text-[10.5px] font-medium text-ink-4' : 'rounded-full bg-warn-soft px-2 py-0.5 text-[10.5px] font-medium text-warn-ink'}>
+                        {it.status === 'active' ? '已开通' : it.status === 'cancelled' ? '已退订 · 到期不续' : '开通中'}
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-ink-4">
-                      <span>下次续费 {it.renewAt}</span>
+                      <span className={it.status === 'cancelled' ? 'line-through' : undefined}>下次续费 {it.renewAt}</span>
                       <span className="tnum">{money(it.price)}/期</span>
                     </div>
                     {it.status === 'active' && (
@@ -101,13 +114,13 @@ export default function MySubscriptions() {
         </div>
       </div>
 
-      {unsubName && <UnsubscribeFlow name={unsubName} onClose={() => setUnsubName(null)} />}
+      {unsubName && <UnsubscribeFlow name={unsubName} onConfirm={() => confirmUnsub(unsubName)} onClose={() => setUnsubName(null)} />}
     </div>
   )
 }
 
 /* 合规三步退订：原因 → 挽留报价 → 确认。路径不超过 3 步（事前防线要求，越顺畅越好）。 */
-function UnsubscribeFlow({ name, onClose }: { name: string; onClose: () => void }) {
+function UnsubscribeFlow({ name, onConfirm, onClose }: { name: string; onConfirm: () => void; onClose: () => void }) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [reason, setReason] = useState('')
   const REASONS = ['价格偏高', '使用频率低', '功能不满足', '临时不需要', '其他']
@@ -145,7 +158,7 @@ function UnsubscribeFlow({ name, onClose }: { name: string; onClose: () => void 
             <p className="text-[12.5px] text-ink-3">确认退订后，本订阅到期不再续费，已购权益在当前周期内继续有效。</p>
             <div className="mt-4 flex gap-2">
               <button onClick={onClose} className="flex-1 rounded-xl border border-line px-4 py-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-muted">再想想</button>
-              <button onClick={onClose} className="flex-1 rounded-xl bg-alert px-4 py-2.5 text-[13px] font-semibold text-white hover:opacity-90">确认退订</button>
+              <button onClick={() => { onConfirm(); onClose() }} className="flex-1 rounded-xl bg-alert px-4 py-2.5 text-[13px] font-semibold text-white hover:opacity-90">确认退订</button>
             </div>
           </>
         )}

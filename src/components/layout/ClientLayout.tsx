@@ -8,6 +8,7 @@ import { portalApi } from '../../lib/portalApi'
 import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
 import { brandTheme } from '../../lib/whitelabel'
+import { useTheme, resolvedTheme } from '../../lib/prefs'
 
 // 客户门户外壳：刻意比内部 AppLayout 精简——无命令面板 / 无演示角色切换 /
 // 无简洁专家视图 / 无内部导航。仅品牌头部 + 按权限过滤的客户导航 + 退出。
@@ -136,7 +137,9 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
   const loc = useLocation()
   const user = useAuth()
   // 品牌白标：品牌门户按该品牌主色换肤（令牌第三层覆盖，组件零改动）。代理门户保持平台色。
-  const wl = user?.scopeType === 'brand' ? brandTheme(user.scopeId) : {}
+  // 订阅主题（useTheme）保证明暗切换时白标重算——暗底下 ink/hover 要提亮而非加深。
+  useTheme()
+  const wl = user?.scopeType === 'brand' ? brandTheme(user.scopeId, resolvedTheme() === 'dark') : {}
   // 用路由路径作为 replay epoch 的种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
   const epoch = loc.pathname.length
   return (

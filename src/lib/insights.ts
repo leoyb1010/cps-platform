@@ -1,5 +1,5 @@
 import type { StoreState } from './store'
-import { brandById } from './data'
+import { brandById, MERCHANT_THRESHOLD } from './data'
 
 // ════════════════════════════════════════════════════════════════
 //  异动播报 —— 规则模板起步，从 store 派生 3 句话晨报。
@@ -17,13 +17,16 @@ export interface Insight {
 export function buildInsights(s: StoreState): Insight[] {
   const out: Insight[] = []
 
-  // 1) 号池：投诉率最高且逼近阈值的商户号
+  // 1) 号池：投诉率最高且逼近阈值的商户号。
+  // 阈值必须取平台统一口径 MERCHANT_THRESHOLD（红线 1.0/预警 0.8）——此前硬编码 1.2 当红线，
+  // 同一商户号在总览标"触发管控"、晨报却说"逼近阈值"，两行字互相打架。
   const risky = s.merchants.filter((m) => m.state !== 'fused').slice().sort((a, b) => b.complaintRate - a.complaintRate)[0]
-  if (risky && risky.complaintRate >= 0.8) {
+  if (risky && risky.complaintRate >= MERCHANT_THRESHOLD.complaintWarn) {
+    const overRed = risky.complaintRate >= MERCHANT_THRESHOLD.complaint
     out.push({
       id: 'pool',
-      tone: risky.complaintRate >= 1.2 ? 'alert' : 'warn',
-      text: `${brandById(risky.brandId)?.name ?? risky.brandId} 的 ${risky.id} 投诉率 ${risky.complaintRate.toFixed(2)}%，${risky.complaintRate >= 1.2 ? '已越红线，建议核查并切量' : '逼近阈值，建议关注扣费告知'}`,
+      tone: overRed ? 'alert' : 'warn',
+      text: `${brandById(risky.brandId)?.name ?? risky.brandId} 的 ${risky.id} 投诉率 ${risky.complaintRate.toFixed(2)}%，${overRed ? '已越红线，建议核查并切量' : '逼近阈值，建议关注扣费告知'}`,
       to: `/risk/incident/${risky.id}`,
     })
   }

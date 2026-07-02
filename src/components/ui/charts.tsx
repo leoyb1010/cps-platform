@@ -441,10 +441,14 @@ export function FundSankey({
   // 源节点整条
   const srcTop = padY
   const srcH = usable
+  // 归一化分母：五股绝对值之和可能异常大于 gross（如 agentPayout 被钳 0 而 reversal
+  // 随反复退款继续增长，或真实模式脏数据）——按两者较大者归一，堆叠永不溢出画布。
+  const sumFlows = flows.reduce((a, f) => a + Math.abs(f.value), 0)
+  const denom = Math.max(total, sumFlows)
   // 目标节点按占比堆叠
   let acc = srcTop
   const segs = flows.map((f) => {
-    const h = Math.max(2, (Math.abs(f.value) / total) * usable)
+    const h = Math.max(2, (Math.abs(f.value) / denom) * usable)
     const seg = { ...f, y: acc, h }
     acc += h
     return seg
@@ -461,31 +465,49 @@ export function FundSankey({
       {/* 源节点 */}
       <rect x={srcX} y={srcTop} width={srcW} height={srcH} rx={3} fill="var(--color-ink-3)" />
       <text x={srcX + srcW / 2} y={srcTop - 6} textAnchor="middle" fontSize="10.5" fill="var(--color-ink-3)" className="tnum">流水 GROSS</text>
-      {/* 缎带 + 目标节点 + 标签 */}
-      {segs.map((s, i) => {
-        const ss = srcSegs[i]
-        const x0 = srcX + srcW
-        const x1 = dstX
-        const c = (x0 + x1) / 2
-        const p = `M${x0},${ss.y} C${c},${ss.y} ${c},${s.y} ${x1},${s.y} L${x1},${s.y + s.h} C${c},${s.y + s.h} ${c},${ss.y + ss.h} ${x0},${ss.y + ss.h} Z`
-        const color = s.alert ? 'var(--color-alert)' : toneVar[s.tone]
-        const pct = ((Math.abs(s.value) / total) * 100).toFixed(1)
-        return (
-          <g key={s.label}>
-            <path d={p} fill={color} fillOpacity={s.alert ? 0.5 : 0.28} style={{ animation: `fadeIn .6s ${0.15 + i * 0.08}s both` }}>
-              <title>{s.label}：{s.value.toLocaleString('zh-CN')}（{pct}%）</title>
-            </path>
-            <rect x={dstX} y={s.y} width={nodeW} height={s.h} rx={2} fill={color} />
-            <text x={dstX + nodeW + 8} y={s.y + s.h / 2 - 2} fontSize="11.5" fill="var(--color-ink-2)" dominantBaseline="middle">
-              {s.label}
-              {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9.5"> · 差异</tspan>}
-            </text>
-            <text x={dstX + nodeW + 8} y={s.y + s.h / 2 + 12} fontSize="10.5" fill="var(--color-ink-4)" className="tnum" dominantBaseline="middle">
-              ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%
-            </text>
-          </g>
-        )
-      })}
+      {/* 缎带 + 目标节点 + 标签。
+          标签防碰撞：段高 <26px 放不下两行（如逆向冲账仅 ~1% 占比 → 3px），
+          改单行紧凑标签；并维护 lastLabelY 最小 14px 间距，相邻小段依次下推不叠字。 */}
+      {(() => {
+        let lastLabelY = -Infinity
+        return segs.map((s, i) => {
+          const ss = srcSegs[i]
+          const x0 = srcX + srcW
+          const x1 = dstX
+          const c = (x0 + x1) / 2
+          const p = `M${x0},${ss.y} C${c},${ss.y} ${c},${s.y} ${x1},${s.y} L${x1},${s.y + s.h} C${c},${s.y + s.h} ${c},${ss.y + ss.h} ${x0},${ss.y + ss.h} Z`
+          const color = s.alert ? 'var(--color-alert)' : toneVar[s.tone]
+          const pct = ((Math.abs(s.value) / total) * 100).toFixed(1)
+          const compact = s.h < 26
+          const labelY = Math.max(s.y + s.h / 2, lastLabelY + 14)
+          lastLabelY = compact ? labelY : labelY + 12
+          return (
+            <g key={s.label}>
+              <path d={p} fill={color} fillOpacity={s.alert ? 0.5 : 0.28} style={{ animation: `fadeIn .6s ${0.15 + i * 0.08}s both` }}>
+                <title>{s.label}：{s.value.toLocaleString('zh-CN')}（{pct}%）</title>
+              </path>
+              <rect x={dstX} y={s.y} width={nodeW} height={s.h} rx={2} fill={color} />
+              {compact ? (
+                <text x={dstX + nodeW + 8} y={labelY} fontSize="10.5" fill="var(--color-ink-2)" dominantBaseline="middle">
+                  {s.label}
+                  {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9"> · 差异</tspan>}
+                  <tspan fill="var(--color-ink-4)" fontSize="9.5" className="tnum"> ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%</tspan>
+                </text>
+              ) : (
+                <>
+                  <text x={dstX + nodeW + 8} y={labelY - 2} fontSize="11.5" fill="var(--color-ink-2)" dominantBaseline="middle">
+                    {s.label}
+                    {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9.5"> · 差异</tspan>}
+                  </text>
+                  <text x={dstX + nodeW + 8} y={labelY + 12} fontSize="10.5" fill="var(--color-ink-4)" className="tnum" dominantBaseline="middle">
+                    ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%
+                  </text>
+                </>
+              )}
+            </g>
+          )
+        })
+      })()}
       <defs><linearGradient id={`sk-${id}`} /></defs>
     </svg>
   )

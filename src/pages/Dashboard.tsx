@@ -19,6 +19,7 @@ import { Confirm, useToast } from '../components/ui/overlays'
 import { EmptyState } from '../components/ui/forms'
 import { Term } from '../components/ui/Term'
 import { useViewMode } from '../lib/prefs'
+import { useCan } from '../lib/auth'
 import { isRealApi } from '../lib/http'
 import {
   useStore,
@@ -84,7 +85,11 @@ export default function Dashboard() {
   const risk = selectRisk(s)
   const actions = selectActions(s)
   const mode = useViewMode()
+  const can = useCan()
   const expert = mode === 'expert'
+  // 资金动作权限门控：立即退款走 resolveTicketWithRefund（工单退款）→ 需 ticket.handle。
+  // 总览无 RequirePerm（人人可看），但资金按钮不能对 audit/finance 等无权角色渲染。
+  const canRefund = can('ticket.handle')
   const overall = risk.some((r) => r.health === 'red') ? 'red' : risk.some((r) => r.health === 'amber') ? 'amber' : 'green'
 
   const gmvScale = RANGE_SCALE[range]
@@ -134,7 +139,7 @@ export default function Dashboard() {
           ) : (
             <div className="flex flex-col gap-2">
               {actions.slice(0, 3).map((a) => (
-                <ActionRow key={a.id} a={a} onRefund={a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
+                <ActionRow key={a.id} a={a} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
               ))}
             </div>
           )}
@@ -183,7 +188,7 @@ export default function Dashboard() {
           ) : (
             <div className="flex flex-col gap-2">
               {actions.map((a) => (
-                <ActionRow key={a.id} a={a} onRefund={a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
+                <ActionRow key={a.id} a={a} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
               ))}
             </div>
           )}

@@ -35,7 +35,14 @@ export function CommandPalette() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setOpen((v) => !v)
-      } else if (e.key === 'Escape') setOpen(false)
+      } else if (e.key === 'Escape') {
+        // 分层退出：先关确认弹窗、再关面板（一次 Esc 不应跳过资金确认层直接全关）
+        setConfirm((c) => {
+          if (c) return null
+          setOpen(false)
+          return null
+        })
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -45,6 +52,9 @@ export function CommandPalette() {
     if (open) {
       setQ('')
       setSel(0)
+      // 上次 Esc 关面板时若确认弹窗还开着，不清会在下次 ⌘K 直接复活一个资金确认框——
+      // 误按一次 Enter 钱就动了。每次唤起都从干净状态开始。
+      setConfirm(null)
     }
   }, [open])
 
@@ -80,20 +90,28 @@ export function CommandPalette() {
     ]
     const query = q.trim().toLowerCase()
     if (!query) return [...actions.slice(0, 3), ...nav.slice(0, 6)]
-    // Ask 平台：像问句且命中预置模板 → 置顶一条问答结果（模板制，不做开放 NL2SQL）
+    // Ask 平台：仅在「像问句」时出问答行（模板制，不做开放 NL2SQL）。
+    // 曾经"命中即出"且置顶：单字关键词（退/几）把「退款 O-99812」的 Enter 劫持去了 /orders——
+    // 动作永远排在问答前，问答只答真正的问题。
     const ask: Hit[] = []
-    if (looksLikeQuestion(q) || matchAsk(q)) {
-      const t = matchAsk(q)
+    if (looksLikeQuestion(q)) {
+      const t = matchAsk(q, can) // 按提问者权限过滤模板（无权限的问题不出答案，防越权窥数）
       if (t) {
         const a = t.run(s)
         ask.push({ label: a.answer, sub: `问答 · ${a.question}`, to: a.to, icon: <MessageCircleQuestion size={15} className="text-violet-ink" />, kw: query })
       }
     }
-    // 动作优先展示（用户键入动词时先看到可执行项）
-    const matchedActions = actions.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 5)
-    const matchedNav = nav.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 7)
-    return [...ask, ...matchedActions, ...matchedNav].slice(0, 12)
-  }, [q, s, actions])
+    // 分词 AND 匹配而非整串子串：placeholder 宣传的「退款 O-99812」中间隔着 kw 里的
+    // "refund" 等词，整串 includes 永远匹配不上——按空白拆词逐个命中才符合直觉。
+    const tokens = query.split(/\s+/).filter(Boolean)
+    const tokenMatch = (h: Hit) => {
+      const hay = (h.kw + ' ' + h.label).toLowerCase()
+      return tokens.every((t) => hay.includes(t))
+    }
+    const matchedActions = actions.filter(tokenMatch).slice(0, 5)
+    const matchedNav = nav.filter(tokenMatch).slice(0, 7)
+    return [...matchedActions, ...ask, ...matchedNav].slice(0, 12)
+  }, [q, s, actions, can])
 
   useEffect(() => {
     if (sel >= hits.length) setSel(0)

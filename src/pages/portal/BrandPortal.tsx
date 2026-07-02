@@ -386,7 +386,7 @@ export function BrandContracts() {
         complaintLiability: f.complaintLiability, reservePct: f.reservePct,
       })
       if (r.ok) { toast({ tone: 'good', text: '增长合约已发起（挂单），等待渠道接单' }); setOpen(false); setStep(0) }
-      else toast({ tone: 'alert', text: '发起失败，请重试' })
+      else toast({ tone: 'alert', text: r.detail ?? '发起失败，请重试' })
     } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(false); reload() }
   }
   return (

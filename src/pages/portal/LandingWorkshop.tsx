@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, Sparkles, Tag, ShoppingBag, Trash2, ExternalLink, QrCode, Code2, Palette } from 'lucide-react'
+import { Check, Copy, Sparkles, Tag, ShoppingBag, Trash2, ExternalLink, Code2, Palette } from 'lucide-react'
 import { PageHeader, Card, CardTitle, BrandMark, Badge } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
 import { EmptyState } from '../../components/ui/forms'
@@ -13,12 +13,13 @@ import { createLandingPage, deleteLandingPage, useLandingPages, landingUrl, land
 interface BrandProduct {
   id: string; name: string; category: string; status: string; firstPrice: number; renewPrice: number
   billingCycle: string; bundleEligible: boolean; exclusiveGroup: string; tags: string
+  brandKey?: string // 代理工坊（市场货架）携带；品牌工坊自有商品不带，回落到 brandId prop
 }
 
 /**
  * 落地页/推广页工坊 —— 品牌与代理共用同一底层。
  * 差异由 props 注入：品牌官方页(agentId=null，可改主题色) vs 代理归因页(绑 agentId，价格/合规不可动)。
- * 产出：可分享链接 + 二维码占位 + iframe 片段 + 台账（曝光/下单/转化金额）。
+ * 产出：可分享链接 + iframe 片段 + 台账（曝光/下单/转化金额）。
  */
 export function LandingWorkshop({
   scope, // 'brand' | 'agent'
@@ -28,7 +29,7 @@ export function LandingWorkshop({
   desc,
 }: {
   scope: 'brand' | 'agent'
-  brandId: string
+  brandId?: string // 品牌工坊必传；代理工坊省略（页面归属品牌由所选商品推导）
   agentId: string | null
   title: string
   desc: string
@@ -37,7 +38,7 @@ export function LandingWorkshop({
   // 品牌工坊取自己商品；代理工坊取市场上开放推广的商品（演示态：全部 live 可组合商品）
   const fetcher: () => Promise<BrandProduct[]> = scope === 'brand'
     ? () => portalApi.brandProducts<BrandProduct[]>()
-    : async () => (await marketApi.products()).map((p) => ({ id: p.id, name: p.name, category: p.category, status: 'live', firstPrice: p.firstPrice, renewPrice: p.renewPrice, billingCycle: p.billingCycle, bundleEligible: p.bundleEligible, exclusiveGroup: p.exclusiveGroup, tags: p.tags }))
+    : async () => (await marketApi.products()).map((p) => ({ id: p.id, name: p.name, category: p.category, status: 'live', firstPrice: p.firstPrice, renewPrice: p.renewPrice, billingCycle: p.billingCycle, bundleEligible: p.bundleEligible, exclusiveGroup: p.exclusiveGroup, tags: p.tags, brandKey: p.brandKey }))
   const { data, state, reload } = usePortalResource<BrandProduct[]>(fetcher)
 
   const [sel, setSel] = useState<string[]>([])
@@ -45,30 +46,33 @@ export function LandingWorkshop({
   const [pageTitle, setPageTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
   const [points, setPoints] = useState<string[]>(['', '', ''])
-  const [theme, setTheme] = useState<string>(brandColorOf(brandId))
+  const [theme, setTheme] = useState<string>(brandColorOf(brandId ?? ''))
   const [channel, setChannel] = useState('')
   const seq = useRef(0)
+  const pointsDirty = useRef(false) // 用户手动编辑过卖点（含清空）后不再自动填充
 
   const all = data ?? []
   const eligible = all.filter((p) => p.status === 'live' && p.bundleEligible)
   const chosen = sel.map((id) => eligible.find((p) => p.id === id)).filter(Boolean) as BrandProduct[]
-  const myPages = useLandingPages(scope === 'brand' ? { brandId } : { agentId: agentId ?? '__none__' })
+  // 品牌台账显式要求 agentId 为 null，排除代理归因页（它们也带 brandId）
+  const myPages = useLandingPages(scope === 'brand' ? { brandId, agentId: null } : { agentId: agentId ?? '__none__' })
+  // 页面归属品牌：跟随所选商品（代理可跨品牌选品），无选品时回落到 brandId prop
+  const derivedBrand = chosen[0]?.brandKey ?? brandId ?? ''
 
-  // 默认卖点：取所选商品 equity/tags 前三条（用户可改）
+  // 默认卖点：未手动编辑时随选品实时重算（取消勾选不残留旧卖点）；一旦手动编辑则完全交还用户
   useEffect(() => {
-    if (chosen.length && points.every((p) => !p)) {
-      const auto: string[] = []
-      for (const p of chosen) {
-        try { const t = JSON.parse(p.tags) as string[]; auto.push(...t) } catch { /* */ }
-        if (auto.length >= 3) break
-      }
-      if (auto.length) setPoints([auto[0] ?? '', auto[1] ?? '', auto[2] ?? ''])
+    if (pointsDirty.current) return
+    const auto: string[] = []
+    for (const p of chosen) {
+      try { const t = JSON.parse(p.tags) as string[]; auto.push(...t) } catch { /* */ }
+      if (auto.length >= 3) break
     }
+    setPoints([auto[0] ?? '', auto[1] ?? '', auto[2] ?? ''])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel])
 
   useEffect(() => {
-    if (sel.length === 0) { setQuote(null); return }
+    if (sel.length === 0) { seq.current++; setQuote(null); return } // 递增序号，废弃选品的在途报价不落地
     const s = ++seq.current
     marketApi.quote(sel).then((q) => { if (s === seq.current) setQuote(q) }).catch(() => {})
   }, [sel])
@@ -76,17 +80,25 @@ export function LandingWorkshop({
   const toggle = (id: string) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const conflicts = quote && !quote.ok && quote.conflicts?.length
 
-  const preview = useMemo(() => ({ title: pageTitle, subtitle, points, theme, brandId }), [pageTitle, subtitle, points, theme, brandId])
+  // 代理工坊主题色跟随归属品牌（不可自定义）；品牌工坊用用户所选主题
+  const effectiveTheme = scope === 'agent' ? brandColorOf(derivedBrand) : theme
+  const preview = useMemo(
+    () => ({ title: pageTitle, subtitle, points, theme: effectiveTheme, brandId: derivedBrand }),
+    [pageTitle, subtitle, points, effectiveTheme, derivedBrand],
+  )
 
   const publish = () => {
     if (!quote?.ok) return
+    // 报价须与当前选品一致：改选后报价未返回时不允许用旧价发布
+    if ([...sel].sort().join() !== [...(quote.validIds ?? [])].sort().join()) { toast({ tone: 'info', text: '价格计算中，请稍候再试' }); return }
     if (!pageTitle.trim()) { toast({ tone: 'info', text: '给落地页起个标题吧' }); return }
     const page = createLandingPage({
-      brandId, agentId, productIds: sel, title: pageTitle.trim(), subtitle: subtitle.trim(),
-      points: points.filter(Boolean), theme, channel: channel.trim(),
+      brandId: derivedBrand, agentId, productIds: sel, title: pageTitle.trim(), subtitle: subtitle.trim(),
+      points: points.filter(Boolean), theme: effectiveTheme, channel: channel.trim(),
     })
     toast({ tone: 'good', text: `落地页已生成 · ${page.id}` })
     setSel([]); setPageTitle(''); setSubtitle(''); setPoints(['', '', '']); setChannel('')
+    pointsDirty.current = false
   }
 
   return (
@@ -110,7 +122,7 @@ export function LandingWorkshop({
                           on ? 'border-brand bg-brand/[0.04] shadow-[inset_0_0_0_1.5px_var(--color-brand)]' : 'border-line bg-surface hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-[var(--shadow-pop)]')}>
                         {on && <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-brand text-white"><Check size={13} strokeWidth={3} /></span>}
                         <div className="flex items-center gap-2.5">
-                          <BrandMark brand={p.id.includes('-') ? undefined : undefined} mark={p.name.slice(0, 1)} size={30} />
+                          <BrandMark brand={p.brandKey} mark={p.name.slice(0, 1)} size={30} />
                           <div className="min-w-0 pr-6">
                             <div className="truncate text-[13.5px] font-semibold text-ink">{p.name}</div>
                             <div className="mt-0.5 text-[11px] text-ink-4">{p.category || '订阅'}</div>
@@ -132,7 +144,7 @@ export function LandingWorkshop({
                   <Labeled label="卖点三条">
                     <div className="space-y-2">
                       {points.map((pt, i) => (
-                        <input key={i} value={pt} onChange={(e) => setPoints((ps) => ps.map((x, k) => (k === i ? e.target.value : x)))} placeholder={`卖点 ${i + 1}`} className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" />
+                        <input key={i} value={pt} onChange={(e) => { pointsDirty.current = true; setPoints((ps) => ps.map((x, k) => (k === i ? e.target.value : x))) }} placeholder={`卖点 ${i + 1}`} className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" />
                       ))}
                     </div>
                   </Labeled>
@@ -178,7 +190,7 @@ export function LandingWorkshop({
                     <button onClick={publish} disabled={!quote?.ok} className="mt-4 w-full rounded-xl bg-brand px-4 py-3 text-[13.5px] font-semibold text-white transition-colors hover:bg-brand-hover disabled:opacity-50">
                       生成落地页
                     </button>
-                    <p className="mt-2 text-center text-[11px] text-ink-4">生成后可复制链接 / 二维码 / iframe 投放</p>
+                    <p className="mt-2 text-center text-[11px] text-ink-4">生成后可复制链接 / iframe 投放</p>
                   </>
                 )}
               </div>
@@ -214,7 +226,6 @@ function PageRow({ pg, onCopy, onDelete }: { pg: LandingPage; onCopy: (u: string
         <span className="ml-auto flex items-center gap-1">
           <IconBtn title="复制链接" onClick={() => onCopy(landingUrl(pg.id))}><Copy size={13} /></IconBtn>
           <a href={`#/land/${pg.id}`} target="_blank" rel="noreferrer" className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-brand" title="打开落地页"><ExternalLink size={13} /></a>
-          <IconBtn title="二维码" onClick={() => onCopy(landingUrl(pg.id))}><QrCode size={13} /></IconBtn>
           <IconBtn title="iframe 代码" onClick={() => setShowEmbed((v) => !v)}><Code2 size={13} /></IconBtn>
           <IconBtn title="删除" onClick={onDelete}><Trash2 size={13} /></IconBtn>
         </span>

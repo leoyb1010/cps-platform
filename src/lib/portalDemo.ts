@@ -48,7 +48,9 @@ function periodFactor(period?: { preset: string; from?: string; to?: string }): 
 interface DOrder { id: string; brandId: string; agentId: string | null; plan: string; type: string; amount: number; time: string }
 interface DTicket { id: string; brandId: string; agentId: string; level: string; status: string; source: string; reason: string; owner: string; slaLeftMin: number; time: string; handlePlan: string; note: string; handledBy: string }
 interface DBarter { id: string; initiatorBrandId: string; counterpartyBrandId: string; status: string; resourceType: string; myQuota: number; counterpartyQuota: number; invoiceStatus: string; terms: string }
-interface DContract { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number; achievedGmv: number; ltvWindow: string; complaintLiability: string; reservePct: number; userLimit: string; signedAt: string | null }
+// agentSharePct：品牌发单时给出的分成比例（settleParams 摊平持久化）——接单模拟器据此算分润，
+// 曾被丢弃导致模拟器一律按 35% 估算，品牌实际给 20% 时代理看到的分润虚高 75%。
+interface DContract { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number; achievedGmv: number; ltvWindow: string; complaintLiability: string; reservePct: number; agentSharePct: number | null; userLimit: string; signedAt: string | null }
 interface DProduct { id: string; brandId: string; name: string; category: string; description: string; billingCycle: string; firstPrice: number; renewPrice: number; defaultSharePct: number; status: string; reviewNote: string; bundleEligible: boolean; exclusiveGroup: string; tags: string }
 interface DClaim { id: string; agentId: string; brandId: string; productId: string | null; channel: string; trackingUrl: string; trackingCode: string; status: string; createdAt: string }
 interface DNotif { id: string; scopeType: string; scopeId: string; category: string; title: string; body: string; link: string; read: boolean; createdAt: string }
@@ -112,8 +114,8 @@ function buildStore() {
   // 增长合约：种子全量（品牌看自己发的 / 代理看自己接的+可接挂单）+ 1 条 youdao 挂单，
   // 让「品牌发起 → 代理接单 → 双方状态联动」在同一会话内可闭环体验
   const contracts: DContract[] = [
-    ...seedContracts.map((c) => ({ id: c.id, brandId: c.brandId, agentId: c.agentId, status: c.status as string, settleModel: c.settleModel as string, targetGmv: c.targetGmv, achievedGmv: c.achievedGmv, ltvWindow: c.ltvWindow as string, complaintLiability: c.complaintLiability as string, reservePct: c.reservePct, userLimit: c.userLimit, signedAt: c.signedAt })),
-    { id: 'GC-2407-02', brandId: BRAND_ID, agentId: null, status: 'open', settleModel: 'floor_tiered', targetGmv: 2000000, achievedGmv: 0, ltvWindow: 'D60', complaintLiability: 'shared', reservePct: 10, userLimit: '仅新客 · 学生人群', signedAt: null },
+    ...seedContracts.map((c) => ({ id: c.id, brandId: c.brandId, agentId: c.agentId, status: c.status as string, settleModel: c.settleModel as string, targetGmv: c.targetGmv, achievedGmv: c.achievedGmv, ltvWindow: c.ltvWindow as string, complaintLiability: c.complaintLiability as string, reservePct: c.reservePct, agentSharePct: c.settleModel === 'cps_share' ? 30 : c.settleModel === 'floor_tiered' ? 28 : null, userLimit: c.userLimit, signedAt: c.signedAt })),
+    { id: 'GC-2407-02', brandId: BRAND_ID, agentId: null, status: 'open', settleModel: 'floor_tiered', targetGmv: 2000000, achievedGmv: 0, ltvWindow: 'D60', complaintLiability: 'shared', reservePct: 10, agentSharePct: 28, userLimit: '仅新客 · 学生人群', signedAt: null },
   ]
 
   // 订阅商品：live 两件沿用 marketDemo 的 id 规则（PRD-youdao-N），套餐落地页询价可直接命中演示货架
@@ -277,10 +279,16 @@ export const portalDemo = {
     if (isAgentScope()) return rows.filter((c) => c.agentId === AGENT_ID || (c.agentId == null && c.status === 'open'))
     return rows.filter((c) => c.brandId === BRAND_ID)
   },
-  async proposeContract(body: { agentId?: string; productId?: string; settleModel: string; targetGmv?: number; ltvWindow?: string; complaintLiability?: string; reservePct?: number; userLimit?: Record<string, unknown> }): Promise<{ ok: boolean; id?: string }> {
+  async proposeContract(body: { agentId?: string; productId?: string; settleModel: string; targetGmv?: number; settleParams?: Record<string, unknown>; ltvWindow?: string; complaintLiability?: string; reservePct?: number; userLimit?: Record<string, unknown> }): Promise<{ ok: boolean; id?: string; detail?: string }> {
     await wait(260)
+    // 目标 GMV 不可为 0：数字输入被清空时 +'' === 0 会溜进来，接单模拟器滑杆 min=max=0 全失真
+    const targetGmv = body.targetGmv ?? 0
+    if (targetGmv <= 0) return { ok: false, detail: '目标 GMV 必须大于 0' }
     const id = rid('GC')
-    S().contracts.unshift({ id, brandId: BRAND_ID, agentId: null, status: 'open', settleModel: body.settleModel, targetGmv: body.targetGmv ?? 0, achievedGmv: 0, ltvWindow: body.ltvWindow ?? 'D30', complaintLiability: body.complaintLiability ?? 'agent', reservePct: body.reservePct ?? 10, userLimit: JSON.stringify(body.userLimit ?? {}), signedAt: null })
+    // settleParams.agentSharePct 摊平持久化——接单模拟器按品牌真实给的分成估算，不再拍 35%
+    const rawShare = Number((body.settleParams as { agentSharePct?: unknown })?.agentSharePct)
+    const agentSharePct = Number.isFinite(rawShare) && rawShare > 0 && rawShare <= 100 ? rawShare : null
+    S().contracts.unshift({ id, brandId: BRAND_ID, agentId: null, status: 'open', settleModel: body.settleModel, targetGmv, achievedGmv: 0, ltvWindow: body.ltvWindow ?? 'D30', complaintLiability: body.complaintLiability ?? 'agent', reservePct: body.reservePct ?? 10, agentSharePct, userLimit: JSON.stringify(body.userLimit ?? {}), signedAt: null })
     return { ok: true, id }
   },
   async claimContract(id: string): Promise<{ ok: boolean; detail: string }> {

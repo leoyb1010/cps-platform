@@ -6,6 +6,7 @@ import { useToast } from '../../components/ui/overlays'
 import { useStore, reconcileSettlement, clearSettlement, settleAgent } from '../../lib/store'
 import { money, cx, downloadText } from '../../lib/format'
 import { brandById } from '../../lib/data'
+import { isRealApi } from '../../lib/http'
 
 /**
  * 结算工作台 —— 月结日一屏走完的 Checklist，本质是现有 store 动作的编排（零新后端）。
@@ -22,7 +23,8 @@ const STEPS: { id: StepId; icon: typeof Check; title: string; hint: string }[] =
   { id: 'payout', icon: Wallet, title: '审批提现', hint: '代理提现逐单批/驳' },
 ]
 
-const RUN_KEY = 'cps-settle-run-v1'
+// 按模式分键：演示/真实两套数据各自有独立的结算进度（store 持久化早已按模式分键，进度也要对齐）
+const RUN_KEY = isRealApi ? 'cps-settle-run-v1-real' : 'cps-settle-run-v1'
 function loadDone(): StepId[] {
   try {
     const r = sessionStorage.getItem(RUN_KEY)
@@ -132,12 +134,18 @@ export default function SettlementRun() {
           <StepCard n={3} step={STEPS[2]} done={isDone('clear')} active={activeIdx === 2}>
             <div className="flex items-center justify-between">
               <div className="text-[13px] text-ink-2">待结算 <b className="tnum">{pending.length}</b> 笔 · 合计流水 <b className="tnum">{money(pending.reduce((s, x) => s + x.gross, 0))}</b></div>
+              {/* 空态必须可跳过：上一期已全部结清（或从清结算页先操作过）时，这一步曾是死锁——
+                  disabled 按钮没有任何前进出口，Checklist 永远走不完。与 ②⑤ 两步的空态出口对齐。 */}
               {!isDone('clear') && (
-                <Button variant="primary" busyMs={600} onClick={() => {
-                  pending.forEach((p) => clearSettlement(p.id))
-                  markDone('clear')
-                  toast({ tone: 'good', text: `已发起 ${pending.length} 笔结算` })
-                }} disabled={pending.length === 0}>{pending.length === 0 ? '无待结算' : `批量发起结算（${pending.length}）`}</Button>
+                pending.length === 0 ? (
+                  <Button variant="ghost" onClick={() => markDone('clear')}>无待结算，下一步</Button>
+                ) : (
+                  <Button variant="primary" busyMs={600} onClick={() => {
+                    pending.forEach((p) => clearSettlement(p.id))
+                    markDone('clear')
+                    toast({ tone: 'good', text: `已发起 ${pending.length} 笔结算` })
+                  }}>批量发起结算（{pending.length}）</Button>
+                )
               )}
             </div>
           </StepCard>

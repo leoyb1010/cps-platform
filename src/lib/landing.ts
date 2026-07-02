@@ -1,8 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { resolveBrandLogo } from './brandLogos'
 import { brands } from './data'
-import type { MarketProduct } from './marketApi'
-import { marketApi } from './marketApi'
 
 // ════════════════════════════════════════════════════════════════
 //  落地页数据层 —— 可配置、可归因、可嵌入的转化单元。
@@ -52,6 +50,20 @@ function emit() {
   }
   listeners.forEach((l) => l())
 }
+// 变更前先回读 localStorage：落地页在新标签页消费（_blank / iframe），
+// 各标签页各持一份内存副本，直接覆盖写会把别处的累加冲掉（last-write-wins 丢数）。
+function refresh() {
+  pages = load()
+}
+// 跨标签页同步：别的标签页写入后，storage 事件回灌本页内存副本并通知订阅者
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY) {
+      pages = load()
+      listeners.forEach((l) => l())
+    }
+  })
+}
 
 const shortId = () => Math.random().toString(36).slice(2, 8).toUpperCase()
 
@@ -84,12 +96,14 @@ export function createLandingPage(input: {
     orders: 0,
     revenue: 0,
   }
+  refresh()
   pages = [page, ...pages]
   emit()
   return page
 }
 
 export function deleteLandingPage(id: string) {
+  refresh()
   pages = pages.filter((p) => p.id !== id)
   emit()
 }
@@ -100,15 +114,23 @@ export function getLandingPage(id: string): LandingPage | null {
 
 // 归因闭环：落地页产生一次下单 → 台账累加（演示态）。真实态由后端在 Bundle 落库时按 refPageId 聚合。
 export function recordLandingOrder(id: string, amount: number) {
+  refresh()
   pages = pages.map((p) => (p.id === id ? { ...p, orders: p.orders + 1, revenue: +(p.revenue + amount).toFixed(2) } : p))
   emit()
 }
+// 会话内曝光去重：StrictMode 双执行 / 组件重挂载不重复计数（否则转化率直接腰斩）
+const viewedThisSession = new Set<string>()
 export function recordLandingView(id: string) {
+  if (viewedThisSession.has(id)) return
+  viewedThisSession.add(id)
+  refresh()
   pages = pages.map((p) => (p.id === id ? { ...p, views: p.views + 1 } : p))
   emit()
 }
 
-export function useLandingPages(filter?: { brandId?: string; agentId?: string }): LandingPage[] {
+// filter.agentId：显式传 null 表示「必须为 null（品牌官方页）」，undefined 表示不限——
+// 品牌台账借此排除代理归因页（它们也带 brandId，否则会串进品牌工坊并可被误删）。
+export function useLandingPages(filter?: { brandId?: string; agentId?: string | null }): LandingPage[] {
   const snap = useSyncExternalStore(
     (l) => {
       listeners.add(l)
@@ -118,7 +140,9 @@ export function useLandingPages(filter?: { brandId?: string; agentId?: string })
     () => pages,
   )
   if (!filter) return snap
-  return snap.filter((p) => (filter.brandId ? p.brandId === filter.brandId : true) && (filter.agentId ? p.agentId === filter.agentId : true))
+  return snap.filter(
+    (p) => (filter.brandId !== undefined ? p.brandId === filter.brandId : true) && (filter.agentId !== undefined ? p.agentId === filter.agentId : true),
+  )
 }
 
 // 落地页深链（含归因参数）：#/land/:id
@@ -131,12 +155,6 @@ export function landingEmbedUrl(id: string): string {
 }
 export function landingIframeSnippet(id: string): string {
   return `<iframe src="${landingEmbedUrl(id)}" width="375" height="640" frameborder="0" style="border:0;border-radius:16px;max-width:100%"></iframe>`
-}
-
-// 取品牌可上架商品（演示态从种子合成；真实态门户 API）。
-export async function brandProductsForLanding(brandId: string): Promise<MarketProduct[]> {
-  const all = await marketApi.products()
-  return all.filter((p) => p.brandKey === brandId && p.bundleEligible)
 }
 
 // 是否连续包月（强制合规模块判定）
