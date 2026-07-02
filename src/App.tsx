@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth, useCan, bootstrapAuth } from './lib/auth'
 import { isRealApi } from './lib/http'
@@ -6,39 +6,55 @@ import { hydrateFromServer } from './lib/store'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import Brands from './pages/Brands'
-import BrandDetail from './pages/BrandDetail'
-import Marketplace from './pages/Marketplace'
-import Agents from './pages/Agents'
-import Orders from './pages/Orders'
-import Contracts from './pages/Contracts'
-import Barter from './pages/Barter'
-import Aigc from './pages/Aigc'
-import Products from './pages/Products'
-import Settlement from './pages/Settlement'
-import Merchants from './pages/Merchants'
-import Analytics from './pages/Analytics'
-import RiskWorkspace from './pages/workspaces/RiskWorkspace'
-import SettlementRun from './pages/workspaces/SettlementRun'
-import IncidentRoom from './pages/workspaces/IncidentRoom'
-import Settings from './pages/Settings'
-import Members from './pages/Members'
-import Audit from './pages/Audit'
-import Profile from './pages/Profile'
 import ClientLayout from './components/layout/ClientLayout'
 import { BRAND_NAV_GROUPS, AGENT_NAV_GROUPS } from './components/layout/portalNav'
 import PortalLogin, { homeForScope } from './pages/PortalLogin'
-import Supermarket from './pages/market/Supermarket'
-import LandingPage from './pages/market/LandingPage'
-import MySubscriptions from './pages/market/MySubscriptions'
-import { BrandHome, BrandOrders, BrandSettlement, BrandOnboarding, BrandTickets, BrandContracts, BrandBarter } from './pages/portal/BrandPortal'
-import { BrandProducts } from './pages/portal/BrandProducts'
-import { BrandDeveloper } from './pages/portal/BrandDeveloper'
-import { BrandLanding } from './pages/portal/BrandLanding'
-import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentContracts, AgentTickets } from './pages/portal/AgentPortal'
-import { PortalAigc } from './pages/portal/PortalAigc'
-import { ComingSoon } from './pages/portal/ComingSoon'
-import { AgentLanding } from './pages/portal/AgentLanding'
+
+// 路由级代码分割：控制台高频页(总览/登录/门户壳)首屏直载；其余按需 lazy 拆包，
+// 缩小首包。Suspense 兜底一个轻量加载态。（v9 §5.2 性能预算）
+const Brands = lazy(() => import('./pages/Brands'))
+const BrandDetail = lazy(() => import('./pages/BrandDetail'))
+const Marketplace = lazy(() => import('./pages/Marketplace'))
+const Agents = lazy(() => import('./pages/Agents'))
+const Orders = lazy(() => import('./pages/Orders'))
+const Contracts = lazy(() => import('./pages/Contracts'))
+const Barter = lazy(() => import('./pages/Barter'))
+const Aigc = lazy(() => import('./pages/Aigc'))
+const Products = lazy(() => import('./pages/Products'))
+const Settlement = lazy(() => import('./pages/Settlement'))
+const Merchants = lazy(() => import('./pages/Merchants'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const RiskWorkspace = lazy(() => import('./pages/workspaces/RiskWorkspace'))
+const SettlementRun = lazy(() => import('./pages/workspaces/SettlementRun'))
+const IncidentRoom = lazy(() => import('./pages/workspaces/IncidentRoom'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Members = lazy(() => import('./pages/Members'))
+const Audit = lazy(() => import('./pages/Audit'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Supermarket = lazy(() => import('./pages/market/Supermarket'))
+const LandingPage = lazy(() => import('./pages/market/LandingPage'))
+const MySubscriptions = lazy(() => import('./pages/market/MySubscriptions'))
+// 门户页：命名导出，lazy 需包成 default
+const BrandHome = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandHome })))
+const BrandOrders = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandOrders })))
+const BrandSettlement = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandSettlement })))
+const BrandOnboarding = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandOnboarding })))
+const BrandTickets = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandTickets })))
+const BrandContracts = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandContracts })))
+const BrandBarter = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandBarter })))
+const BrandProducts = lazy(() => import('./pages/portal/BrandProducts').then((m) => ({ default: m.BrandProducts })))
+const BrandDeveloper = lazy(() => import('./pages/portal/BrandDeveloper').then((m) => ({ default: m.BrandDeveloper })))
+const BrandLanding = lazy(() => import('./pages/portal/BrandLanding').then((m) => ({ default: m.BrandLanding })))
+const AgentHome = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentHome })))
+const AgentMarket = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentMarket })))
+const AgentPlans = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentPlans })))
+const AgentPayouts = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentPayouts })))
+const AgentCredit = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentCredit })))
+const AgentContracts = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentContracts })))
+const AgentTickets = lazy(() => import('./pages/portal/AgentPortal').then((m) => ({ default: m.AgentTickets })))
+const PortalAigc = lazy(() => import('./pages/portal/PortalAigc').then((m) => ({ default: m.PortalAigc })))
+const ComingSoon = lazy(() => import('./pages/portal/ComingSoon').then((m) => ({ default: m.ComingSoon })))
+const AgentLanding = lazy(() => import('./pages/portal/AgentLanding').then((m) => ({ default: m.AgentLanding })))
 
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
 // 未知 scopeType（新增租户类型/脏数据）不得落到 platform 默认——那等于放进内部控制台外壳，
@@ -84,6 +100,7 @@ export default function App() {
     )
   }
   return (
+    <Suspense fallback={<div className="grid min-h-screen place-items-center bg-canvas"><span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-brand" /></div>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/portal/login" element={<PortalLogin />} />
@@ -167,5 +184,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </Suspense>
   )
 }

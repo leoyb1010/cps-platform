@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link2, FileCheck, TrendingUp, Megaphone } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Link2, FileCheck, TrendingUp, Megaphone, Sparkles } from 'lucide-react'
 import {
   Card,
   PageHeader,
@@ -27,6 +28,7 @@ const CREATIVE_SPEC = [
 ]
 
 export default function Marketplace() {
+  const nav = useNavigate()
   const [cat, setCat] = useState('全部')
   const [link, setLink] = useState<{ brand: string; plan: string; url: string } | null>(null)
   const [specOpen, setSpecOpen] = useState(false)
@@ -99,7 +101,9 @@ export default function Marketplace() {
 
                 <div className="mt-3 flex gap-2 border-t border-line pt-3">
                   <Button variant="primary" className="flex-1 justify-center" onClick={() => claim(b.id, p.name, b.name)}><Link2 size={14} /> 领取追踪链接</Button>
-                  <Button variant="ghost" onClick={() => setSpecOpen(true)}>素材规范</Button>
+                  {/* AIGC 入投放动线：素材应长在投放里，而非独立页（v9 §G7） */}
+                  <Button variant="ghost" onClick={() => nav('/aigc')}><Sparkles size={14} /> 生成素材</Button>
+                  <Button variant="ghost" onClick={() => setSpecOpen(true)}>规范</Button>
                 </div>
               </Card>
             )
