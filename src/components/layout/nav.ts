@@ -110,3 +110,8 @@ export const BOARD_ICON: Record<string, LucideIcon> = {
   'CPS 自营投流': Megaphone,
   '交易模式': FileSignature,
 }
+
+// 扁平索引：按路径找导航项（"常用置顶"用——用户 pin 的 to 反查 item 渲染）
+export const NAV_BY_TO: Record<string, NavItem> = Object.fromEntries(
+  NAV.flatMap((g) => g.items).map((it) => [it.to, it]),
+)

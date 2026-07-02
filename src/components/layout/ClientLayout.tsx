@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X, LogOut, Bell } from 'lucide-react'
-import type { PortalNavItem } from './portalNav'
+import type { PortalNavGroup } from './portalNav'
 import { cx } from '../../lib/format'
 import { useAuth, useCan, logout } from '../../lib/auth'
 import { portalApi } from '../../lib/portalApi'
@@ -28,10 +28,11 @@ function PortalLogo({ branding }: { branding: ClientBranding }) {
   )
 }
 
-function ClientSidebar({ nav, branding, open, onClose }: { nav: PortalNavItem[]; branding: ClientBranding; open: boolean; onClose: () => void }) {
+function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavGroup[]; branding: ClientBranding; open: boolean; onClose: () => void }) {
   const can = useCan()
   const user = useAuth()
-  const items = nav.filter((it) => can(it.perm))
+  // 按权限过滤，空组剔除。分组是心智地图，不折叠（门户导航项少，全展开最清晰）。
+  const visibleGroups = groups.map((g) => ({ ...g, items: g.items.filter((it) => can(it.perm)) })).filter((g) => g.items.length > 0)
   return (
     <>
       {open && <div className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={onClose} />}
@@ -45,33 +46,39 @@ function ClientSidebar({ nav, branding, open, onClose }: { nav: PortalNavItem[];
           <PortalLogo branding={branding} />
           <button aria-label="关闭菜单" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
         </div>
-        <nav className="flex-1 overflow-y-auto px-3 pb-5 pt-3">
-          <div className="space-y-0.5">
-            {items.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/portal/brand' || item.to === '/portal/agent'}
-                onClick={onClose}
-                className={({ isActive }) =>
-                  cx(
-                    'group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors',
-                    isActive
-                      ? 'bg-surface font-semibold text-ink shadow-[inset_0_0_0_1px_rgba(245,51,59,0.22)]'
-                      : 'text-ink-2 hover:bg-surface-muted hover:text-ink',
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && <span className="absolute top-1/2 left-0 h-[15px] w-[3px] -translate-y-1/2 rounded-r-[2px] bg-brand" />}
-                    <item.icon size={17} strokeWidth={isActive ? 1.8 : 1.6} className={isActive ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'} />
-                    <span className="flex-1">{item.label}</span>
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </div>
+        <nav className="flex-1 overflow-y-auto px-3 pb-5 pt-2">
+          {visibleGroups.map((group, gi) => (
+            <div key={group.title} className="mb-0.5">
+              {gi > 0 && <div className="mx-2 mb-1 mt-2.5 border-t border-line" />}
+              <div className="px-2 pt-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-5">{group.title}</div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === '/portal/brand' || item.to === '/portal/agent'}
+                    onClick={onClose}
+                    className={({ isActive }) =>
+                      cx(
+                        'group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-[13.5px] transition-colors',
+                        isActive
+                          ? 'bg-surface font-semibold text-ink shadow-[inset_0_0_0_1px_rgba(245,51,59,0.22)]'
+                          : 'text-ink-2 hover:bg-surface-muted hover:text-ink',
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && <span className="absolute top-1/2 left-0 h-[15px] w-[3px] -translate-y-1/2 rounded-r-[2px] bg-brand" />}
+                        <item.icon size={17} strokeWidth={isActive ? 1.8 : 1.6} className={isActive ? 'text-brand' : 'text-ink-3 group-hover:text-ink-2'} />
+                        <span className="flex-1 truncate">{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          ))}
         </nav>
         <div className="border-t border-line p-3">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
@@ -123,7 +130,7 @@ function PortalBell() {
   )
 }
 
-export default function ClientLayout({ nav, branding }: { nav: PortalNavItem[]; branding: ClientBranding }) {
+export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[]; branding: ClientBranding }) {
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   // 用路由路径作为 replay epoch 的种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
@@ -131,7 +138,7 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavItem[]; 
   return (
     <ReplayContext.Provider value={{ epoch, replay: () => {} }}>
       <div className="min-h-screen bg-canvas">
-        <ClientSidebar nav={nav} branding={branding} open={open} onClose={() => setOpen(false)} />
+        <ClientSidebar groups={nav} branding={branding} open={open} onClose={() => setOpen(false)} />
         <div className="md:pl-[236px]">
           <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-5 backdrop-blur-md">
             <button aria-label="打开菜单" onClick={() => setOpen(true)} className="grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>

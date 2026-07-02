@@ -202,6 +202,17 @@ summary,
   letter-spacing: -0.011em;
 }
 
+/* 表格密度：--row-h 由偏好驱动（舒适 44 / 紧凑 36）。
+   紧凑档收窄 Td 纵向内边距，让财务对账一屏多看几行——只改摆放，不改内容。 */
+:root {
+  --row-h: 44px;
+}
+table tbody td {
+  height: var(--row-h);
+  padding-top: calc((var(--row-h) - 20px) / 2);
+  padding-bottom: calc((var(--row-h) - 20px) / 2);
+}
+
 ::selection {
   background: var(--color-brand-soft);
   color: var(--color-brand-ink);

@@ -119,11 +119,24 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 简洁模式提示：已隐藏专业图表，切到专家看全部 */}
+      {/* 简洁模式：把「今天要处理什么」放在最显眼处——新人打开先看行动，不看数字。 */}
       {!expert && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-dashed border-line bg-surface-muted px-3 py-2 text-[12px] text-ink-3">
-          <span>简洁视图仅展示核心指标与待办；如需完整图表与运营明细，请在右上角切换至专家视图。</span>
-        </div>
+        <Card data-coach="todo" style={rev(0.06)} className="mb-4 border-brand/20 bg-brand-soft/30">
+          <CardTitle
+            title="今天要处理的事"
+            desc="需人工处理的升级投诉 / 熔断 / 对账差异，点右侧按钮直达"
+            right={<Badge tone={actions.length ? 'alert' : 'good'} dot>{actions.length ? `${actions.length} 件待办` : '已清空'}</Badge>}
+          />
+          {actions.length === 0 ? (
+            <EmptyState icon={<ShieldCheck size={20} />} title="今日待办已清空 🎉" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
+          ) : (
+            <div className="flex flex-col gap-2">
+              {actions.slice(0, 3).map((a) => (
+                <ActionRow key={a.id} a={a} onRefund={a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
+              ))}
+            </div>
+          )}
+        </Card>
       )}
 
       {/* 演示剧本（一键触发联动）· 仅专家模式 + 演示数据（真实模式隐藏：重置会覆盖服务端真值，退款剧本会触发真实冲账） */}
@@ -155,9 +168,10 @@ export default function Dashboard() {
         </div>
       </Card>
 
+      {expert && (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* 行动中心 —— 简洁模式下「实时联动」隐藏，今日待办占满整行避免第 3 列空缺 */}
-        <Card style={rev(0.12)} className={expert ? 'lg:col-span-2' : 'lg:col-span-3'}>
+        {/* 行动中心 —— 专家模式完整展示；简洁模式已在顶部「今天要处理的事」呈现，此处不重复 */}
+        <Card style={rev(0.12)} className="lg:col-span-2">
           <CardTitle title="今日待办" desc="需人工处理事项 · 支持一键操作" right={<Badge tone={actions.length ? 'alert' : 'good'}>{actions.length ? `${actions.length} 项待办` : '已清空'}</Badge>} />
           {actions.length === 0 ? (
             <EmptyState icon={<ShieldCheck size={20} />} title="今日待办已清空" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
@@ -170,8 +184,7 @@ export default function Dashboard() {
           )}
         </Card>
 
-        {/* 实时联动 / 活动流 —— 证明跨模块联动 · 仅专家模式 */}
-        {expert && (
+        {/* 实时联动 / 活动流 —— 证明跨模块联动 */}
         <Card style={rev(0.16)} pad={false} className="overflow-hidden">
           <div className="flex items-center gap-2 border-b border-line px-5 pt-5 pb-3">
             <span className="h-[7px] w-[7px] bg-brand" />
@@ -194,8 +207,8 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-        )}
       </div>
+      )}
 
       {/* ───────── 层 2 · 北极星与经营健康 ───────── */}
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">

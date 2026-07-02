@@ -24,7 +24,7 @@ import Members from './pages/Members'
 import Audit from './pages/Audit'
 import Profile from './pages/Profile'
 import ClientLayout from './components/layout/ClientLayout'
-import { BRAND_NAV, AGENT_NAV } from './components/layout/portalNav'
+import { BRAND_NAV_GROUPS, AGENT_NAV_GROUPS } from './components/layout/portalNav'
 import PortalLogin, { homeForScope } from './pages/PortalLogin'
 import Supermarket from './pages/market/Supermarket'
 import { BrandHome, BrandOrders, BrandSettlement, BrandOnboarding, BrandTickets, BrandContracts, BrandBarter } from './pages/portal/BrandPortal'
@@ -33,6 +33,7 @@ import { BrandDeveloper } from './pages/portal/BrandDeveloper'
 import { BrandLanding } from './pages/portal/BrandLanding'
 import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentContracts, AgentTickets } from './pages/portal/AgentPortal'
 import { PortalAigc } from './pages/portal/PortalAigc'
+import { ComingSoon } from './pages/portal/ComingSoon'
 
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
 // 未知 scopeType（新增租户类型/脏数据）不得落到 platform 默认——那等于放进内部控制台外壳，
@@ -87,7 +88,7 @@ export default function App() {
       <Route
         element={
           <RequireScope allow="brand">
-            <ClientLayout nav={BRAND_NAV} branding={{ name: '品牌方门户', sub: '订阅增长 · 客户端' }} />
+            <ClientLayout nav={BRAND_NAV_GROUPS} branding={{ name: '品牌方门户', sub: '订阅增长 · 客户端' }} />
           </RequireScope>
         }
       >
@@ -102,13 +103,15 @@ export default function App() {
         <Route path="/portal/brand/landing" element={<BrandLanding />} />
         <Route path="/portal/brand/barter" element={<BrandBarter />} />
         <Route path="/portal/brand/aigc" element={<PortalAigc />} />
+        <Route path="/portal/brand/insights" element={<ComingSoon title="投放透视" desc="按商品聚合代理投放数据：谁在投、投得怎样、转化与退款——看清自己的商品在平台上的表现。（B2 上线）" />} />
+        <Route path="/portal/brand/plaza" element={<ComingSoon title="资源广场" desc="平台开放业务橱窗：可接的增长合约挂单 + 可置换的品牌资源。在这里参与平台化联运。（B2 上线）" />} />
       </Route>
 
       {/* 代理商门户 */}
       <Route
         element={
           <RequireScope allow="agent">
-            <ClientLayout nav={AGENT_NAV} branding={{ name: '代理商门户', sub: '订阅增长 · 客户端' }} />
+            <ClientLayout nav={AGENT_NAV_GROUPS} branding={{ name: '代理商门户', sub: '订阅增长 · 客户端' }} />
           </RequireScope>
         }
       >
@@ -120,6 +123,7 @@ export default function App() {
         <Route path="/portal/agent/contracts" element={<AgentContracts />} />
         <Route path="/portal/agent/tickets" element={<AgentTickets />} />
         <Route path="/portal/agent/aigc" element={<PortalAigc />} />
+        <Route path="/portal/agent/landing" element={<ComingSoon title="推广页工坊" desc="选平台开放推广的商品，生成带你归因的落地页——用户扫码/点开下单即自动归到你名下。（B1 上线）" />} />
       </Route>
 
       {/* 内部控制台（仅平台账户）*/}

@@ -97,3 +97,106 @@ export function useTheme(): Theme {
 export function initTheme() {
   applyTheme()
 }
+
+/* ── 密度（舒适 / 紧凑）────────────────────────────────────
+   仅控制表格行高（--row-h 令牌），财务对账场景可切紧凑一屏多看几行。
+   不影响任何功能可见性——密度只是摆放方式。 */
+export type Density = 'comfortable' | 'compact'
+const DENSITY_KEY = 'cps-density-v1'
+function loadDensity(): Density {
+  try {
+    const v = localStorage.getItem(DENSITY_KEY)
+    if (v === 'comfortable' || v === 'compact') return v
+  } catch {
+    /* ignore */
+  }
+  return 'comfortable'
+}
+let density: Density = typeof localStorage !== 'undefined' ? loadDensity() : 'comfortable'
+const densityListeners = new Set<() => void>()
+function applyDensity() {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--row-h', density === 'compact' ? '36px' : '44px')
+}
+export function setDensity(d: Density) {
+  density = d
+  try {
+    localStorage.setItem(DENSITY_KEY, d)
+  } catch {
+    /* ignore */
+  }
+  applyDensity()
+  densityListeners.forEach((l) => l())
+}
+export function useDensity(): Density {
+  return useSyncExternalStore(
+    (l) => {
+      densityListeners.add(l)
+      return () => densityListeners.delete(l)
+    },
+    () => density,
+    () => density,
+  )
+}
+export function initDensity() {
+  applyDensity()
+}
+
+/* ── 导航偏好（分组折叠 / 常用置顶）────────────────────────
+   规整而非删减的技术底座：一项不减、一项不藏，只让用户管理视觉密度。
+   collapsed：折叠的分组标题集合；pinned：置顶"常用"区的导航路径集合。
+   两者都是「用户主动做的减法」，产品永不替用户删。 */
+const NAV_COLLAPSED_KEY = 'cps-nav-collapsed-v1'
+const NAV_PINNED_KEY = 'cps-nav-pinned-v1'
+
+function loadStrArr(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw) {
+      const v = JSON.parse(raw)
+      if (Array.isArray(v)) return v.filter((x) => typeof x === 'string')
+    }
+  } catch {
+    /* ignore */
+  }
+  return []
+}
+function makeSetStore(key: string) {
+  let set = new Set<string>(typeof localStorage !== 'undefined' ? loadStrArr(key) : [])
+  const ls = new Set<() => void>()
+  let snapshot = [...set]
+  const persist = () => {
+    try {
+      localStorage.setItem(key, JSON.stringify([...set]))
+    } catch {
+      /* ignore */
+    }
+    snapshot = [...set]
+    ls.forEach((l) => l())
+  }
+  return {
+    toggle(id: string) {
+      if (set.has(id)) set.delete(id)
+      else set.add(id)
+      persist()
+    },
+    has: (id: string) => set.has(id),
+    use(): string[] {
+      return useSyncExternalStore(
+        (l) => {
+          ls.add(l)
+          return () => ls.delete(l)
+        },
+        () => snapshot,
+        () => snapshot,
+      )
+    },
+  }
+}
+const collapsedStore = makeSetStore(NAV_COLLAPSED_KEY)
+const pinnedStore = makeSetStore(NAV_PINNED_KEY)
+
+export const toggleNavGroup = (title: string) => collapsedStore.toggle(title)
+export const useCollapsedGroups = () => collapsedStore.use()
+export const togglePinned = (to: string) => pinnedStore.toggle(to)
+export const usePinned = () => pinnedStore.use()

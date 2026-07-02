@@ -146,6 +146,7 @@ export function Card({
   mark = false,
   hover = false,
   style,
+  'data-coach': dataCoach,
 }: {
   children: ReactNode
   className?: string
@@ -153,10 +154,12 @@ export function Card({
   mark?: boolean
   hover?: boolean
   style?: React.CSSProperties
+  'data-coach'?: string
 }) {
   return (
     <div
       style={style}
+      data-coach={dataCoach}
       className={cx(
         'rounded-lg border border-line bg-surface shadow-[var(--shadow-card)]',
         (pad || mark) && 'relative',
