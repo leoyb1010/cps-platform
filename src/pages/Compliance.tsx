@@ -46,6 +46,9 @@ export default function Compliance() {
         }
       />
 
+      {/* 合规检查清单 —— 合规是持续运营的状态，不是一篇文章。红黄绿 + 复查日期。 */}
+      <ComplianceChecklist channelStates={channelStates} />
+
       {/* 二清红线 */}
       <Card className="border-alert/25 bg-alert-soft/40">
         <div className="flex items-start gap-3">
@@ -216,6 +219,61 @@ function InfoCard({ icon, tone, title, body }: { icon: React.ReactNode; tone: 'w
         <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
       </div>
       <p className="mt-2.5 text-[12.5px] leading-relaxed text-ink-3">{body}</p>
+    </Card>
+  )
+}
+
+/* 合规检查清单：每条红线一行(状态灯/证据/责任人/复查日期)，状态可勾检。
+   把合规从"读一次的政策长文"变成"持续运营的状态"。 */
+const CHECK_ITEMS: { id: string; title: string; owner: string; review: string; evidence: string; status: 'pass' | 'risk' | 'todo' }[] = [
+  { id: 'erqing', title: '二清红线：资金不入平台账户，仅走持牌分账', owner: '财务 · 周财务', review: '2026-08-01', evidence: '分账通道配置', status: 'pass' },
+  { id: 'sanliu', title: '三流一致：合同流 / 资金流 / 发票流口径对齐', owner: '财务 · 周财务', review: '2026-07-15', evidence: '对账中心', status: 'pass' },
+  { id: 'license', title: '持牌分账机构签约（连连/汇付/银行存管）', owner: '法务 · 待指派', review: '2026-07-30', evidence: '线下签约中', status: 'todo' },
+  { id: 'flexlabor', title: '个人代理佣金：灵活用工开票合规', owner: '财务 · 周财务', review: '2026-07-20', evidence: '灵活用工平台', status: 'risk' },
+  { id: 'icp', title: 'ICP 经营许可 / EDI 资质', owner: '法务 · 待指派', review: '2026-09-01', evidence: '申报中', status: 'todo' },
+  { id: 'pipl', title: '《个保法》：PII 最小必要 + 脱敏 + 隐私政策', owner: '风控 · 陈风控', review: '2026-07-25', evidence: '号池/手机号已脱敏', status: 'pass' },
+  { id: 'refund', title: '连续包月落地页：扣费告知 + 退订入口强制', owner: '运营 · 王运营', review: '2026-07-10', evidence: '落地页工坊', status: 'pass' },
+  { id: 'antifraud', title: '绝不刷单/虚假交易（电商法 17 条红线）', owner: '风控 · 陈风控', review: '常态', evidence: '风控三道防线', status: 'pass' },
+]
+const CHECK_META = {
+  pass: { tone: 'good' as const, label: '达标', dot: 'bg-good' },
+  risk: { tone: 'warn' as const, label: '风险', dot: 'bg-warn' },
+  todo: { tone: 'alert' as const, label: '未办', dot: 'bg-alert' },
+}
+function ComplianceChecklist({ channelStates }: { channelStates: Record<string, 'live' | 'review'> }) {
+  const liveChannels = Object.values(channelStates).filter((v) => v === 'live').length
+  const pass = CHECK_ITEMS.filter((i) => i.status === 'pass').length
+  const risk = CHECK_ITEMS.filter((i) => i.status === 'risk').length
+  const todo = CHECK_ITEMS.filter((i) => i.status === 'todo').length
+  return (
+    <Card className="mb-4" pad={false}>
+      <div className="flex items-center justify-between p-5 pb-3">
+        <CardTitle title="合规检查清单" desc={`持续运营的状态 · 达标 ${pass} · 风险 ${risk} · 未办 ${todo} · 持牌通道 ${liveChannels} 家`} />
+        <div className="flex items-center gap-2">
+          <Badge tone="good">{pass} 达标</Badge>
+          {risk > 0 && <Badge tone="warn">{risk} 风险</Badge>}
+          {todo > 0 && <Badge tone="alert">{todo} 未办</Badge>}
+        </div>
+      </div>
+      <div className="divide-y divide-line/70 px-5 pb-3">
+        {CHECK_ITEMS.map((it) => {
+          const m = CHECK_META[it.status]
+          return (
+            <div key={it.id} className="flex items-center gap-3 py-3">
+              <span className={cx('h-2.5 w-2.5 shrink-0 rounded-full', m.dot)} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium text-ink">{it.title}</div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-ink-4">
+                  <span>责任人 {it.owner}</span>
+                  <span>证据 · {it.evidence}</span>
+                  <span>复查 {it.review}</span>
+                </div>
+              </div>
+              <Badge tone={m.tone}>{m.label}</Badge>
+            </div>
+          )
+        })}
+      </div>
     </Card>
   )
 }

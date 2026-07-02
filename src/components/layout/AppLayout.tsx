@@ -8,7 +8,7 @@ import { useViewMode, setViewMode, useTheme, setTheme, type Theme, useCollapsedG
 import { Segmented } from '../ui/primitives'
 import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
-import { useStore, markAllRead, on } from '../../lib/store'
+import { useStore, markAllRead, on, startLiveFeed, stopLiveFeed } from '../../lib/store'
 import { useAuth, useCan, logout, switchRole, ROLES, type RoleId } from '../../lib/auth'
 import { isRealApi } from '../../lib/http'
 import { useToast } from '../ui/overlays'
@@ -357,6 +357,8 @@ export default function AppLayout() {
     setNavOpen(false)
     setGuideOpen(false)
   }, [loc.pathname])
+  // 实时事件流：进控制台开启本地 ticker（模拟 SSE），离开清理
+  useEffect(() => { startLiveFeed(); return () => stopLiveFeed() }, [])
   // 真实模式：镜像写被服务端拒绝时提示用户（已自动回收服务端真值）
   useEffect(
     () =>

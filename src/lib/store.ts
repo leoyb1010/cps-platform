@@ -222,6 +222,32 @@ function subscribe(l: () => void) {
 }
 const getSnapshot = () => state
 
+// ── 实时事件流（演示态本地 ticker，模拟 SSE 推送）──────────────
+// 协议一套、来源两个：真实态服务端 SSE 推 applyEvent，演示态本地定时器产同格式事件。
+// 让"实时联动"从每5分钟刷的假实时变成真的会自己长——观众/运营看得到平台"活着"。
+const LIVE_EVENTS: { text: string; tone: Tone }[] = [
+  { text: '新签约：网易有道词典 VIP · 连续包月', tone: 'good' },
+  { text: '续费扣款成功：喜马拉雅 VIP · 第 2 期', tone: 'good' },
+  { text: '风控拦截：同设备批量下单已降权', tone: 'warn' },
+  { text: '代理领取追踪链接：芒果 TV 移动会员', tone: 'info' },
+  { text: '落地页转化：组合套餐支付成功 ¥40', tone: 'good' },
+  { text: '退款回传：喜马拉雅 · 触发逆向冲账', tone: 'alert' },
+]
+let liveTimer: ReturnType<typeof setInterval> | null = null
+let liveIdx = 0
+export function startLiveFeed() {
+  if (isRealApi || liveTimer || typeof window === 'undefined') return
+  liveTimer = setInterval(() => {
+    const e = LIVE_EVENTS[liveIdx % LIVE_EVENTS.length]
+    liveIdx++
+    const next = { ...state }
+    commit({ ...next, activity: logActivity(next, e.text, e.tone) })
+  }, 9000)
+}
+export function stopLiveFeed() {
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null }
+}
+
 /**
  * 真实模式：用服务端数据水合 store（业务页随后照常读 store，但反映服务端真值）。
  * 服务端表是扁平子集，UI 需要的嵌套字段（品牌 plans/channels/thresholds 等）以 seed 为底，
