@@ -27,6 +27,8 @@ import ClientLayout from './components/layout/ClientLayout'
 import { BRAND_NAV_GROUPS, AGENT_NAV_GROUPS } from './components/layout/portalNav'
 import PortalLogin, { homeForScope } from './pages/PortalLogin'
 import Supermarket from './pages/market/Supermarket'
+import LandingPage from './pages/market/LandingPage'
+import MySubscriptions from './pages/market/MySubscriptions'
 import { BrandHome, BrandOrders, BrandSettlement, BrandOnboarding, BrandTickets, BrandContracts, BrandBarter } from './pages/portal/BrandPortal'
 import { BrandProducts } from './pages/portal/BrandProducts'
 import { BrandDeveloper } from './pages/portal/BrandDeveloper'
@@ -34,6 +36,7 @@ import { BrandLanding } from './pages/portal/BrandLanding'
 import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentContracts, AgentTickets } from './pages/portal/AgentPortal'
 import { PortalAigc } from './pages/portal/PortalAigc'
 import { ComingSoon } from './pages/portal/ComingSoon'
+import { AgentLanding } from './pages/portal/AgentLanding'
 
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
 // 未知 scopeType（新增租户类型/脏数据）不得落到 platform 默认——那等于放进内部控制台外壳，
@@ -83,6 +86,8 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/portal/login" element={<PortalLogin />} />
       <Route path="/market" element={<Supermarket />} />
+      <Route path="/market/me" element={<MySubscriptions />} />
+      <Route path="/land/:id" element={<LandingPage />} />
 
       {/* 品牌方门户 */}
       <Route
@@ -123,7 +128,7 @@ export default function App() {
         <Route path="/portal/agent/contracts" element={<AgentContracts />} />
         <Route path="/portal/agent/tickets" element={<AgentTickets />} />
         <Route path="/portal/agent/aigc" element={<PortalAigc />} />
-        <Route path="/portal/agent/landing" element={<ComingSoon title="推广页工坊" desc="选平台开放推广的商品，生成带你归因的落地页——用户扫码/点开下单即自动归到你名下。（B1 上线）" />} />
+        <Route path="/portal/agent/landing" element={<AgentLanding />} />
       </Route>
 
       {/* 内部控制台（仅平台账户）*/}
