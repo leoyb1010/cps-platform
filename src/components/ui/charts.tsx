@@ -174,7 +174,8 @@ export function Donut({
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-surface-sunken)" strokeWidth={thickness} />
         {items.map((it, i) => {
           const frac = it.value / total
-          const dash = frac * c
+          // 最小可视弧：非零小值(如 0.5%)不至于渲染成看不见的发丝（与 Sankey 小股保底同理）
+          const dash = it.value > 0 ? Math.max(frac * c, 3) : 0
           const el = (
             <circle
               key={i}
@@ -544,10 +545,17 @@ export function ForecastLine({
   const proj: number[] = []
   let v = last
   for (let i = 1; i <= forecast; i++) { v += slope * Math.pow(0.7, i); proj.push(+v.toFixed(1)) }
-  const all = [...data, ...proj]
+  // 预测区间带上下界也纳入 min/max，否则带子会被裁出画布
+  const bandUpVals = proj.map((p, i) => p * (1 + 0.06 * (i + 1)))
+  const bandDnVals = proj.map((p, i) => p * (1 - 0.06 * (i + 1)))
+  const all = [...data, ...proj, ...bandUpVals, ...bandDnVals]
   const W = 640, H = height, padL = 8, padR = 8, padB = labels ? 22 : 8, padT = 8
-  const min = Math.min(...all) * 0.96
-  const max = Math.max(...all) * 1.05
+  // 加法 padding 而非乘法（*0.96）：乘法在负值处会把边界推向错误方向、裁出画布——
+  // 与 AreaLine 同口径，指到会跌负的曲线（净利润/流失率）时也不崩。
+  const lo = Math.min(...all), hi = Math.max(...all)
+  const pad = (hi - lo || 1) * 0.06
+  const min = lo - pad
+  const max = hi + pad
   const span = max - min || 1
   const iw = W - padL - padR, ih = H - padT - padB
   const step = iw / (all.length - 1)
@@ -556,9 +564,9 @@ export function ForecastLine({
   const histPts = data.map((val, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')
   const projStart = data.length - 1
   const projPts = [data[data.length - 1], ...proj].map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')
-  // 预测区间带（±12% 递增不确定性）
-  const bandUp = [data[data.length - 1], ...proj.map((p, i) => p * (1 + 0.06 * (i + 1)))]
-  const bandDn = [data[data.length - 1], ...proj.map((p, i) => p * (1 - 0.06 * (i + 1)))]
+  // 预测区间带（±12% 递增不确定性）——上下界已在 min/max 归一时纳入，此处复用
+  const bandUp = [data[data.length - 1], ...bandUpVals]
+  const bandDn = [data[data.length - 1], ...bandDnVals]
   const bandPath = `${bandUp.map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')} ${bandDn.map((val, i) => `L${x(projStart + bandDn.length - 1 - i).toFixed(1)},${y(bandDn[bandDn.length - 1 - i]).toFixed(1)}`).join(' ')} Z`
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
