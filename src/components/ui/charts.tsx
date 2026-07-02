@@ -422,93 +422,101 @@ export function CrosshairChart({
 export function FundSankey({
   gross,
   flows,
-  height = 300,
+  height = 320,
 }: {
   gross: number
   flows: { label: string; value: number; tone: Tone; alert?: boolean }[]
   height?: number
 }) {
-  const id = useId().replace(/:/g, '')
   const W = 640
   const H = height
-  const padY = 20
-  const srcX = 40
-  const srcW = 24
-  const dstX = W - 220
-  const nodeW = 14
+  const padY = 18
+  const srcX = 24
+  const srcW = 22
+  const dstX = W - 232
+  const nodeW = 12
   const total = Math.max(1, gross)
   const usable = H - padY * 2
-  // 源节点整条
-  const srcTop = padY
-  const srcH = usable
-  // 归一化分母：五股绝对值之和可能异常大于 gross（如 agentPayout 被钳 0 而 reversal
-  // 随反复退款继续增长，或真实模式脏数据）——按两者较大者归一，堆叠永不溢出画布。
+  const x0 = srcX + srcW
+  const x1 = dstX
+  const c = (x0 + x1) / 2
+
+  // 归一化分母：五股绝对值之和理论上 = gross（恒等式），但真实模式脏数据/并发钳零可能略超，
+  // 按两者较大者归一，堆叠永不溢出画布。
   const sumFlows = flows.reduce((a, f) => a + Math.abs(f.value), 0)
   const denom = Math.max(total, sumFlows)
-  // 目标节点按占比堆叠
-  let acc = srcTop
-  const segs = flows.map((f) => {
-    const h = Math.max(2, (Math.abs(f.value) / denom) * usable)
-    const seg = { ...f, y: acc, h }
-    acc += h
+
+  // 关键：源侧与目标侧分别按占比分段。
+  //  · 源侧连续铺满整根 GROSS 柱（无间隙）——缎带从这里"抽出"。
+  //  · 目标侧各节点之间留 GAP，缎带收束到独立目标块，才有"分流"的形态（而非平铺矩形）。
+  //  小股（如冲账 1.1%）给最小可视厚度 minH，保证细流可见；源侧按真实占比不放大，避免总高溢出。
+  const GAP = 6
+  const n = flows.length
+  const minH = 7
+  // 目标侧：先按占比算理想高度，对不足 minH 的抬到 minH，再等比压缩其余股以塞进 (usable - 总GAP)
+  const dstAvail = usable - GAP * (n - 1)
+  const rawH = flows.map((f) => (Math.abs(f.value) / denom) * dstAvail)
+  const boosted = rawH.map((h) => Math.max(h, minH))
+  const over = boosted.reduce((a, h) => a + h, 0) - dstAvail
+  // 若抬升后超出，从"高于 minH 的富余部分"里按比例回收
+  const slack = boosted.reduce((a, h) => a + Math.max(0, h - minH), 0)
+  const dstH = boosted.map((h) => (over > 0 && slack > 0 ? h - (Math.max(0, h - minH) / slack) * over : h))
+
+  let dacc = padY
+  const dst = flows.map((f, i) => {
+    const seg = { ...f, y: dacc, h: dstH[i] }
+    dacc += dstH[i] + GAP
     return seg
   })
-  // 源侧出口按同顺序分段（与目标一一对应，形成不交叉的缎带）
-  let sacc = srcTop
-  const srcSegs = segs.map((s) => {
-    const seg = { y: sacc, h: s.h }
-    sacc += s.h
+
+  // 源侧：连续铺满，高度按同一股的目标高度占比（保证缎带上下边不交叉）
+  const srcTotalH = dstH.reduce((a, h) => a + h, 0)
+  let sacc = padY
+  const src = dstH.map((h) => {
+    const sh = (h / srcTotalH) * usable
+    const seg = { y: sacc, h: sh }
+    sacc += sh
     return seg
   })
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
-      {/* 源节点 */}
-      <rect x={srcX} y={srcTop} width={srcW} height={srcH} rx={3} fill="var(--color-ink-3)" />
-      <text x={srcX + srcW / 2} y={srcTop - 6} textAnchor="middle" fontSize="10.5" fill="var(--color-ink-3)" className="tnum">流水 GROSS</text>
-      {/* 缎带 + 目标节点 + 标签。
-          标签防碰撞：段高 <26px 放不下两行（如逆向冲账仅 ~1% 占比 → 3px），
-          改单行紧凑标签；并维护 lastLabelY 最小 14px 间距，相邻小段依次下推不叠字。 */}
+      {/* 源节点：满高 GROSS 柱 */}
+      <rect x={srcX} y={padY} width={srcW} height={usable} rx={3} fill="var(--color-ink-3)" />
+      <text x={srcX} y={padY - 6} fontSize="10.5" fill="var(--color-ink-3)" className="tnum">流水 GROSS</text>
+      <text x={srcX} y={padY + usable + 13} fontSize="9.5" fill="var(--color-ink-4)" className="tnum">{(gross / 1e4).toFixed(0)}万</text>
+
       {(() => {
         let lastLabelY = -Infinity
-        return segs.map((s, i) => {
-          const ss = srcSegs[i]
-          const x0 = srcX + srcW
-          const x1 = dstX
-          const c = (x0 + x1) / 2
-          const p = `M${x0},${ss.y} C${c},${ss.y} ${c},${s.y} ${x1},${s.y} L${x1},${s.y + s.h} C${c},${s.y + s.h} ${c},${ss.y + ss.h} ${x0},${ss.y + ss.h} Z`
-          const color = s.alert ? 'var(--color-alert)' : toneVar[s.tone]
-          const pct = ((Math.abs(s.value) / total) * 100).toFixed(1)
-          const compact = s.h < 26
-          const labelY = Math.max(s.y + s.h / 2, lastLabelY + 14)
-          lastLabelY = compact ? labelY : labelY + 12
+        return flows.map((f, i) => {
+          const s = src[i]
+          const d = dst[i]
+          // 缎带：源侧连续区段 → 目标独立块，三次贝塞尔平滑收束（真正的 Sankey 流形）
+          const p = `M${x0},${s.y} C${c},${s.y} ${c},${d.y} ${x1},${d.y} L${x1},${d.y + d.h} C${c},${d.y + d.h} ${c},${s.y + s.h} ${x0},${s.y + s.h} Z`
+          const color = f.alert ? 'var(--color-alert)' : toneVar[f.tone]
+          const pct = ((Math.abs(f.value) / total) * 100).toFixed(1)
+          const labelY = Math.max(d.y + d.h / 2, lastLabelY + 15)
+          lastLabelY = labelY + 11
           return (
-            <g key={s.label}>
-              <path d={p} fill={color} fillOpacity={s.alert ? 0.5 : 0.28} style={{ animation: `fadeIn .6s ${0.15 + i * 0.08}s both` }}>
-                <title>{s.label}：{s.value.toLocaleString('zh-CN')}（{pct}%）</title>
+            <g key={f.label}>
+              {/* 缎带：实色半透明，hover 加深；细流也清晰 */}
+              <path d={p} fill={color} fillOpacity={f.alert ? 0.55 : 0.4} style={{ animation: `fadeIn .55s ${0.12 + i * 0.07}s both` }}>
+                <title>{f.label}：{f.value.toLocaleString('zh-CN')}（{pct}%）</title>
               </path>
-              <rect x={dstX} y={s.y} width={nodeW} height={s.h} rx={2} fill={color} />
-              {compact ? (
-                <text x={dstX + nodeW + 8} y={labelY} fontSize="10.5" fill="var(--color-ink-2)" dominantBaseline="middle">
-                  {s.label}
-                  {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9"> · 差异</tspan>}
-                  <tspan fill="var(--color-ink-4)" fontSize="9.5" className="tnum"> ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%</tspan>
-                </text>
-              ) : (
-                <>
-                  <text x={dstX + nodeW + 8} y={labelY - 2} fontSize="11.5" fill="var(--color-ink-2)" dominantBaseline="middle">
-                    {s.label}
-                    {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9.5"> · 差异</tspan>}
-                  </text>
-                  <text x={dstX + nodeW + 8} y={labelY + 12} fontSize="10.5" fill="var(--color-ink-4)" className="tnum" dominantBaseline="middle">
-                    ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%
-                  </text>
-                </>
-              )}
+              {/* 目标节点块（实色，锚定标签） */}
+              <rect x={dstX} y={d.y} width={nodeW} height={d.h} rx={2} fill={color} />
+              {/* 标签：名称一行 + 金额占比一行，最小 15px 间距防叠 */}
+              <text x={dstX + nodeW + 9} y={labelY - 5} fontSize="11.5" fontWeight="500" fill="var(--color-ink-2)" dominantBaseline="middle">
+                {f.label}
+                {f.alert && <tspan fill="var(--color-alert-ink)" fontSize="9.5"> · 差异</tspan>}
+              </text>
+              <text x={dstX + nodeW + 9} y={labelY + 9} fontSize="10.5" fill="var(--color-ink-4)" className="tnum" dominantBaseline="middle">
+                ¥{(Math.abs(f.value) / 1e4).toFixed(1)}万 · {pct}%
+              </text>
             </g>
           )
         })
       })()}
-      <defs><linearGradient id={`sk-${id}`} /></defs>
     </svg>
   )
 }
