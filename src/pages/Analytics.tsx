@@ -13,7 +13,7 @@ import {
   Td,
   Row,
 } from '../components/ui/primitives'
-import { AreaLine, Bars, Gauge } from '../components/ui/charts'
+import { ForecastLine, Bars, Gauge } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
 import { Field, Select, Input } from '../components/ui/forms'
 import { Term } from '../components/ui/Term'
@@ -112,11 +112,11 @@ export default function Analytics() {
           </div>
         </Card>
         <Card className="lg:col-span-2">
-          <CardTitle title="LTV 累计曲线" desc="12 个月累计净 LTV" right={<Target size={15} className="text-ink-3" />} />
-          <AreaLine data={series.ltvCurve} tone="brand" height={150} />
+          <CardTitle title="LTV 累计曲线 · 含预测" desc="实线历史 · 虚线预测 D90 净 LTV（指数衰减外推）" right={<Target size={15} className="text-ink-3" />} />
+          <ForecastLine data={series.ltvCurve} forecast={3} tone="brand" height={150} />
           <div className="mt-2 flex items-center justify-between text-[12px]">
-            <span className="text-ink-3">首月 ¥40</span>
-            <span className="font-medium text-ink">12 月累计 ¥104</span>
+            <span className="text-ink-3">首月 ¥40 · 12 月累计 ¥104</span>
+            <span className="font-medium text-violet-ink">预测 D90 净 LTV ≈ ¥{Math.round(series.ltvCurve[series.ltvCurve.length - 1] * 1.12)} · 建议据此出价</span>
           </div>
         </Card>
       </div>

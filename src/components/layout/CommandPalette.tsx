@@ -7,6 +7,8 @@ import { useCan } from '../../lib/auth'
 import { setTheme } from '../../lib/prefs'
 import { useToast } from '../ui/overlays'
 import { cx } from '../../lib/format'
+import { matchAsk, looksLikeQuestion } from '../../lib/askTemplates'
+import { MessageCircleQuestion } from 'lucide-react'
 
 interface Hit {
   label: string
@@ -78,10 +80,19 @@ export function CommandPalette() {
     ]
     const query = q.trim().toLowerCase()
     if (!query) return [...actions.slice(0, 3), ...nav.slice(0, 6)]
+    // Ask 平台：像问句且命中预置模板 → 置顶一条问答结果（模板制，不做开放 NL2SQL）
+    const ask: Hit[] = []
+    if (looksLikeQuestion(q) || matchAsk(q)) {
+      const t = matchAsk(q)
+      if (t) {
+        const a = t.run(s)
+        ask.push({ label: a.answer, sub: `问答 · ${a.question}`, to: a.to, icon: <MessageCircleQuestion size={15} className="text-violet-ink" />, kw: query })
+      }
+    }
     // 动作优先展示（用户键入动词时先看到可执行项）
-    const matchedActions = actions.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 6)
-    const matchedNav = nav.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 8)
-    return [...matchedActions, ...matchedNav].slice(0, 12)
+    const matchedActions = actions.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 5)
+    const matchedNav = nav.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 7)
+    return [...ask, ...matchedActions, ...matchedNav].slice(0, 12)
   }, [q, s, actions])
 
   useEffect(() => {

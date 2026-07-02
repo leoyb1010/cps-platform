@@ -7,6 +7,7 @@ import { useAuth, useCan, logout } from '../../lib/auth'
 import { portalApi } from '../../lib/portalApi'
 import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
+import { brandTheme } from '../../lib/whitelabel'
 
 // 客户门户外壳：刻意比内部 AppLayout 精简——无命令面板 / 无演示角色切换 /
 // 无简洁专家视图 / 无内部导航。仅品牌头部 + 按权限过滤的客户导航 + 退出。
@@ -133,11 +134,14 @@ function PortalBell() {
 export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[]; branding: ClientBranding }) {
   const [open, setOpen] = useState(false)
   const loc = useLocation()
+  const user = useAuth()
+  // 品牌白标：品牌门户按该品牌主色换肤（令牌第三层覆盖，组件零改动）。代理门户保持平台色。
+  const wl = user?.scopeType === 'brand' ? brandTheme(user.scopeId) : {}
   // 用路由路径作为 replay epoch 的种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
   const epoch = loc.pathname.length
   return (
     <ReplayContext.Provider value={{ epoch, replay: () => {} }}>
-      <div className="min-h-screen bg-canvas">
+      <div className="min-h-screen bg-canvas" style={wl}>
         <ClientSidebar groups={nav} branding={branding} open={open} onClose={() => setOpen(false)} />
         <div className="md:pl-[236px]">
           <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-5 backdrop-blur-md">

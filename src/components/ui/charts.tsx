@@ -490,3 +490,60 @@ export function FundSankey({
     </svg>
   )
 }
+
+/* ── LTV 预测带（实线历史 + 虚线预测 + 阴影区间）────────
+   对 cohort/LTV 曲线做指数衰减外推，画预测区间带，指导合约定价。纯前端。 */
+export function ForecastLine({
+  data,
+  forecast = 3,
+  labels,
+  tone = 'brand',
+  height = 170,
+}: {
+  data: number[]
+  forecast?: number // 外推点数
+  labels?: string[]
+  tone?: Tone
+  height?: number
+}) {
+  const id = useId().replace(/:/g, '')
+  if (data.length < 2) return <svg style={{ height }} className="w-full" />
+  // 末段斜率外推 + 衰减（LTV 累计增速递减）
+  const last = data[data.length - 1]
+  const slope = last - data[data.length - 2]
+  const proj: number[] = []
+  let v = last
+  for (let i = 1; i <= forecast; i++) { v += slope * Math.pow(0.7, i); proj.push(+v.toFixed(1)) }
+  const all = [...data, ...proj]
+  const W = 640, H = height, padL = 8, padR = 8, padB = labels ? 22 : 8, padT = 8
+  const min = Math.min(...all) * 0.96
+  const max = Math.max(...all) * 1.05
+  const span = max - min || 1
+  const iw = W - padL - padR, ih = H - padT - padB
+  const step = iw / (all.length - 1)
+  const x = (i: number) => padL + i * step
+  const y = (val: number) => padT + ih - ((val - min) / span) * ih
+  const histPts = data.map((val, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')
+  const projStart = data.length - 1
+  const projPts = [data[data.length - 1], ...proj].map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')
+  // 预测区间带（±12% 递增不确定性）
+  const bandUp = [data[data.length - 1], ...proj.map((p, i) => p * (1 + 0.06 * (i + 1)))]
+  const bandDn = [data[data.length - 1], ...proj.map((p, i) => p * (1 - 0.06 * (i + 1)))]
+  const bandPath = `${bandUp.map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')} ${bandDn.map((val, i) => `L${x(projStart + bandDn.length - 1 - i).toFixed(1)},${y(bandDn[bandDn.length - 1 - i]).toFixed(1)}`).join(' ')} Z`
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
+      <defs><linearGradient id={`fc-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={toneVar[tone]} stopOpacity={0.14} /><stop offset="100%" stopColor={toneVar[tone]} stopOpacity={0} /></linearGradient></defs>
+      {[0, 0.5, 1].map((g, i) => <line key={i} x1={padL} x2={W - padR} y1={padT + ih * g} y2={padT + ih * g} stroke="rgba(20,21,26,.06)" />)}
+      {/* 历史面积 */}
+      <path d={`${histPts} L${x(projStart).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`} fill={`url(#fc-${id})`} />
+      {/* 预测区间带 */}
+      <path d={bandPath} fill={toneVar[tone]} fillOpacity={0.1} />
+      {/* 历史实线 */}
+      <path d={histPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
+      {/* 预测虚线 */}
+      <path d={projPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} />
+      <circle cx={x(data.length - 1)} cy={y(last)} r={3} fill={toneVar[tone]} />
+      {labels && labels.map((l, i) => (i % 2 === 0 || i === labels.length - 1) ? <text key={i} x={x(i)} y={H - 6} fontSize={10} fill="var(--color-ink-4)" textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}>{l}</text> : null)}
+    </svg>
+  )
+}
