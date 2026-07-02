@@ -16,8 +16,8 @@ const FEATURES = [
 const METRICS = [
   { v: '¥2.84亿', k: '年化基础流水' },
   { v: '99.4%', k: '归因覆盖率' },
-  { v: '76+', k: '自动化测试' },
-  { v: '21', k: 'RBAC 权限点' },
+  { v: '190', k: '自动化测试' },
+  { v: '28', k: 'RBAC 权限点' },
 ]
 
 export function AuthShell({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
