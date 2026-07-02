@@ -141,11 +141,16 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
         <div className="ml-auto flex items-center gap-1.5 text-[11.5px] text-ink-4"><ShieldCheck size={13} className="text-good-ink" /> 平台担保结算</div>
       </header>
 
-      {/* Hero —— 双列：左主张 + 右浮动示例套餐卡 */}
+      {/* Hero —— 双列：左主张 + 右浮动示例套餐卡。主视觉图作右侧氛围层，左侧渐变遮罩保文字可读。 */}
       <section className="relative overflow-hidden border-b border-line">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand/[0.08] blur-3xl" />
+        {/* 主视觉背景（右侧浮卡礼盒的 3D 渲染）+ 从左向右的遮罩：左文案区始终干净可读 */}
+        <div
+          className="pointer-events-none absolute inset-0 bg-cover bg-right bg-no-repeat opacity-[0.5]"
+          style={{ backgroundImage: 'url(./img/hero-market-main.webp)' }}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-canvas via-canvas/85 to-canvas/20" />
         <div className="pointer-events-none absolute -left-20 top-16 h-64 w-64 rounded-full bg-brand/[0.05] blur-3xl" />
-        <div className="mx-auto grid max-w-[1180px] grid-cols-1 items-center gap-8 px-5 py-12 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:py-16">
+        <div className="relative mx-auto grid max-w-[1180px] grid-cols-1 items-center gap-8 px-5 py-12 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:py-16">
           <div className="animate-in">
             <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/[0.05] px-2.5 py-1 text-[11.5px] font-medium text-brand-ink"><Sparkles size={12} /> 多品牌订阅 · 一站搭配</div>
             <h1 className="text-[34px] font-semibold leading-[1.1] tracking-[-0.025em] text-ink sm:text-[44px] lg:text-[50px]">把喜欢的订阅<br /><span className="text-brand">装进一个套餐</span></h1>

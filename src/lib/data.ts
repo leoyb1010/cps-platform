@@ -630,6 +630,23 @@ export interface AigcAsset {
   ltv: number // 素材维度净 LTV（元）—— 排名依据
   status: AigcStatus
 }
+
+/* 素材缩略图：按关联品牌品类映射到 public/img 的 6 张抽象营销图（无真实品牌标识）。
+   兜底按素材类型（视频/文案/图片）。用于 AIGC 实验台行缩略 + 详情大图。 */
+const AIGC_BRAND_THUMB: Record<string, string> = {
+  youdao: 'study', // 学习工具 → 学习意象
+  wps: 'office', // 效率办公
+  mango: 'video', // 影音视频
+  bilibili: 'video',
+  ximalaya: 'audio', // 音频播客
+  zhihu: 'reading', // 知识阅读
+  keep: 'fitness', // 健身
+}
+const AIGC_TYPE_THUMB: Record<CreativeType, string> = { image: 'study', video: 'video', copy: 'office' }
+export function aigcThumb(a: { brandId: string; type: CreativeType }): string {
+  const key = AIGC_BRAND_THUMB[a.brandId] ?? AIGC_TYPE_THUMB[a.type] ?? 'study'
+  return `./img/aigc-thumb-${key}.webp`
+}
 export const aigcAssets: AigcAsset[] = [
   { id: 'AI-3301', name: '有道词典·考研冲刺图', type: 'image', brandId: 'youdao', credits: 120, ctr: 4.8, cvr: 3.1, ltv: 104, status: 'collected' },
   { id: 'AI-3302', name: '芒果会员·热剧短视频', type: 'video', brandId: 'mango', credits: 480, ctr: 6.2, cvr: 2.4, ltv: 78, status: 'live' },

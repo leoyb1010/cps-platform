@@ -110,7 +110,13 @@ export default function LandingPage() {
           </div>
         )}
 
-        <div className="px-5 py-6">
+        {/* 主视觉 banner（会员卡 + 折扣徽章 3D）：营造转化氛围，底部渐隐到内容区 */}
+        <div className="relative overflow-hidden">
+          <img src="./img/hero-landing-bundle.webp" alt="" className="h-[180px] w-full object-cover object-top" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-surface to-transparent" />
+        </div>
+
+        <div className="px-5 pb-6 pt-3">
           {/* 主张 */}
           <div className="mb-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium" style={{ background: `color-mix(in srgb, ${theme} 12%, transparent)`, color: theme }}>
             <Sparkles size={11} /> 组合订阅 · 一站开通

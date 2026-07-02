@@ -95,10 +95,15 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
 }
 
 /* ── EmptyState ────────────────────────────────── */
-export function EmptyState({ icon, title, desc }: { icon?: ReactNode; title: string; desc?: string }) {
+// art：可选插画（public/img 细线条空态图），优先于 icon 小图标——空列表更有温度。
+export function EmptyState({ icon, art, title, desc }: { icon?: ReactNode; art?: 'no-data' | 'all-clear' | 'growth'; title: string; desc?: string }) {
   return (
     <div className="grid place-items-center gap-2 px-6 py-12 text-center">
-      {icon && <span className="grid h-11 w-11 place-items-center rounded-xl bg-surface-muted text-ink-4">{icon}</span>}
+      {art ? (
+        <img src={`./img/${art === 'no-data' ? 'empty-no-data' : art === 'all-clear' ? 'empty-all-clear' : 'illust-growth'}.webp`} alt="" className="mb-1 h-28 w-auto opacity-90" />
+      ) : icon ? (
+        <span className="grid h-11 w-11 place-items-center rounded-xl bg-surface-muted text-ink-4">{icon}</span>
+      ) : null}
       <div className="text-[13px] font-medium text-ink-2">{title}</div>
       {desc && <div className="max-w-xs text-[12px] text-ink-4">{desc}</div>}
     </div>

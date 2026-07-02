@@ -21,6 +21,7 @@ import { Field, Select, Textarea } from '../components/ui/forms'
 import {
   aigcAssets as seed,
   aigcCredits,
+  aigcThumb,
   brandById,
   CREATIVE_TYPE_LABEL,
   AIGC_STATUS,
@@ -49,6 +50,12 @@ const DEMO_CFG: FactoryConfig = {
     { id: 'reel', label: '短视频脚本', modality: 'video', description: '抖音/视频号口播脚本 + 分镜', defaultPlatform: 'douyin' },
     { id: 'copy', label: '投放文案', modality: 'text', description: '标题 + 正文多版本', defaultPlatform: 'xhs' },
   ],
+}
+
+// 本次生成条目缩略：按素材类型 id 映射到品类图（视频类→video，文案→office，图片→study）
+function genThumb(assetType: string): string {
+  const key = /video|reel/.test(assetType) ? 'video' : /copy|text/.test(assetType) ? 'office' : 'study'
+  return `./img/aigc-thumb-${key}.webp`
 }
 
 export default function Aigc() {
@@ -110,7 +117,8 @@ export default function Aigc() {
           <div className="space-y-2">
             {gens.map((g) => (
               <div key={g.jobId} className="flex items-center gap-3 rounded-lg border border-line bg-surface-muted p-3">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-good-soft text-good-ink"><CheckCircle2 size={16} /></span>
+                <img src={genThumb(g.assetType)} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover ring-1 ring-line" />
+                <CheckCircle2 size={16} className="shrink-0 text-good-ink" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] font-medium text-ink">{g.assetLabel} · {g.prompt}</div>
                   <div className="text-[11px] text-ink-4">{g.jobId} · 消耗 {g.credits} 积分</div>
@@ -148,7 +156,12 @@ export default function Aigc() {
             const ltvPct = Math.min(100, (a.ltv / Math.max(1, bestLtv)) * 100)
             return (
               <Row key={a.id} onClick={(e) => { setOpenId(a.id); pop.openAt(e) }}>
-                <Td className="pl-3"><span className="text-[12.5px] font-medium text-ink">{a.name}</span></Td>
+                <Td className="pl-3">
+                  <div className="flex items-center gap-2.5">
+                    <img src={aigcThumb(a)} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md object-cover ring-1 ring-line" />
+                    <span className="text-[12.5px] font-medium text-ink">{a.name}</span>
+                  </div>
+                </Td>
                 <Td><span className="text-[12px]">{CREATIVE_TYPE_LABEL[a.type]}</span></Td>
                 <Td><div className="flex items-center gap-2">{b && <BrandMark brand={b.id} mark={b.mark} size={22} />}<span className="text-[12px] text-ink-3">{b?.name ?? a.brandId}</span></div></Td>
                 <Td right mono className="text-[12.5px]">{a.credits}</Td>
@@ -317,6 +330,10 @@ function AigcDrawer({ asset, anchor, onClose }: { asset: AigcAsset | null; ancho
   const st = AIGC_STATUS[a.status]
   return (
     <DetailPopover anchor={anchor} onClose={onClose} width={400} title={<span>{a.name}</span>} desc={<span>{CREATIVE_TYPE_LABEL[a.type]} · {b?.name}</span>} footer={<Button variant="ghost" onClick={onClose}>关闭</Button>}>
+      {/* 素材预览大图（品类抽象视觉；连续包月合规标识由投放侧承载） */}
+      <div className="mb-3 overflow-hidden rounded-lg ring-1 ring-line">
+        <img src={aigcThumb(a)} alt="素材预览" className="aspect-[4/3] w-full object-cover" />
+      </div>
       <div className="flex items-center justify-between rounded-lg border border-line bg-surface-muted p-3.5">
         <div><div className="text-[12.5px] font-medium text-ink">{CREATIVE_TYPE_LABEL[a.type]}素材</div><div className="mt-0.5 text-[11px] text-ink-4">消耗 {a.credits} 积分</div></div>
         <Badge tone={st.tone}>{st.label}</Badge>

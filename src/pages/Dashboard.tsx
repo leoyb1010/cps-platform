@@ -135,7 +135,7 @@ export default function Dashboard() {
             right={<Badge tone={actions.length ? 'alert' : 'good'} dot>{actions.length ? `${actions.length} 件待办` : '已清空'}</Badge>}
           />
           {actions.length === 0 ? (
-            <EmptyState icon={<ShieldCheck size={20} />} title="今日待办已清空 🎉" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
+            <EmptyState art="all-clear" title="今日待办已清空 🎉" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
           ) : (
             <div className="flex flex-col gap-2">
               {actions.slice(0, 3).map((a) => (
@@ -184,7 +184,7 @@ export default function Dashboard() {
         <Card style={rev(0.12)} className="lg:col-span-2">
           <CardTitle title="今日待办" desc="需人工处理事项 · 支持一键操作" right={<Badge tone={actions.length ? 'alert' : 'good'}>{actions.length ? `${actions.length} 项待办` : '已清空'}</Badge>} />
           {actions.length === 0 ? (
-            <EmptyState icon={<ShieldCheck size={20} />} title="今日待办已清空" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
+            <EmptyState art="all-clear" title="今日待办已清空" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
           ) : (
             <div className="flex flex-col gap-2">
               {actions.map((a) => (
@@ -202,7 +202,7 @@ export default function Dashboard() {
             <span className="ml-auto inline-flex items-center gap-1.5 text-[11px] text-good-ink"><span className="h-1.5 w-1.5 rounded-full bg-good" style={{ animation: 'blink 1.6s ease-in-out infinite' }} />事件流</span>
           </div>
           {s.activity.length === 0 ? (
-            <EmptyState icon={<Activity size={20} />} title="暂无联动事件" desc="处理待办后，跨模块链路会实时记录在这里" />
+            <EmptyState art="no-data" title="暂无联动事件" desc="处理待办后，跨模块链路会实时记录在这里" />
           ) : (
             <div className="max-h-[230px] overflow-y-auto px-3 py-2">
               {s.activity.map((it) => (
