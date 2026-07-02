@@ -74,3 +74,35 @@ test('退出登录 → 回到登录页', async ({ page }) => {
     await expect(page).toHaveURL(/#\/login/)
   }
 })
+
+test('权限路由守卫：审计角色直链配置中心 → 弹回总览', async ({ page }) => {
+  await login(page, 'audit')
+  await page.goto('/#/settings')
+  await expect(page).toHaveURL(/#\/$/) // RequirePerm：audit 无 config.write → 回总览
+  await expect(page.getByRole('heading', { name: '经营总览' })).toBeVisible()
+})
+
+test('订阅超市（免登录 C 端）：演示模式货架可选购、组合算价出折扣', async ({ page }) => {
+  await page.goto('/#/market')
+  // 演示模式本地货架：商品卡渲染
+  const cards = page.locator('[role="button"][aria-pressed]')
+  await expect(cards.first()).toBeVisible({ timeout: 5000 })
+  expect(await cards.count()).toBeGreaterThanOrEqual(4)
+  // 选 2 件（跳开互斥组：第 1 与第 3）
+  await cards.nth(0).click()
+  await cards.nth(2).click()
+  // 侧栏出现套餐价与组合优惠（满 2 件 9 折）。"组合优惠"页脚说明也含该词 → 取首个（优惠行）
+  await expect(page.getByText('套餐首单价')).toBeVisible({ timeout: 5000 })
+  await expect(page.getByText(/组合优惠/).first()).toBeVisible()
+  // 生成套餐 → 待支付
+  await page.getByRole('button', { name: /生成我的订阅套餐/ }).click()
+  await expect(page.getByText('套餐已生成 · 待支付')).toBeVisible({ timeout: 5000 })
+})
+
+test('门户演示账户：品牌方登录进入品牌门户', async ({ page }) => {
+  await page.goto('/#/portal/login')
+  // 一键填入品牌演示账户
+  await page.getByRole('button', { name: /有道品牌运营/ }).click()
+  await page.getByRole('button', { name: '登录' }).click()
+  await expect(page).toHaveURL(/#\/portal\/brand/, { timeout: 5000 })
+})

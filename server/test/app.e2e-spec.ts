@@ -50,11 +50,16 @@ beforeAll(async () => {
   // 在导入 AppModule(及其 PrismaClient)前：删旧 test.db → 建表 → 灌种子。
   // 删文件而非 --force-reset，保证干净态的同时避开危险操作确认；软删除/幂等键等有状态用例顺序无关、可重复。
   const env = { ...process.env, DATABASE_URL: 'file:./test.db' }
+  // SQLite 相对路径按 schema.prisma 所在目录解析 → 实际库在 server/prisma/test.db。
+  // 旧版本删的是 server/test.db（删了个寂寞），跨 run 残留数据长期污染测试库——
+  // 直到 refundedOrderId 加唯一约束时 db push 失败才显形。两处都删，兼清历史残留。
   for (const f of ['test.db', 'test.db-journal', 'test.db-wal', 'test.db-shm']) {
-    try {
-      rmSync(`${__dirname}/../${f}`)
-    } catch {
-      /* 不存在则忽略 */
+    for (const dir of ['..', '../prisma']) {
+      try {
+        rmSync(`${__dirname}/${dir}/${f}`)
+      } catch {
+        /* 不存在则忽略 */
+      }
     }
   }
   execSync('npx prisma db push --skip-generate --accept-data-loss', { env, stdio: 'ignore' })
@@ -969,6 +974,73 @@ describe('履约引擎（债2，红线：不破恒等式 I）', () => {
   })
 })
 
+describe('退款去重收口（ticket.refund 补锚）+ 幂等键资源绑定', () => {
+  const reversalOf = async (su: string, sid: string) =>
+    (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`)).body.find((s: any) => s.id === sid)?.reversal ?? 0
+
+  it('order.refund 先行 → 同原单工单退款不重复冲账（跨路径锚对 ticket.refund 也生效）', async () => {
+    const su = await token('admin')
+    // 造单：ximalaya ¥60 → 先走 order.refund
+    const ing = await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`)
+      .send({ brandId: 'ximalaya', agentId: 'A-2041', type: 'first', amount: 60, plan: '喜马拉雅 VIP 连续包月' })
+    const oid = ing.body.orderId
+    const rf = await request(httpServer).post(`/orders/${oid}/refund`).set('Authorization', `Bearer ${su}`)
+    expect(rf.body.ok).toBe(true)
+    const afterOrderRefund = await reversalOf(su, 'S-2405-XM')
+    // 同原单再来一张工单 → 退款：工单应解决，但资金零联动（不双倍冲账/不双扣代理）
+    const tk = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`)
+      .send({ source: 'heimao', reason: '重复投诉同一订单', orderId: oid })
+    expect(tk.body.ok).toBe(true)
+    const trf = await request(httpServer).post(`/tickets/${tk.body.ticketId}/refund`).set('Authorization', `Bearer ${su}`)
+    expect(trf.body.ok).toBe(true)
+    expect(trf.body.amount).toBe(0) // 未重复退款
+    expect(await reversalOf(su, 'S-2405-XM')).toBe(afterOrderRefund) // reversal 一分未多
+    // 工单确已解决
+    const tickets = await request(httpServer).get('/tickets').set('Authorization', `Bearer ${su}`).expect(200)
+    expect(tickets.body.find((t: any) => t.id === tk.body.ticketId)?.status).toBe('resolved')
+    // 对账仍 ok
+    const recon = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
+    expect(recon.body.ok).toBe(true)
+  })
+
+  it('一单多工单：第二张工单退款不再动钱（/complaints/ingest 允许同 orderId 多来源）', async () => {
+    const su = await token('admin')
+    const ing = await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`)
+      .send({ brandId: 'ximalaya', agentId: 'A-2041', type: 'first', amount: 45, plan: '喜马拉雅 VIP 连续包月' })
+    const oid = ing.body.orderId
+    const t1 = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: 'alipay', reason: '扣费争议', orderId: oid })
+    const t2 = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: '12315', reason: '同单再投', orderId: oid })
+    const r1 = await request(httpServer).post(`/tickets/${t1.body.ticketId}/refund`).set('Authorization', `Bearer ${su}`)
+    expect(r1.body.ok).toBe(true)
+    expect(r1.body.amount).toBe(45) // 首张真退
+    const afterFirst = await reversalOf(su, 'S-2405-XM')
+    const r2 = await request(httpServer).post(`/tickets/${t2.body.ticketId}/refund`).set('Authorization', `Bearer ${su}`)
+    expect(r2.body.ok).toBe(true)
+    expect(r2.body.amount).toBe(0) // 第二张只解决工单，不再动钱
+    expect(await reversalOf(su, 'S-2405-XM')).toBe(afterFirst)
+  })
+
+  it('幂等键绑定资源：同一 Idempotency-Key 复用在两笔不同订单上 → 各自执行（不静默回放首单）', async () => {
+    const su = await token('admin')
+    const mk = async (amount: number) => (await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`)
+      .send({ brandId: 'ximalaya', agentId: 'A-2041', type: 'first', amount, plan: '喜马拉雅 VIP 连续包月' })).body.orderId
+    const o1 = await mk(21)
+    const o2 = await mk(22)
+    const key = 'reused-batch-key-1'
+    const r1 = await request(httpServer).post(`/orders/${o1}/refund`).set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect(r1.body.ok).toBe(true)
+    expect(r1.body.amount).toBe(21)
+    const r2 = await request(httpServer).post(`/orders/${o2}/refund`).set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect(r2.body.ok).toBe(true)
+    expect(r2.body.amount).toBe(22) // 第二笔真实执行了自己的退款，而非回放 21
+    expect(r2.body.replayed).toBeUndefined()
+    // 同资源同键 → 回放
+    const r1b = await request(httpServer).post(`/orders/${o1}/refund`).set('Authorization', `Bearer ${su}`).set('Idempotency-Key', key)
+    expect(r1b.body.replayed).toBe(true)
+    expect(r1b.body.amount).toBe(21)
+  })
+})
+
 describe('业务写端点 + 审计', () => {
   it('品牌状态变更落库并写审计', async () => {
     const su = await token('admin')
@@ -1112,10 +1184,19 @@ describe('准备金分期释放（守恒式 II/III/IV，不破恒等式 I）', (
 })
 
 describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () => {
-  // 取一个 live 商品作签约标的
+  // 取一个「属于有道品牌」的 live 商品作签约标的：凭证 mch_youdao 绑 brandId=youdao，
+  // 签约商品必须同品牌（跨品牌签约已被服务端拒绝——那正是资金归属错乱的来源）。
   async function liveProductId(): Promise<string> {
     const r = await request(httpServer).get('/market/products').expect(200)
-    return r.body[0].id
+    const p = r.body.find((x: { brandKey: string }) => x.brandKey === 'youdao') ?? r.body[0]
+    return p.id
+  }
+
+  // 取一个「非有道品牌」的 live 商品，用于跨品牌签约拒绝用例
+  async function otherBrandProductId(): Promise<string | null> {
+    const r = await request(httpServer).get('/market/products').expect(200)
+    const p = r.body.find((x: { brandKey: string }) => x.brandKey !== 'youdao')
+    return p?.id ?? null
   }
 
   // 有道下单（form-data，RSA 签）→ 返回 orderId
@@ -1158,6 +1239,16 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     // 解约（RSA）
     const u = await request(httpServer).post('/order/outside/unsign').type('form').send(ydSign({ orderId: so }) as Record<string, string>)
     expect(u.body.code).toBe(0)
+  })
+
+  it('跨品牌签约被拒：有道凭证签约他牌商品 → 124 商品不可用（资金归属不错记）', async () => {
+    const pid = await otherBrandProductId()
+    if (!pid) return // 种子无他牌 live 商品时跳过
+    const co = 'CO-xbrand-' + Math.random().toString(36).slice(2, 8)
+    const r = await request(httpServer).post('/pay/outside/order').type('form')
+      .send(ydSign({ goodsId: pid, custOrderId: co, phone: '13900002222', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
+    expect(r.body.code).toBe(124) // 有道码表：商品不可用（内部 40004 → 对外 124）
+    expect(r.body.data ?? null).toBeNull() // 未落签约单
   })
 
   it('C1 跨路径退款只冲账一次：order.refund 与 cps.refund 同锚去重，对账不破', async () => {

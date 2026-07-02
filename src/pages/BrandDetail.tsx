@@ -180,15 +180,26 @@ export default function BrandDetail() {
 }
 
 function EditConfig({ brandId, feeRate, period, reservePct, path, onClose, onSaved }: { brandId: string; feeRate: number; period: number; reservePct: number; path: SettlePath; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = useState({ feeRate, period, reservePct, path })
+  // 数值以字符串暂存、保存时钳制（对齐 Settings 的 NumField）：清空不落 0（回退原值），越界收敛到边界
+  const [f, setF] = useState({ feeRate: String(feeRate), period: String(period), reservePct: String(reservePct), path })
+  const clamp = (v: string, min: number, max: number, prev: number) => (v.trim() === '' || Number.isNaN(+v) ? prev : Math.min(max, Math.max(min, +v)))
+  const save = () => {
+    updateBrandConfig(brandId, {
+      feeRate: clamp(f.feeRate, 1, 100, feeRate),
+      period: clamp(f.period, 1, 365, period),
+      reservePct: clamp(f.reservePct, 0, 100, reservePct),
+      path: f.path,
+    })
+    onSaved()
+  }
   return (
-    <Modal open onClose={onClose} title="编辑接入配置" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={() => { updateBrandConfig(brandId, f); onSaved() }} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
+    <Modal open onClose={onClose} title="编辑接入配置" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={save} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
       <div className="space-y-3.5">
         <Field label="资金路径"><Select value={f.path} onChange={(e) => setF({ ...f, path: e.target.value as SettlePath })}><option value="direct">直连</option><option value="licensed">持牌分账</option><option value="mixed">混合</option></Select></Field>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="费率 %"><Input type="number" value={f.feeRate} onChange={(e) => setF({ ...f, feeRate: +e.target.value })} /></Field>
-          <Field label="账期 T+"><Input type="number" value={f.period} onChange={(e) => setF({ ...f, period: +e.target.value })} /></Field>
-          <Field label="准备金 %"><Input type="number" value={f.reservePct} onChange={(e) => setF({ ...f, reservePct: +e.target.value })} /></Field>
+          <Field label="费率 %" hint="1–100"><Input type="number" min={1} max={100} value={f.feeRate} onChange={(e) => setF({ ...f, feeRate: e.target.value })} /></Field>
+          <Field label="账期 T+" hint="1–365"><Input type="number" min={1} max={365} value={f.period} onChange={(e) => setF({ ...f, period: e.target.value })} /></Field>
+          <Field label="准备金 %" hint="0–100"><Input type="number" min={0} max={100} value={f.reservePct} onChange={(e) => setF({ ...f, reservePct: e.target.value })} /></Field>
         </div>
         <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] text-ink-3">风控阈值采用支付平台统一口径，不在此覆盖；保存即生效（变更进审计）。</div>
       </div>

@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea } from '../components/ui/forms'
 import { BARTER_RESOURCE_TYPES, INVOICE_STATUS } from '../lib/dict'
 import { useStore } from '../lib/store'
 import { useApi, bizApi } from '../lib/adminApi'
+import { isRealApi } from '../lib/http'
 import { brandById } from '../lib/data'
 import { money } from '../lib/format'
 
@@ -58,6 +59,8 @@ export default function Barter() {
           </>
         }
       />
+
+      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示模式 · 连接真实后端后展示服务端置换台账</div>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card mark><Stat label="台账条目" value={String(total)} sub={<span>待确认 {pending}</span>} /></Card>

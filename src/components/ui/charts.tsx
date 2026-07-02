@@ -15,6 +15,8 @@ export function Sparkline({
   w?: number
   h?: number
 }) {
+  // 数据点不足（0/1 个）：除以 length-1 会得 NaN，返回同尺寸空位图
+  if (data.length < 2) return <svg width={w} height={h} className="overflow-visible" />
   const min = Math.min(...data)
   const max = Math.max(...data)
   const span = max - min || 1
@@ -49,8 +51,14 @@ export function AreaLine({
   const padR = 8
   const padB = labels ? 22 : 8
   const padT = 8
-  const min = Math.min(...data) * 0.96
-  const max = Math.max(...data) * 1.04
+  // 数据点不足（0/1 个）：除以 length-1 会得 NaN，返回同尺寸空位图
+  if (data.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} />
+  // 加性留白（乘性 ×0.96/×1.04 在负值时反向放大，负数趋势会被裁掉）
+  const min0 = Math.min(...data)
+  const max0 = Math.max(...data)
+  const span0 = max0 - min0 || 1
+  const min = min0 - span0 * 0.04
+  const max = max0 + span0 * 0.04
   const span = max - min || 1
   const iw = W - padL - padR
   const ih = H - padT - padB
@@ -75,10 +83,13 @@ export function AreaLine({
           x2={W - padR}
           y1={padT + ih * g}
           y2={padT + ih * g}
-          stroke="rgba(18,18,20,0.06)"
+          stroke="var(--color-line)"
           strokeWidth={1}
         />
       ))}
+      {min0 < 0 && max0 > 0 && (
+        <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="var(--color-line-strong)" strokeWidth={1} strokeDasharray="4 3" />
+      )}
       <path d={area} fill={`url(#g-${id})`} />
       <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
       <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r={3} fill={toneVar[tone]} />
@@ -116,7 +127,8 @@ export function Bars({
   height?: number
   format?: (v: number) => string
 }) {
-  const max = Math.max(...data) * 1.08 || 1
+  // 空数组 Math.max(...[]) 得 -Infinity；负值柱高钳到 0，避免反向溢出
+  const max = (data.length ? Math.max(...data) : 0) * 1.08 || 1
   return (
     <div className="flex items-end gap-2" style={{ height }}>
       {data.map((v, i) => (
@@ -127,7 +139,7 @@ export function Bars({
           <div
             className="w-full rounded-t-[4px] transition-[height] duration-300 ease-out"
             style={{
-              height: `${(v / max) * (height - 24)}px`,
+              height: `${Math.max(0, (v / max) * (height - 24))}px`,
               background: toneVar[tone],
               opacity: i === data.length - 1 ? 1 : 0.42,
             }}
@@ -284,7 +296,8 @@ export function Gauge({
       <text x="100" y="9" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{(max / 2).toFixed(decimals)}</text>
       <text x="188" y="124" textAnchor="middle" className="tnum" fontSize="9" fill="var(--color-ink-5)">{max.toFixed(decimals)}</text>
       <line x1={tx0} y1={ty0} x2={tx1} y2={ty1} stroke="var(--color-ink)" strokeWidth="2" />
-      <text x={tx0 + 8} y={ty0 + 6} className="tnum" fontSize="8.5" fill="var(--color-ink-2)">目标 {target.toFixed(decimals)}</text>
+      {/* 目标标签：右半侧改为左置右对齐，避免目标接近 max 时与最大刻度标签相撞；y 钳制避开底部刻度 */}
+      <text x={tx0 > cx0 ? tx0 - 8 : tx0 + 8} y={Math.min(ty0 + 6, 114)} textAnchor={tx0 > cx0 ? 'end' : 'start'} className="tnum" fontSize="8.5" fill="var(--color-ink-2)">目标 {target.toFixed(decimals)}</text>
       <text x="100" y="98" textAnchor="middle" className="tnum" fontSize="34" fontWeight="700" fill="var(--color-ink)" letterSpacing="-1">
         {value.toFixed(decimals)}
       </text>
@@ -311,6 +324,8 @@ export function CrosshairChart({
   fmtB: (v: number) => string
 }) {
   const id = useId().replace(/:/g, '')
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [hi, setHi] = useState<number | null>(null)
   const VBW = 588,
     VBH = 230
   const padL = 40,
@@ -320,6 +335,8 @@ export function CrosshairChart({
   const iw = VBW - padL - padR
   const ih = VBH - padT - padB
   const n = a.data.length
+  // 数据点不足（0/1 个）：除以 n-1 会得 NaN，返回同尺寸空位图（hooks 已全部调用完）
+  if (n < 2) return <div className="relative"><svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block' }} /></div>
   const xs = a.data.map((_, i) => padL + (i * iw) / (n - 1))
   const y = (v: number) => padT + ih * (1 - v / yMax)
   const gy = a.data.map(y)
@@ -327,8 +344,6 @@ export function CrosshairChart({
   const line = (ys: number[]) => ys.map((v, i) => `${i ? 'L' : 'M'}${xs[i].toFixed(1)},${v.toFixed(1)}`).join(' ')
   const area = `${line(gy)} L${xs[n - 1].toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`
   const grid = [1, 0.75, 0.5, 0.25]
-  const boxRef = useRef<HTMLDivElement>(null)
-  const [hi, setHi] = useState<number | null>(null)
   const onMove = (e: React.MouseEvent) => {
     const r = boxRef.current!.getBoundingClientRect()
     const sx = ((e.clientX - r.left) / r.width) * VBW
@@ -346,7 +361,8 @@ export function CrosshairChart({
   const labelIdx = (i: number) => i % 2 === 0 || i === n - 1
   return (
     <div ref={boxRef} className="relative">
-      <svg viewBox={`0 0 ${VBW} ${VBH}`} style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }}>
+      {/* preserveAspectRatio="none"：与鼠标定位/HTML tooltip 的满宽拉伸假设一致，避免非 588 宽度时 letterbox 漂移 */}
+      <svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }}>
         <defs>
           <linearGradient id={`cm-${id}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="var(--color-brand)" stopOpacity="0.14" />
@@ -355,7 +371,7 @@ export function CrosshairChart({
         </defs>
         {grid.map((g, i) => (
           <g key={i}>
-            <line x1={padL} x2={VBW - padR} y1={padT + ih * (1 - g)} y2={padT + ih * (1 - g)} stroke="rgba(20,21,26,.07)" />
+            <line x1={padL} x2={VBW - padR} y1={padT + ih * (1 - g)} y2={padT + ih * (1 - g)} stroke="var(--color-line)" />
             <text x={padL - 6} y={padT + ih * (1 - g) + 3} textAnchor="end" className="tnum" fontSize="9.5" fill="var(--color-ink-5)">
               {fmtA(yMax * g)}
             </text>
@@ -367,8 +383,8 @@ export function CrosshairChart({
         {hi !== null && (
           <>
             <line x1={xs[hi]} x2={xs[hi]} y1={padT} y2={padT + ih} stroke="var(--color-brand)" strokeWidth="1" strokeDasharray="3 3" />
-            <circle cx={xs[hi]} cy={gy[hi]} r="3.5" fill="#fff" stroke="var(--color-brand)" strokeWidth="1.8" />
-            <circle cx={xs[hi]} cy={ny[hi]} r="2.8" fill="#fff" stroke="var(--color-ink)" strokeWidth="1.6" />
+            <circle cx={xs[hi]} cy={gy[hi]} r="3.5" fill="var(--color-surface)" stroke="var(--color-brand)" strokeWidth="1.8" />
+            <circle cx={xs[hi]} cy={ny[hi]} r="2.8" fill="var(--color-surface)" stroke="var(--color-ink)" strokeWidth="1.6" />
           </>
         )}
         {labels.map((l, i) =>

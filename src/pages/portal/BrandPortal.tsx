@@ -29,7 +29,7 @@ export function BrandHome() {
               </Card>
               <Card><Stat label="活跃订阅" value={<CountUp to={d.activeSubs} group />} sub={<span>连续包月</span>} /></Card>
               <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 60 ? 'text-good-ink' : 'text-warn-ink'}>LTV 核心驱动</span>} /></Card>
-              <Card><Stat label="我的回款" value={money(d.brandShare)} hint="品牌回款侧，不含平台费与代理分润" sub={<span className="text-good-ink">累计 brandShare</span>} /></Card>
+              <Card><Stat label="我的回款" value={money(d.brandShare)} hint="品牌回款侧，不含平台费与代理分润" sub={<span className="text-good-ink">累计品牌留存回款</span>} /></Card>
             </div>
 
             <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
@@ -288,6 +288,7 @@ export function BrandBarter() {
   const { data, state, reload } = usePortalResource<BrandBarterRow[]>(() => portalApi.brandBarter())
   const marketApi = usePortalResource<{ id: string; name: string }[]>(() => portalApi.marketBrands())
   const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [f, setF] = useState({ counterpartyBrandId: '', resourceType: '广告位', myQuota: 500000, counterpartyQuota: 500000, invoiceStatus: 'pending' })
   const [bterms, setBterms] = useState({ valuation: '', deliveryWindow: '', note: '' })
   const respond = async (id: string, action: 'accept' | 'reject') => {
@@ -299,11 +300,12 @@ export function BrandBarter() {
   }
   const propose = async () => {
     if (!f.counterpartyBrandId) { toast({ tone: 'info', text: '请选择对手品牌' }); return }
+    setBusy(true) // 提交期间禁按钮，防双击发出重复置换提议
     try {
       const r = await portalApi.proposeBarter({ ...f, terms: bterms })
       if (r.ok) { toast({ tone: 'good', text: '置换提议已发出，等待对手品牌应答' }); setOpen(false); reload() }
       else toast({ tone: 'alert', text: '发起失败，请重试' })
-    } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) }
+    } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(false) }
   }
   const others = (marketApi.data ?? [])
   return (
@@ -340,7 +342,7 @@ export function BrandBarter() {
         )}
       </PortalState>
       {open && (
-        <Modal open onClose={() => setOpen(false)} width={500} title="发起资源置换" footer={<><Button variant="ghost" onClick={() => setOpen(false)}>取消</Button><Button variant="primary" onClick={propose}>发起提议</Button></>}>
+        <Modal open onClose={() => setOpen(false)} width={500} title="发起资源置换" footer={<><Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>取消</Button><Button variant="primary" onClick={propose} loading={busy}>发起提议</Button></>}>
           <div className="space-y-3">
             <Field label="对手品牌"><Select value={f.counterpartyBrandId} onChange={(e) => setF({ ...f, counterpartyBrandId: e.target.value })}>{others.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
             <div className="grid grid-cols-2 gap-3">

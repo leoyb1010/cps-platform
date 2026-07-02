@@ -7,7 +7,6 @@ import { Field, Input, Textarea } from '../../components/ui/forms'
 import { PeriodFilter } from '../../components/ui/filters'
 import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
-import { isRealApi } from '../../lib/http'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars } from '../../components/portal/kit'
 import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
 import { money, pct } from '../../lib/format'
@@ -171,17 +170,25 @@ export function AgentPayouts() {
   const reqApi = usePortalResource<PayoutReq[]>(() => portalApi.agentPayoutRequests())
   const [reqOpen, setReqOpen] = useState(false)
   const [amount, setAmount] = useState(0)
+  const [busy, setBusy] = useState(false)
+  const [amountErr, setAmountErr] = useState('')
   const submit = async () => {
+    // 先本地校验：金额必须 >0 且不超过可提现余额；busy 期间禁提交防重复申请
+    const max = data?.payoutPending ?? 0
+    if (!(amount > 0)) { setAmountErr('提现金额需大于 0'); return }
+    if (amount > max) { setAmountErr(`不可超过可提现余额 ${money(max)}`); return }
+    setAmountErr('')
+    setBusy(true)
     try {
       const r = await portalApi.requestPayout(amount)
       if (r.ok) { toast({ tone: 'good', text: r.detail }); setReqOpen(false); reqApi.reload() }
       else toast({ tone: 'alert', text: r.detail })
-    } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) }
+    } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(false) }
   }
   const reqStatus: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' | 'alert' }> = { pending: { label: '审批中', tone: 'warn' }, approved: { label: '已批准', tone: 'good' }, paid: { label: '已打款', tone: 'good' }, rejected: { label: '已驳回', tone: 'alert' } }
   return (
     <>
-      <PageHeader title="我的分润" desc="你的分润结算与提现状态。" actions={data && <Button variant="primary" onClick={() => { setAmount(data.payoutPending); setReqOpen(true) }} disabled={!data || data.payoutPending <= 0}>申请提现</Button>} />
+      <PageHeader title="我的分润" desc="你的分润结算与提现状态。" actions={data && <Button variant="primary" onClick={() => { setAmount(data.payoutPending); setAmountErr(''); setReqOpen(true) }} disabled={!data || data.payoutPending <= 0}>申请提现</Button>} />
       <PortalState state={state} data={data} reload={reload} emptyWhen={(d) => d == null} emptyTitle="暂无分润">
         {(d) => !d ? null : (
           <>
@@ -211,9 +218,10 @@ export function AgentPayouts() {
         )}
       </PortalState>
       {reqOpen && (
-        <Modal open onClose={() => setReqOpen(false)} width={420} title="申请提现" footer={<><Button variant="ghost" onClick={() => setReqOpen(false)}>取消</Button><Button variant="primary" onClick={submit}>提交申请</Button></>}>
+        <Modal open onClose={() => setReqOpen(false)} width={420} title="申请提现" footer={<><Button variant="ghost" onClick={() => setReqOpen(false)} disabled={busy}>取消</Button><Button variant="primary" onClick={submit} loading={busy}>提交申请</Button></>}>
           <div className="mb-3 text-[12px] text-ink-3">可提现余额 {money(data?.payoutPending ?? 0)}，申请后等待平台审批。</div>
-          <Field label="提现金额 ¥"><Input type="number" value={amount} onChange={(e) => setAmount(+e.target.value)} /></Field>
+          <Field label="提现金额 ¥"><Input type="number" min={0} value={amount} onChange={(e) => { setAmount(+e.target.value); setAmountErr('') }} /></Field>
+          {amountErr && <div className="mt-1.5 text-[11.5px] text-alert-ink">{amountErr}</div>}
         </Modal>
       )}
     </>
@@ -255,7 +263,7 @@ export function AgentContracts() {
   const [err, setErr] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const load = () => {
-    if (!isRealApi) { setErr(true); return }
+    // 演示/真实两种模式都取数：portalApi 在演示态落到 portalDemo 的 scoped 合约（含可接挂单）
     portalApi.contracts<{ id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number }[]>().then(setRows).catch(() => setErr(true))
   }
   useEffect(load, [])

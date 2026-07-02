@@ -193,10 +193,9 @@ model Order {
   signOrderNo    String? // CPS 连续包月：所属签约单号（一签约对多扣款）；非签约订单为 null
   extOrderNo     String? // CPS 交易单号（支付宝侧商家单号 orderNo），退款按此定位单期
   period         Int? // CPS 扣款期数：首订 0，续期累加；非签约订单为 null
-  refundedOrderId String? // 退款单专用：指向被退的原扣款单 id，作跨路径退款去重的唯一锚（order.refund 与 cps.refund 共用）
+  refundedOrderId String? @unique // 退款单专用：指向被退的原扣款单 id。唯一约束=存储层"一原单至多一退"，兜底并发下两条退款路径同时通过应用层检查（NULL 不参与唯一，非退款单不受影响）
   createdAt      DateTime @default(now())
 
-  @@index([refundedOrderId])
   @@index([brandId])
   @@index([agentId])
   @@index([subscriptionId])

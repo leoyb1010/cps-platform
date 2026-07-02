@@ -31,7 +31,7 @@ import {
 } from '../lib/data'
 import { useStore, clearSettlement, reconcileSettlement, settleAgent } from '../lib/store'
 import { useViewMode } from '../lib/prefs'
-import { useToast } from '../components/ui/overlays'
+import { Confirm, useToast } from '../components/ui/overlays'
 import { DetailPopover, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Term } from '../components/ui/Term'
 import { type Settlement as SettlementT } from '../lib/data'
@@ -43,8 +43,11 @@ export default function Settlement() {
   const toast = useToast()
   const [tab, setTab] = useState<'brand' | 'agent'>('brand')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [batchConfirm, setBatchConfirm] = useState(false)
   const pop = useAnchoredPopover()
   const activeS = settlements.find((s) => s.id === openId) ?? null
+  // 本期待结算单（发起本期结算 = 一次性清掉全部 pending，需二次确认）
+  const pendingSettles = settlements.filter((x) => x.status === 'pending')
 
   const totalPlatformFee = settlements.reduce((s, x) => s + x.platformFee, 0)
   const totalReversal = settlements.reduce((s, x) => s + x.reversal, 0)
@@ -64,12 +67,9 @@ export default function Settlement() {
             <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>
             <Button
               variant="primary"
-              busyMs={500}
               onClick={() => {
-                const ids = settlements.filter((x) => x.status === 'pending').map((x) => x.id)
-                if (ids.length === 0) { toast({ tone: 'info', text: '本期无待结算单' }); return }
-                ids.forEach((id) => clearSettlement(id))
-                toast({ tone: 'good', text: `已发起本期结算 · ${ids.length} 单完成` })
+                if (pendingSettles.length === 0) { toast({ tone: 'info', text: '本期无待结算单' }); return }
+                setBatchConfirm(true)
               }}
             >
               发起本期结算 <ArrowRight size={14} />
@@ -309,6 +309,20 @@ export default function Settlement() {
         onClose={() => { setOpenId(null); pop.close() }}
         onClear={() => { if (activeS) { clearSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 已结算` }); setOpenId(null) } }}
         onReconcile={() => { if (activeS) { reconcileSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 差异已核销` }) } }}
+      />
+
+      {/* 批量结算二次确认：一次性清掉全部 pending，属资金动作，不可静默执行 */}
+      <Confirm
+        open={batchConfirm}
+        onClose={() => setBatchConfirm(false)}
+        onConfirm={() => {
+          const ids = pendingSettles.map((x) => x.id)
+          ids.forEach((id) => clearSettlement(id))
+          toast({ tone: 'good', text: `已发起本期结算 · ${ids.length} 单完成` })
+        }}
+        title="发起本期结算"
+        body={<span>将一次性结算 <b className="tnum">{pendingSettles.length}</b> 张待结算单，合计流水 <b className="tnum">{money(pendingSettles.reduce((s, x) => s + x.gross, 0))}</b>、代理分润 <b className="tnum">{money(pendingSettles.reduce((s, x) => s + x.agentPayout, 0))}</b>。确认发起？</span>}
+        confirmText="确认结算"
       />
     </>
   )

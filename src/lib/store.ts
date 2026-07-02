@@ -12,6 +12,7 @@ import {
   brands as seedBrands,
   contracts as seedContracts,
   brandById,
+  __syncLiveEntities,
   type Order,
   type Complaint,
   type Settlement,
@@ -107,7 +108,10 @@ export interface StoreState {
   contracts: GrowthContract[]
 }
 
-const KEY = 'cps-store-v2'
+// 持久化键按模式隔离：真实模式水合的服务端数据曾写进与演示模式相同的键，
+// 切回演示模式时残留的服务端订单（agentId「未知」、mid M-CPS）会污染精心编排的种子数据。
+// 演示键升 v3：v2 普遍已被历史真实会话污染，一次性弃用换干净种子（旧键静默留存，不迁移）。
+const KEY = isRealApi ? 'cps-store-v2-real' : 'cps-store-v3'
 let seq = 9000
 
 function clock() {
@@ -142,8 +146,10 @@ function load(): StoreState {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const p = JSON.parse(raw) as StoreState
-      // 基本完整性校验，缺字段则重置
-      if (p.orders && p.complaints && p.settlements && p.agents && p.merchants && p.brands) {
+      // 完整性校验须查形状而非仅真值：`{"orders":5}` 这种损坏值过了真值检查后，
+      // 首个 orders.filter 就白屏且无法自愈（页面渲染不出来，重置按钮点不到）。
+      const isArr = Array.isArray
+      if (isArr(p.orders) && isArr(p.complaints) && isArr(p.settlements) && isArr(p.agents) && isArr(p.merchants) && isArr(p.brands)) {
         // 恢复 seq 到「已持久化的最大发号」之上：seq 不仅给 activity，也给 订单/品牌/号池 id
         // （'O-'+seq、'brand-'+seq、'M-..'+seq）。只看 activity 会留缺口 → 刷新后重新发号碰撞。
         const nums = (s: string): number => {
@@ -160,16 +166,16 @@ function load(): StoreState {
         return {
           ...s,
           ...p,
-          activity: p.activity ?? [],
+          activity: Array.isArray(p.activity) ? p.activity : [],
           attributionConfig: p.attributionConfig ?? s.attributionConfig,
           platformConfig: p.platformConfig ?? s.platformConfig,
           platformParams: { ...s.platformParams, ...(p.platformParams ?? {}) },
           slaConfig: p.slaConfig ?? s.slaConfig,
           channelStates: p.channelStates ?? s.channelStates,
-          rules: p.rules ?? s.rules,
-          claims: p.claims ?? s.claims,
-          pendingAgents: p.pendingAgents ?? s.pendingAgents,
-          contracts: p.contracts ?? s.contracts,
+          rules: Array.isArray(p.rules) ? p.rules : s.rules,
+          claims: Array.isArray(p.claims) ? p.claims : s.claims,
+          pendingAgents: Array.isArray(p.pendingAgents) ? p.pendingAgents : s.pendingAgents,
+          contracts: Array.isArray(p.contracts) ? p.contracts : s.contracts,
         }
       }
     }
@@ -180,6 +186,7 @@ function load(): StoreState {
 }
 
 let state: StoreState = typeof localStorage !== 'undefined' ? load() : seed()
+__syncLiveEntities(state) // 启动即同步：brandById/agentById 跟随持久化状态而非静态种子
 const listeners = new Set<() => void>()
 
 function persist() {
@@ -191,7 +198,22 @@ function persist() {
 }
 function commit(next: StoreState) {
   state = next
+  __syncLiveEntities(state)
   persist()
+  listeners.forEach((l) => l())
+}
+
+/** 登出清场（真实模式）：清内存态 + 持久化缓存。
+ * 否则共享机器上，上一账号水合的全量业务数据（结算/工单/代理）会展示给下一位登录者。 */
+export function clearStoreOnLogout() {
+  if (!isRealApi) return // 演示模式的本地数据是产品的一部分，保留
+  try {
+    localStorage.removeItem(KEY)
+  } catch {
+    /* ignore */
+  }
+  state = seed()
+  __syncLiveEntities(state)
   listeners.forEach((l) => l())
 }
 function subscribe(l: () => void) {
@@ -207,9 +229,12 @@ const getSnapshot = () => state
  */
 export async function hydrateFromServer() {
   if (!isRealApi) return
-  // 每个集合独立取数：某集合无权限(403)则置空（用户本就看不到），
-  // 不让单个失败拖垮整体——这同时让数据级 RBAC 在 UI 自然生效。
-  const safe = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null)
+  // 每个集合独立取数，但区分失败语义：
+  //   403（无权限）→ 置空：用户本就看不到，这让数据级 RBAC 在 UI 自然生效；
+  //   网络错/5xx → 保留当前数据：一次瞬时 500 不应把整页清成"没有结算单"并持久化空集。
+  const EMPTY: unknown[] = []
+  const safe = async <T>(p: Promise<T>): Promise<T | null> =>
+    p.catch((e: unknown) => ((e as { status?: number })?.status === 403 ? (EMPTY as T) : null))
   const [brands, agents, merchants, ordersPage, settlements, tickets, config] = await Promise.all([
     safe(bizApi.brands<Partial<Brand>[]>()),
     safe(bizApi.agents<Partial<Agent>[]>()),
@@ -226,16 +251,18 @@ export async function hydrateFromServer() {
   const seedA = new Map(seedAgents.map((a) => [a.id, a]))
   const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
   const next: StoreState = {
-    // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖；无权限集合 → 空
-    brands: (brands ?? []).map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[],
-    agents: (agents ?? []).map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[],
-    merchants: (merchants ?? []).map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[],
-    orders: (orders ?? []) as Order[],
-    settlements: (settlements ?? []) as Settlement[],
-    complaints: (tickets ?? []).map((t) => {
-      const s = seedComplaints.find((c) => c.id === t.id)
-      return { ...(s ?? seedComplaints[0]), ...t } as Complaint
-    }),
+    // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖；403 → 空；网络错 → 保留现值
+    brands: brands ? (brands.map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[]) : state.brands,
+    agents: agents ? (agents.map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[]) : state.agents,
+    merchants: merchants ? (merchants.map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[]) : state.merchants,
+    orders: orders ? (orders as Order[]) : state.orders,
+    settlements: settlements ? (settlements as Settlement[]) : state.settlements,
+    complaints: tickets
+      ? tickets.map((t) => {
+          const s = seedComplaints.find((c) => c.id === t.id)
+          return { ...(s ?? seedComplaints[0]), ...t } as Complaint
+        })
+      : state.complaints,
     activity: state.activity,
     // 配置 KV：服务端 Config 表已持久化 → 回读覆盖本地 seed（无值则保留 seed，逐键兜底不被清空）
     attributionConfig: { ...state.attributionConfig, ...((config?.attributionConfig as object) ?? {}) },
@@ -316,6 +343,16 @@ export function resolveTicketWithRefund(ticketId: string) {
   if (!t || t.status === 'resolved') return
   const brand = brandById(t.brandId)
   const order = state.orders.find((o) => o.id === t.orderId)
+  // 跨路径去重锚（与服务端一致）：原单已被任一路径退过 → 只解决工单，不再动钱
+  if (order && state.orders.some((o) => o.type === 'refund' && o.refundedOrderId === order.id)) {
+    const complaints = state.complaints.map((c) =>
+      c.id === ticketId ? { ...c, status: 'resolved' as const, slaLeftMin: 0, owner: c.owner === '未分配' ? '客服一组 · 自动' : c.owner } : c,
+    )
+    const activity = logActivity(state, `工单 ${ticketId} 已解决 · 原单 ${order.id} 此前已退款，未重复冲账`, 'info')
+    commit({ ...state, complaints, activity })
+    mirror(() => bizApi.refundTicket(ticketId, newIdemKey()), '工单退款')
+    return
+  }
   const amount = order ? Math.abs(order.amount) || 33 : 33
   const share = Math.round(amount * agentShareRate(t.brandId)) // 代理分润冲减 = 退款额 × 该品牌代理分润占比
 
@@ -324,7 +361,7 @@ export function resolveTicketWithRefund(ticketId: string) {
     c.id === ticketId ? { ...c, status: 'resolved' as const, slaLeftMin: 0, owner: c.owner === '未分配' ? '客服一组 · 自动' : c.owner } : c,
   )
 
-  // 2) 订单 → 生成退款流水（若有原单）
+  // 2) 订单 → 生成退款流水（若有原单，带去重锚）
   let orders = state.orders
   if (order) {
     const refund: Order = {
@@ -337,6 +374,7 @@ export function resolveTicketWithRefund(ticketId: string) {
       amount: -amount,
       plan: order.plan,
       mid: order.mid,
+      refundedOrderId: order.id,
     }
     orders = [refund, ...state.orders]
   }
@@ -386,13 +424,20 @@ export function resolveTicketWithRefund(ticketId: string) {
   mirror(() => bizApi.refundTicket(ticketId, newIdemKey()), '工单退款')
 }
 
+/** 该订单是否已被退款（任一路径）——UI 用它禁用重复退款入口。 */
+export function isOrderRefunded(orderId: string): boolean {
+  return state.orders.some((o) => o.type === 'refund' && o.refundedOrderId === orderId)
+}
+
 // 订单驱动的退款（无工单）：订单冲正 → 结算冲账 → 代理分润回收
 export function refundOrder(orderId: string) {
   const order = state.orders.find((o) => o.id === orderId)
   if (!order || order.type === 'refund' || order.type === 'chargeback') return
+  // 防重复退款：同一原单第二次退会再次冲减代理分润/结算（资金双扣）。带锚判定，与服务端语义一致。
+  if (isOrderRefunded(orderId)) return
   const amount = Math.abs(order.amount)
   const share = Math.round(amount * agentShareRate(order.brandId))
-  const refund: Order = { id: 'O-' + ++seq, time: clock().slice(3), brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amount, plan: order.plan, mid: order.mid }
+  const refund: Order = { id: 'O-' + ++seq, time: clock().slice(3), brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amount, plan: order.plan, mid: order.mid, refundedOrderId: orderId }
   const orders = [refund, ...state.orders]
   const settlements = (() => {
     const idx = state.settlements.findIndex((s) => s.brandId === order.brandId)
@@ -416,7 +461,8 @@ export function updateTicket(ticketId: string, patch: Partial<Complaint>, note?:
   const complaints = state.complaints.map((c) => (c.id === ticketId ? { ...c, ...patch } : c))
   const activity = note ? logActivity(state, note, 'info') : state.activity
   commit({ ...state, complaints, activity })
-  mirror(() => bizApi.updateTicket(ticketId, { status: patch.status, owner: patch.owner, note }), '工单流转')
+  // level 必须镜像：升级为监管投诉若只活在本地，下次水合会被服务端旧值静默冲掉
+  mirror(() => bizApi.updateTicket(ticketId, { status: patch.status, owner: patch.owner, level: patch.level, note }), '工单流转')
 }
 
 // 品牌入驻：新建（默认审核中）
@@ -765,12 +811,15 @@ export function triggerOrderSync(brandId?: string) {
     commit({ ...next, activity: logActivity(next, '订单回传已从渠道同步（已对齐后端）', 'good') })
     return
   }
-  // mock：插入 1 条"刚回传"的续费订单，让订单流真的变长、通知中心有记录（不再谎报成功）
+  // mock：插入 1 条"刚回传"的续费订单，让订单流真的变长、通知中心有记录（不再谎报成功）。
+  // 严格限定在目标品牌内取参考单：跨品牌兜底会给 0 单品牌造出别家的订单（品牌归属错乱）。
   const pool = brandId ? state.orders.filter((o) => o.brandId === brandId) : state.orders
-  const ref = pool.find((o) => o.type === 'first') ?? state.orders[0]
-  const newOrders: Order[] = ref
-    ? [{ id: 'O-' + ++seq, time: '现在', brandId: ref.brandId, agentId: ref.agentId, channel: ref.channel, type: 'renew', amount: ref.amount, plan: ref.plan, mid: ref.mid }]
-    : []
+  const ref = pool.find((o) => o.type === 'first') ?? pool[0]
+  if (!ref) {
+    commit({ ...state, activity: logActivity(state, `${brandId ? brandById(brandId)?.name ?? brandId : ''} 暂无可回传订单`, 'info') })
+    return
+  }
+  const newOrders: Order[] = [{ id: 'O-' + ++seq, time: '现在', brandId: ref.brandId, agentId: ref.agentId, channel: ref.channel, type: 'renew', amount: ref.amount, plan: ref.plan, mid: ref.mid }]
   const next = { ...state, orders: [...newOrders, ...state.orders] }
   const label = brandId ? `${brandById(brandId)?.name ?? brandId} 订单回传同步完成` : '订单回传同步完成 · 新增 1 笔续费回传'
   commit({ ...next, activity: logActivity(next, label, 'good') })

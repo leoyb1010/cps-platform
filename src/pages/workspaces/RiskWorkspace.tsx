@@ -31,11 +31,20 @@ export default function RiskWorkspace() {
     ] as ({ value: Tab; label: string } | false)[]
   ).filter(Boolean) as { value: Tab; label: string }[]
 
-  // 当前 Tab 由路径决定（深链 /complaints 直接落到投诉工单）；越权回落到首个可见 Tab
+  // 当前 Tab 由路径决定（深链 /complaints 直接落到投诉工单）；越权回落到首个可见 Tab。
+  // 三个权限一个都没有 → 明确拒绝（此前 ?? 'risk' 会给无权限用户渲染整个风控中心）。
   const fromPath = (Object.keys(ROUTE) as Tab[]).find((t) => ROUTE[t] === loc.pathname)
-  const active: Tab = (fromPath && tabs.some((t) => t.value === fromPath) ? fromPath : tabs[0]?.value) ?? 'risk'
+  const active: Tab | null = (fromPath && tabs.some((t) => t.value === fromPath) ? fromPath : tabs[0]?.value) ?? null
 
   const setTab = (t: Tab) => nav(ROUTE[t])
+
+  if (!active) {
+    return (
+      <div className="rounded-xl border border-dashed border-line bg-surface-muted p-12 text-center text-[13px] text-ink-3">
+        当前角色没有风控/工单/合规查看权限。如需访问请联系管理员在「成员与角色」调整。
+      </div>
+    )
+  }
 
   return (
     <>

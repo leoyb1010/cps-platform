@@ -49,7 +49,8 @@ export default function Merchants() {
   const pop = useAnchoredPopover()
   const [newOpen, setNewOpen] = useState(false)
   const [routeOpen, setRouteOpen] = useState(false)
-  const [nf, setNf] = useState({ brandId: brands[0].id, channel: 'wechat' as 'wechat' | 'alipay' | 'bank', weight: 30 })
+  // brands 可能为空（真实模式无 brand.read 权限时水合为空数组）——可选链兜底，避免首渲染崩溃
+  const [nf, setNf] = useState({ brandId: brands[0]?.id ?? '', channel: 'wechat' as 'wechat' | 'alipay' | 'bank', weight: 30 })
   const activeM = merchants.find((m) => m.id === openId) ?? null
   const counts = {
     healthy: merchants.filter((m) => m.state === 'healthy').length,
@@ -285,12 +286,14 @@ export default function Merchants() {
         onResume={() => { if (activeM) { setMerchantState(activeM.id, 'healthy', '健康'); toast({ tone: 'good', text: `${activeM.id} 已恢复进单` }) } }}
       />
 
-      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="新增商户号" footer={<><Button variant="ghost" onClick={() => setNewOpen(false)}>取消</Button><button onClick={() => { const id = addMerchant(nf); setNewOpen(false); toast({ tone: 'good', text: `${id} 已录入号池` }) }} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">录入</button></>}>
+      <Modal open={newOpen} onClose={() => setNewOpen(false)} title="新增商户号" footer={<><Button variant="ghost" onClick={() => setNewOpen(false)}>取消</Button><button disabled={brands.length === 0} onClick={() => { if (!brands.length) return; const id = addMerchant({ ...nf, brandId: nf.brandId || brands[0].id }); setNewOpen(false); toast({ tone: 'good', text: `${id} 已录入号池` }) }} className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', brands.length ? 'bg-brand hover:bg-brand-hover' : 'cursor-not-allowed bg-ink-4')}>录入</button></>}>
         <div className="space-y-3.5">
+          {brands.length === 0 && <div className="rounded-lg bg-warn-soft p-3 text-[11.5px] leading-relaxed text-warn-ink">暂无可归属品牌（品牌数据为空或当前角色无品牌读取权限），无法录入商户号。</div>}
           <Field label="归属品牌" required><Select value={nf.brandId} onChange={(e) => setNf({ ...nf, brandId: e.target.value })}>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="支付通道"><Select value={nf.channel} onChange={(e) => setNf({ ...nf, channel: e.target.value as typeof nf.channel })}><option value="wechat">微信支付</option><option value="alipay">支付宝</option><option value="bank">银行分账</option></Select></Field>
-            <Field label="初始进单权重"><Input type="number" value={nf.weight} onChange={(e) => setNf({ ...nf, weight: +e.target.value })} /></Field>
+            {/* 权重钳制 0–100：负数/超界/非数字都会写脏路由分配 */}
+            <Field label="初始进单权重"><Input type="number" min={0} max={100} value={nf.weight} onChange={(e) => setNf({ ...nf, weight: Math.min(100, Math.max(0, Math.round(+e.target.value) || 0)) })} /></Field>
           </div>
           <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">商户号由品牌方提供并承担主体责任。录入后默认「健康」，按健康度加权进单；逼近红线自动降权/熔断。</div>
         </div>

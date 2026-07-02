@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { permsOf, ROLES, PERMISSIONS, DEMO_USERS, type User } from './auth'
+import { login, permsOf, ROLES, PERMISSIONS, DEMO_USERS, type User } from './auth'
 
 const userWith = (roleId: User['roleId']): User => ({ id: 'x', name: 'x', account: 'x', roleId })
 
@@ -43,5 +43,27 @@ describe('RBAC · 角色与演示账户一致性', () => {
   it('权限点 key 唯一', () => {
     const keys = PERMISSIONS.map((p) => p.key)
     expect(new Set(keys).size).toBe(keys.length)
+  })
+  it('门户演示账户带 scope（brand→youdao / agent→A-2041），与服务端种子对齐', () => {
+    const brand = DEMO_USERS.find((u) => u.account === 'brand')
+    const agent = DEMO_USERS.find((u) => u.account === 'agent')
+    expect(brand?.scopeType).toBe('brand')
+    expect(brand?.scopeId).toBe('youdao')
+    expect(agent?.scopeType).toBe('agent')
+    expect(agent?.scopeId).toBe('A-2041')
+  })
+})
+
+describe('演示登录 · 凭证校验（曾经任意账号静默回退成超管）', () => {
+  it('未知账号被拒绝，而非回退为 admin', async () => {
+    await expect(login('hacker', 'demo')).rejects.toThrow(/账号不存在/)
+  })
+  it('已知账号 + 错误密码被拒绝', async () => {
+    await expect(login('admin', 'wrong')).rejects.toThrow(/密码错误/)
+  })
+  it('正确凭证登录成功且返回对应用户', async () => {
+    const u = await login('finance', 'demo')
+    expect(u.account).toBe('finance')
+    expect(u.roleId).toBe('finance')
   })
 })

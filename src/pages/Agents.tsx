@@ -38,7 +38,10 @@ export default function Agents() {
   const totalSpend = agents.reduce((s, a) => s + a.spendMtd, 0)
   const totalPayout = agents.reduce((s, a) => s + a.payoutPending, 0)
   const avgScore = Math.round(agents.reduce((s, a) => s + a.creditScore, 0) / (agents.length || 1))
-  const list = agents.filter((a) => (f === 'all' ? true : a.status === f))
+  // 信用分排序：null=保持 store 原序，点击表头在 desc/asc 间切换
+  const [scoreSort, setScoreSort] = useState<'asc' | 'desc' | null>(null)
+  const filtered = agents.filter((a) => (f === 'all' ? true : a.status === f))
+  const list = scoreSort ? [...filtered].sort((x, y) => (scoreSort === 'asc' ? x.creditScore - y.creditScore : y.creditScore - x.creditScore)) : filtered
   const blacklist = agents.filter((a) => a.status === 'blacklist')
   const [review, setReview] = useState(false)
   const [blOpen, setBlOpen] = useState(false)
@@ -84,7 +87,15 @@ export default function Agents() {
             <>
               <Th className="pl-3">代理 / 类型</Th>
               <Th>开票</Th>
-              <Th className="w-32">信用分 <ArrowUpDown size={11} className="ml-0.5 inline text-ink-4" /></Th>
+              <Th className="w-32">
+                <button
+                  aria-label={`按信用分排序${scoreSort === 'desc' ? '（当前降序）' : scoreSort === 'asc' ? '（当前升序）' : ''}`}
+                  onClick={() => setScoreSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
+                  className="inline-flex items-center font-medium hover:text-ink"
+                >
+                  信用分 <ArrowUpDown size={11} className={cx('ml-0.5 inline', scoreSort ? 'text-ink' : 'text-ink-4')} />
+                </button>
+              </Th>
               <Th right>本月消耗</Th>
               <Th right>首单数</Th>
               <Th right>ROI</Th>
@@ -228,13 +239,21 @@ function ReviewModal({ queue, onClose, onToast }: { queue: PendingAgent[]; onClo
   }
   const approve = () => { approveAgent(p.id); onToast({ tone: 'good', text: `${p.name} 入驻通过 · 已置为 L1 分层（小流量起步）` }); if (queue.length <= 1) onClose() }
   const reject = () => { rejectAgent(p.id); onToast({ tone: 'warn', text: `${p.name} 入驻已驳回` }); if (queue.length <= 1) onClose() }
+  // 硬闸：任一 KYC 材料缺失或命中风险 → 禁止准入，只能驳回
+  const missing = !p.kyc.license || !p.kyc.legal || !p.kyc.bankAccount
+  const blocked = missing || p.kyc.riskHit
+  const blockReason = [missing ? '材料不齐' : null, p.kyc.riskHit ? '风险命中' : null].filter(Boolean).join(' / ')
   return (
     <Modal
       open
       onClose={onClose}
       width={520}
       title={`入驻审核 · KYC / KYB${queue.length > 1 ? `（待审 ${queue.length}）` : ''}`}
-      footer={<><Button variant="ghost" onClick={reject}>驳回</Button><button onClick={approve} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">通过并准入 L1</button></>}
+      footer={<>
+        {blocked && <span className="mr-auto text-[11.5px] text-alert-ink">{blockReason}，不可准入</span>}
+        <Button variant="ghost" onClick={reject}>驳回</Button>
+        <button onClick={approve} disabled={blocked} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50">通过并准入 L1</button>
+      </>}
     >
       <div className="mb-4"><Steps steps={['资料核验', '风险初评', '准入分层']} current={2} /></div>
       <div className="rounded-lg border border-line bg-surface-muted p-3.5">

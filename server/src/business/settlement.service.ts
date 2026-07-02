@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma, Settlement } from '@prisma/client'
+import { mul } from '../common/money'
 
 /**
  * 清结算领域服务：把原先内联在 BusinessController 的资金计算/冲账逻辑抽出，
@@ -36,7 +37,8 @@ export class SettlementService {
     args: { brandId: string; amount: number },
   ): Promise<{ share: number; settlement: Settlement | null }> {
     const s = await tx.settlement.findFirst({ where: { brandId: args.brandId }, orderBy: { period: 'desc' } })
-    const rawShare = Math.round(args.amount * this.shareRateOf(s))
+    // 分位精度（round2）而非整元 Math.round：与 money 层一致，避免小额退款（如 ¥19×0.3=5.7）被整元化累积漂移
+    const rawShare = mul(args.amount, this.shareRateOf(s))
     const share = s ? Math.min(rawShare, s.agentPayout) : rawShare
     if (s) {
       const status = s.status === 'cleared' ? 'reconciling' : s.status

@@ -224,6 +224,8 @@ export interface Order {
   amount: number
   plan: string
   mid: string
+  /** 退款单专用：被退原单 id（与服务端同名锚）。用于"一原单至多一退"判定与 UI 已退款态。 */
+  refundedOrderId?: string | null
 }
 
 export interface Complaint {
@@ -738,8 +740,21 @@ export const complaintBySource = _srcOrder
 /* ---------- 查询助手 ---------- */
 
 const UNKNOWN_BRAND: Brand = { id: '?', name: '未知品牌', mark: '?', category: '', status: 'paused', path: 'direct', feeRate: 0, period: 0, reservePct: 0, thresholds: { complaint: 0, escalated: 0, chargeback: 0 }, plans: [], channels: [], gmvMtd: 0, activeSubs: 0, renewalRate: 0, complaintRate: 0, escalatedRate: 0, chargebackRate: 0, joinedAt: '' }
-export const brandById = (id: string): Brand => brands.find((b) => b.id === id) ?? UNKNOWN_BRAND
-export const agentById = (id: string) => agents.find((a) => a.id === id)
+
+/**
+ * 活体实体注册表：store 每次 commit/hydrate 后同步进来。
+ * brandById/agentById 曾闭包在静态种子数组上——运行时新建/编辑的品牌在所有查询方
+ * （订单行、结算抽屉、号池、活动文案）显示为「未知品牌」、费率取 0（分润瀑布算成品牌留存 100%）。
+ * 现在优先查活体，回退种子，语义不变但跟得上运行时状态。
+ */
+let liveBrands: Brand[] = brands
+let liveAgents: Agent[] = agents
+export function __syncLiveEntities(next: { brands?: Brand[]; agents?: Agent[] }) {
+  if (next.brands) liveBrands = next.brands
+  if (next.agents) liveAgents = next.agents
+}
+export const brandById = (id: string): Brand => liveBrands.find((b) => b.id === id) ?? brands.find((b) => b.id === id) ?? UNKNOWN_BRAND
+export const agentById = (id: string) => liveAgents.find((a) => a.id === id) ?? agents.find((a) => a.id === id)
 export const merchantsByBrand = (id: string) =>
   merchants.filter((m) => m.brandId === id)
 

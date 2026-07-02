@@ -145,7 +145,8 @@ export default function Complaints() {
                 <Td><div className="flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="tnum text-[12px] text-ink-2">{c.agentId}</span></div></Td>
                 <Td className="max-w-[200px]"><span className="text-ink-2">{c.reason}</span></Td>
                 <Td><span className={c.owner === '未分配' ? 'text-alert-ink' : 'text-ink-3'}>{c.owner}</span></Td>
-                <Td right mono>{c.status === 'resolved' || c.slaLeftMin === 0 ? <span className="text-ink-4">—</span> : <span className={c.slaLeftMin <= 30 ? 'text-alert-ink' : c.slaLeftMin <= 90 ? 'text-warn-ink' : 'text-ink-2'}>{c.slaLeftMin}min</span>}</Td>
+                {/* SLA 三态：已解决 '—'；未解决且时效耗尽 → 「已超时」（不再与已解决混成 '—' 而漏掉超时未结单） */}
+                <Td right mono>{c.status === 'resolved' ? <span className="text-ink-4">—</span> : c.slaLeftMin <= 0 ? <Badge tone="alert">已超时</Badge> : <span className={c.slaLeftMin <= 30 ? 'text-alert-ink' : c.slaLeftMin <= 90 ? 'text-warn-ink' : 'text-ink-2'}>{c.slaLeftMin}min</span>}</Td>
                 <Td right><Badge tone={st.tone} dot>{st.label}</Badge></Td>
               </Row>
             )

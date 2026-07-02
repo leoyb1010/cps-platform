@@ -16,7 +16,8 @@
 ![语言](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
 ![ORM](https://img.shields.io/badge/Prisma_6-SQLite_/_PostgreSQL-2D3748?style=flat-square&logo=prisma&logoColor=white)
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
-![测试](https://img.shields.io/badge/测试-76_自动化用例-4CAF50?style=flat-square)
+![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
+![测试](https://img.shields.io/badge/测试-190_自动化用例-4CAF50?style=flat-square)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions_×5-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
@@ -88,7 +89,8 @@ npm run dev:real            # 真实后端模式 → http://localhost:5273
 ```
 
 登录：`admin / demo`（超管）。其它演示账户：`finance` `risk` `ops` `audit`，密码均为 `demo`。
-数据级 RBAC 演示账户：`brand`（只见有道）、`agent`（只见 A-2041）。
+客户门户（`#/portal/login`）：`brand`（品牌方 · 只见有道）、`agent`（代理商 · 只见 A-2041）——**演示模式与真实模式均可登录体验**（演示态走本地按租户合成的数据层）。
+C 端订阅超市（`#/market`）：免登录，演示模式本地货架 + 同口径算价，真实模式服务端权威。
 
 ### Docker 一键起（需本机装 Docker）
 
@@ -102,7 +104,23 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 ## 🔐 安全与质量（Review）
 
-经过**四轮对抗式安全自审**（含独立子代理审计），累计定位并修复 **24 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+经过**五轮对抗式安全自审**（含独立子代理审计），累计定位并修复 **60+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+
+**第五轮（v8）新修**：
+
+| 严重度 | 缺陷 | 修复 |
+|---|---|---|
+| 🔴 严重 | 工单退款缺跨路径去重锚 → 同一原单沿 `order.refund → ticket.refund` **双倍冲账、双扣代理** | 事务内补 `refundedOrderId` 锚检查 + DB 唯一约束兜底并发 |
+| 🔴 严重 | 幂等键未绑定资源：同一 `Idempotency-Key` 复用到另一笔订单 → **静默回放首单结果，第二笔"看似退款成功实际没退"** | 幂等键绑定目标资源/租户（`bind` 参数），异资源各自执行 |
+| 🟠 高 | CPS 签约不校验商品归属：品牌 A 凭证可签约品牌 B 商品 → GMV/结算跨品牌错记 | 商品查询强制 `brandId` 归属匹配 |
+| 🟠 高 | 前端平台配置写被服务端白名单静默过滤为 0 项却返回 `ok:true`（配置只活在本地） | 白名单补 5 个复合键 + 0 项保存返回 `ok:false` |
+| 🟠 高 | 多标签页/StrictMode 并发 refresh 触发旋转令牌重放检测 → **全会话族被吊销（随机登出）** | 启动 once-promise 去重 + Web Locks 跨标签页串行化 |
+| 🟠 高 | 内部路由仅导航隐藏、无权限也可直链进入并操作（mock 态真实生效） | `RequirePerm` 路由守卫 + 无权限工作台空态 |
+| 🟡 中 | 真实模式登出不清水合数据（共享机器泄漏给下一登录者）；演示/真实共用持久化键互相污染 | 登出清场 + 按模式分键 + 演示键升 v3 |
+| 🟡 中 | 演示登录任意账号静默回退成超管；工单升级 `level` 不落库被水合冲掉；北极星 R-NSC 与数据页相差 ¥960 万 | 未知账号拒绝 / level 全链路持久化 / 单一数据源 |
+| 🟢 低 | 详情气泡内滚动即关闭 · Confirm 可双击双发 · 图表单点 NaN/负值裁剪/目标标签重叠 · 弹窗无焦点陷阱 等 20+ 项 | 逐项修复（详见提交记录） |
+
+历史四轮修复（资金双花/提权链/越权泄漏/令牌盗用等）：
 
 | 严重度 | 缺陷 | 修复 |
 |---|---|---|
@@ -122,7 +140,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏 · 审计旁路落盘。
 
-**测试矩阵**：后端 49（e2e + 单测）· 前端 19（Vitest+jsdom）· 端到端 6（Playwright 真实浏览器）· **共 76 自动化用例**。CI 五作业：前端构建 / 后端 e2e / PG schema 校验 / Playwright / 依赖扫描。
+**测试矩阵**：后端 146（e2e + 单测）· 前端 35（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器）· **共 190 自动化用例**。CI 五作业：前端构建 / 后端 e2e / PG schema 校验 / Playwright / 依赖扫描。
 
 ---
 
@@ -183,6 +201,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
+| **v8 · 全面审查 + 体验升级** | 三路对抗式审查修 40+ 缺陷（工单退款跨路径双冲账 P0 / 幂等键资源绑定 / CPS 跨品牌签约 / 配置契约漂移 / 刷新令牌互踢 / 权限路由守卫）；**暗色模式**（令牌级三态主题）；登录页品牌叙事重设计；**演示模式全入口打通**（订阅超市本地货架算价 + 品牌/代理门户演示数据层 + 门户演示账户）；图表健壮性（单点/负值/标签防重叠）；焦点陷阱与无障碍 |
 | **v7 · 前端审计 + v6 收尾** | 前端首轮对抗式审计修 4 缺陷（switchRole 伪造 super / 创建并发丢失 / useApi 脚枪 / seq 碰撞）；X-Request-Id 入站清洗；创建写以服务端 id 为准 |
 | **v6 · 运维成熟度** | 批次A 可观测性（请求追踪 ID + prom-client + 健康升级 + 优雅停机）；批次B 唯一约束 + 对账任务；批次C 审计旁路 + 依赖扫描 + PII 脱敏 |
 | **v5 · 纵深防御** | access token 即时失效（tokenVersion）；JWT 算法 pin；资金审计 fail-closed；refresh 重放吊销全族；输入校验补全；Prisma 错误映射 4xx |

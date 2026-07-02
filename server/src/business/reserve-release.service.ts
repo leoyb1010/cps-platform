@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
+import { round2 } from '../common/money'
 
 /**
  * 风险准备金分期释放服务。
@@ -19,9 +20,9 @@ import { PrismaService } from '../prisma.service'
 export class ReserveReleaseService {
   constructor(private prisma: PrismaService) {}
 
-  /** 派生在账冻结额（守恒式 II）。 */
+  /** 派生在账冻结额（守恒式 II）。分位精度，与 money 层一致。 */
   frozenOf(s: { reserve: number; reserveReleased: number; reserveClawedBack: number }): number {
-    return Math.max(0, Math.round(s.reserve - s.reserveReleased - s.reserveClawedBack))
+    return Math.max(0, round2(s.reserve - s.reserveReleased - s.reserveClawedBack))
   }
 
   /**
@@ -33,6 +34,10 @@ export class ReserveReleaseService {
     const rr = await tx.reserveRelease.findUnique({ where: { id: rrId } })
     if (!rr) return { ok: false, detail: '释放计划不存在' }
     if (rr.status !== 'scheduled') return { ok: false, detail: `释放计划状态为 ${rr.status}，不可释放` }
+    // 资金守恒前置校验：代理必须存在。否则下方 settlement 已减 frozen 而代理入账失败，
+    // 这笔钱会"离开冻结池却没进可提现池"——静默蒸发。缺代理时整行拒绝，留待人工核查。
+    const agentExists = await tx.agent.count({ where: { id: rr.agentId } })
+    if (agentExists === 0) return { ok: false, detail: `代理 ${rr.agentId} 不存在，已拒绝释放（待人工核查归属）` }
 
     // 抢占：仅当仍 scheduled 且 amount 未被并发 clawback 缩减时翻为 released（乐观锁，防按 stale 额重复释放）。
     const c = await tx.reserveRelease.updateMany({
@@ -47,8 +52,9 @@ export class ReserveReleaseService {
       where: { id: rr.settlementId },
       data: { reserveReleased: { increment: rr.amount }, frozen: { decrement: rr.amount } },
     })
-    // 释放额进入代理可提现池（原子递增）
-    await tx.agent.update({ where: { id: rr.agentId }, data: { payoutPending: { increment: rr.amount } } }).catch(() => undefined)
+    // 释放额进入代理可提现池（原子递增）。不吞错：并发删代理等罕见失败让整个事务回滚，
+    // 保证 frozen↓ 与 payoutPending↑ 要么同时发生要么都不发生（守恒式 II 不出缺口）。
+    await tx.agent.update({ where: { id: rr.agentId }, data: { payoutPending: { increment: rr.amount } } })
     return { ok: true, amount: rr.amount, settlementId: rr.settlementId, detail: `释放 ¥${rr.amount}（${rr.stage}）→ 代理 ${rr.agentId} 可提现池` }
   }
 

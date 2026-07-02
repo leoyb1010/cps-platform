@@ -5,8 +5,8 @@ import type { PortalNavItem } from './portalNav'
 import { cx } from '../../lib/format'
 import { useAuth, useCan, logout } from '../../lib/auth'
 import { portalApi } from '../../lib/portalApi'
-import { isRealApi } from '../../lib/http'
 import { ReplayContext } from '../ui/primitives'
+import { ThemeToggle } from './AppLayout'
 
 // 客户门户外壳：刻意比内部 AppLayout 精简——无命令面板 / 无演示角色切换 /
 // 无简洁专家视图 / 无内部导航。仅品牌头部 + 按权限过滤的客户导航 + 退出。
@@ -92,7 +92,8 @@ interface Notif { id: string; category: string; title: string; body: string; lin
 function PortalBell() {
   const [items, setItems] = useState<Notif[]>([])
   const [open, setOpen] = useState(false)
-  const load = () => { if (isRealApi) portalApi.notifications<Notif[]>().then(setItems).catch(() => {}) }
+  // 演示/真实模式都取数：portalApi 在演示态落到 portalDemo 的 scoped 通知
+  const load = () => { portalApi.notifications<Notif[]>().then(setItems).catch(() => {}) }
   useEffect(load, [])
   const unread = items.filter((n) => !n.read).length
   const markRead = async (n: Notif) => { if (!n.read) { await portalApi.readNotif(n.id); load() }; if (n.link) location.hash = n.link; setOpen(false) }
@@ -138,7 +139,7 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavItem[]; 
               <span>{branding.name}</span>
               <span className="rounded-md bg-good-soft px-1.5 py-0.5 text-[11px] font-medium text-good-ink">客户门户</span>
             </div>
-            <div className="ml-auto"><PortalBell /></div>
+            <div className="ml-auto flex items-center gap-2"><ThemeToggle /><PortalBell /></div>
           </header>
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
             <Outlet />

@@ -23,7 +23,7 @@ import {
   type Order,
   type OrderType,
 } from '../lib/data'
-import { useStore, refundOrder, triggerOrderSync } from '../lib/store'
+import { useStore, refundOrder, triggerOrderSync, isOrderRefunded } from '../lib/store'
 import { Confirm, useToast } from '../components/ui/overlays'
 import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Timeline } from '../components/ui/forms'
@@ -63,6 +63,10 @@ export default function Orders() {
   const renews = orders.filter((o) => o.type === 'renew').length
   const refunds = orders.filter((o) => o.type === 'refund').length
   const cbs = orders.filter((o) => o.type === 'chargeback').length
+  // KPI 从 store 实时派生（不再硬编码静态样例，避免与下方实时表自相矛盾）；扣款单为 0 时给 '—'
+  const deducted = firsts + renews
+  const refundRate = deducted ? (refunds / deducted) * 100 : null
+  const cbRate = deducted ? (cbs / deducted) * 100 : null
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
 
   // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
@@ -79,7 +83,7 @@ export default function Orders() {
         actions={
           <>
             <Segmented value={view} onChange={setView} options={[{ value: 'orders', label: '订单流' }, { value: 'lifecycle', label: '订阅生命周期' }]} />
-            <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成 · 新增 1 笔续费回传' }) }}><RefreshCcw size={14} /> 同步回传</Button>
+            <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成' }) }}><RefreshCcw size={14} /> 同步回传</Button>
             <Button variant="primary" onClick={() => { const csv = '﻿订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '订单对账.csv'; a.click(); URL.revokeObjectURL(a.href); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
           </>
         }
@@ -142,27 +146,11 @@ export default function Orders() {
       ) : (
       <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card><Stat label="今日订单" value="3,184" delta="+8.2%" deltaTone="good" sub={<span>首单 {int(1820)} · 续费 {int(1364)}</span>} /></Card>
-        <Card><Stat label="续费 / 首单" value="0.75" hint="续费笔数 ÷ 首单笔数" sub={<span>越高 LTV 越好</span>} /></Card>
-        <Card><Stat label="退款率" value="3.1%" deltaTone="warn" sub={<span>触发分润冲账</span>} /></Card>
-        <Card><Stat label="拒付率" value="0.31%" sub={<span className="text-good-ink">低于阈值</span>} /></Card>
+        <Card><Stat label="今日订单" value={int(orders.length)} sub={<span>首单 {int(firsts)} · 续费 {int(renews)}</span>} /></Card>
+        <Card><Stat label="续费 / 首单" value={firsts ? (renews / firsts).toFixed(2) : '—'} hint="续费笔数 ÷ 首单笔数" sub={<span>越高 LTV 越好</span>} /></Card>
+        <Card><Stat label="退款率" value={refundRate === null ? '—' : pct(refundRate)} sub={<span>触发分润冲账</span>} /></Card>
+        <Card><Stat label="拒付率" value={cbRate === null ? '—' : pct(cbRate, 2)} sub={cbRate !== null && cbRate < 0.5 ? <span className="text-good-ink">低于阈值</span> : <span>对照红线 0.5%</span>} /></Card>
       </div>
-
-      {/* 状态机 */}
-      <Card className="mt-4">
-        <CardTitle title="订单 / 订阅状态机" desc="状态清晰、可追溯、可冲正" />
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          {LIFECYCLE.map((s, i, arr) => (
-            <div key={s.t} className="flex flex-1 items-center gap-2">
-              <div className={cx('flex-1 rounded-xl border p-3', LC_BORDER[s.tone], TONE[s.tone].soft)}>
-                <div className={cx('text-[12.5px] font-medium', TONE[s.tone].ink)}>{s.t}</div>
-                <div className={cx('mt-0.5 text-[11px]', TONE[s.tone].ink, 'opacity-80')}>{s.d}</div>
-              </div>
-              {i < arr.length - 1 && <ArrowRight size={14} className="hidden shrink-0 text-ink-4 md:block" />}
-            </div>
-          ))}
-        </div>
-      </Card>
 
       {/* 订单流 */}
       <Card className="mt-4" pad={false}>
@@ -257,6 +245,7 @@ function OrderDrawer({ order, anchor, onClose, onRefund }: { order: Order | null
   const a = agentById(order.agentId)
   const t = ORDER_TYPE[order.type]
   const refunded = order.type === 'refund' || order.type === 'chargeback'
+  const alreadyRefunded = !refunded && isOrderRefunded(order.id) // 原单已被任一路径退过 → 禁用重复退款入口
   const isFirst = order.type === 'first'
   return (
     <DetailPopover
@@ -269,7 +258,11 @@ function OrderDrawer({ order, anchor, onClose, onRefund }: { order: Order | null
         refunded ? <Button variant="ghost" onClick={onClose}>关闭</Button> : (
           <>
             <Button variant="ghost" onClick={onClose}>关闭</Button>
-            <button onClick={onRefund} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">退款并冲账</button>
+            {alreadyRefunded ? (
+              <Badge tone="alert">已退款</Badge>
+            ) : (
+              <button onClick={onRefund} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">退款并冲账</button>
+            )}
           </>
         )
       }
@@ -292,7 +285,9 @@ function OrderDrawer({ order, anchor, onClose, onRefund }: { order: Order | null
             { title: '扣费成功', desc: isFirst ? '首单确认' : '周期续费', done: true },
             refunded
               ? { title: order.type === 'chargeback' ? '拒付' : '退款', desc: '触发逆向冲账、回收代理分润', tone: 'alert', done: true }
-              : { title: '续费中', desc: '下一周期自动扣费', tone: 'good', done: false },
+              : alreadyRefunded
+                ? { title: '已退款', desc: '原单已冲正 · 分润已回收', tone: 'alert', done: true }
+                : { title: '续费中', desc: '下一周期自动扣费', tone: 'good', done: false },
           ]}
         />
       </div>

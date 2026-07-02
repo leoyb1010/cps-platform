@@ -73,7 +73,8 @@ export default function Risk() {
         <Card><Stat label="今日拦截作弊单" value="461" deltaTone="good" sub={<span>挽回预估 ¥18,400</span>} /></Card>
         <Card><Stat label="防作弊命中率" value="98.7%" sub={<span>误杀率 0.3%</span>}><Meter value={98.7} tone="good" /></Stat></Card>
         <Card><Stat label="高风险代理" value="3" sub={<span className="text-alert-ink">已降权/冻结/拉黑</span>} /></Card>
-        <Card><Stat label="实时风控规则" value="64" unit="条" sub={<span>含 12 条新增策略</span>} /></Card>
+        {/* 从规则引擎真值派生（原硬编码 64，与规则配置弹窗的实际条数自相矛盾） */}
+        <Card><Stat label="实时风控规则" value={rules.length} unit="条" sub={<span>启用 {rules.filter((r) => r.on).length} 条 · 规则配置可调</span>} /></Card>
       </div>
 
       {/* 三道防线 */}

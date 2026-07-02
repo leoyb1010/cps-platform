@@ -18,6 +18,8 @@ import { ScopeService } from './scope.service'
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 // 工单退款无关联原单时的兜底金额（演示数据缺口用；生产应改为强制关联原单）
 const DEFAULT_TICKET_AMOUNT = 33
+// 无分页引用型列表的防御性上限：管理端小表够用，防单请求全表拖库（订单/套餐/通知已各自分页）
+const LIST_CAP = 1000
 // 商户号脱敏：保留前 2 后 2，中间打码
 const maskMid = (mid: string) => (mid && mid.length > 4 ? `${mid.slice(0, 2)}****${mid.slice(-2)}` : '****')
 
@@ -73,6 +75,8 @@ class TicketUpdateDto {
   @IsOptional() @IsIn(['pending', 'processing', 'resolved', 'escalated', 'arbitration']) status?: string
   @IsOptional() @IsString() @MaxLength(40) owner?: string
   @IsOptional() @IsString() @MaxLength(120) note?: string
+  // 升级流转要落级别（normal→escalated→regulatory），否则前端"升级为监管投诉"只活在本地、下次水合被冲掉
+  @IsOptional() @IsIn(['normal', 'escalated', 'regulatory']) level?: string
 }
 class ReserveFreezeDto {
   @IsOptional() @IsString() @MaxLength(120) reason?: string
@@ -172,7 +176,7 @@ export class BusinessController {
   // ── 风险准备金分期释放（资金动作：幂等 + 审计 fail-closed + 条件更新防并发）──
   @Get('reserve-releases') @RequirePerms('settlement.read') @ApiOperation({ summary: '准备金释放计划台账' })
   async reserveReleases(@CurrentUser() user: AuthUser) {
-    return this.prisma.reserveRelease.findMany({ where: await this.reserveScope(user), orderBy: [{ settlementId: 'asc' }, { dueAt: 'asc' }] })
+    return this.prisma.reserveRelease.findMany({ where: await this.reserveScope(user), orderBy: [{ settlementId: 'asc' }, { dueAt: 'asc' }], take: LIST_CAP })
   }
 
   @Post('reserve/:rrId/release') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '释放单条到期准备金（scheduled→released，进代理可提现池）· 幂等' })
@@ -187,12 +191,14 @@ export class BusinessController {
       })
       this.metrics.recordFundAction('reserve.release', r.ok ? 'ok' : 'reject')
       return r
-    })
+    }, rrId)
     return replayed ? { ...result, replayed: true } : result
   }
 
   @Post('reserve/release-due') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '批量释放所有到期准备金（端点先行，定时任务亦调用）· 幂等' })
   async releaseReserveDue(@CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
+    // 幂等键绑定调用方租户：不同品牌/代理各自的批量释放互不回放（否则 B 复用 A 的键 → B 的到期行被跳过且看到 A 的聚合结果）
+    const tenant = (user.scopeType ?? 'platform') === 'platform' ? 'platform' : `${user.scopeType}:${user.scopeId ?? ''}`
     const { result, replayed } = await this.idem.run(idemKey, 'reserve.release-due', async () => {
       const now = new Date()
       const rows = await this.prisma.reserveRelease.findMany({ where: { status: 'scheduled', dueAt: { lte: now }, ...(await this.reserveScope(user)) }, select: { id: true } })
@@ -210,7 +216,7 @@ export class BusinessController {
       }
       this.metrics.recordFundAction('reserve.release-due', 'ok')
       return { ok: true, detail: `到期释放 ${released} 笔，合计 ¥${amount}`, released, amount, scanned: ids.length }
-    })
+    }, tenant)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -243,14 +249,14 @@ export class BusinessController {
 
   // ── reads ──（软删除：deletedAt=null 默认过滤）──
   @Get('brands') @RequirePerms('brand.read') @ApiOperation({ summary: '品牌列表（按 scope 收窄，排除已删除）' })
-  brands(@CurrentUser() user: AuthUser) { return this.prisma.brand.findMany({ where: { ...this.scope(user, 'id-brand'), deletedAt: null }, orderBy: { gmvMtd: 'desc' } }) }
+  brands(@CurrentUser() user: AuthUser) { return this.prisma.brand.findMany({ where: { ...this.scope(user, 'id-brand'), deletedAt: null }, orderBy: { gmvMtd: 'desc' }, take: LIST_CAP }) }
 
   @Get('agents') @RequirePerms('agent.read') @ApiOperation({ summary: '代理列表（按 scope 收窄，排除已删除）' })
-  agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: { ...this.scope(user, 'id-agent'), deletedAt: null }, orderBy: { spendMtd: 'desc' } }) }
+  agents(@CurrentUser() user: AuthUser) { return this.prisma.agent.findMany({ where: { ...this.scope(user, 'id-agent'), deletedAt: null }, orderBy: { spendMtd: 'desc' }, take: LIST_CAP }) }
 
   @Get('merchants') @RequirePerms('merchant.read') @ApiOperation({ summary: '商户号/号池（按 scope 收窄，排除已删除；非平台用户 mid 脱敏）' })
   async merchants(@CurrentUser() user: AuthUser) {
-    const rows = await this.prisma.merchantAccount.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null } })
+    const rows = await this.prisma.merchantAccount.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null }, take: LIST_CAP })
     // PII 脱敏：仅平台运营/风控可见完整商户号；其它(品牌方等)展示脱敏码（《个保法》最小必要）
     if (user.scopeType === 'platform') return rows
     return rows.map((m) => ({ ...m, mid: maskMid(m.mid) }))
@@ -343,7 +349,7 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'settlement.clear', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 已发起结算并完成`, after: { status: 'cleared' } })
         return { ok: true, detail: `结算单 ${id} 已发起结算并完成` }
       })
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -357,7 +363,7 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
         return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
       })
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -382,9 +388,21 @@ export class BusinessController {
       let share = 0
 
       // 事务内：条件更新抢占工单 + 资金联动 + 审计同事务落库（fail-closed，审计失败则整笔回滚）
+      let alreadyRefunded = false
       const claimed = await this.prisma.$transaction(async (tx) => {
         const c = await tx.ticket.updateMany({ where: { id, status: { not: 'resolved' } }, data: { status: 'resolved', slaLeftMin: 0 } })
         if (c.count === 0) return false
+        // 跨路径去重锚（与 order.refund / cps.refund 同锚）：原单已被任一路径退过 →
+        // 工单照常解决，但跳过全部资金联动（否则同一原单沿 order.refund→ticket.refund 走一圈会双倍冲账/双扣代理）。
+        // 同理防住"一单多工单"（/complaints/ingest 允许同 orderId 多来源建多张工单）逐张退款的重复冲账。
+        if (order) {
+          const dupe = await tx.order.findFirst({ where: { type: 'refund', refundedOrderId: order.id } })
+          if (dupe) {
+            alreadyRefunded = true
+            await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已解决；原单 ${order.id} 此前已退款（${dupe.id}），未重复冲账` })
+            return true
+          }
+        }
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '', refundedOrderId: order?.id ?? null } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收并扣信用分（工单退款较重）
         const rev = await this.settle.applyRefundReversal(tx, { brandId: t.brandId, amount })
@@ -399,10 +417,14 @@ export class BusinessController {
         this.metrics.recordFundAction('ticket.refund', 'reject')
         return { ok: false, detail: '工单已被处理' }
       }
+      if (alreadyRefunded) {
+        this.metrics.recordFundAction('ticket.refund', 'reject')
+        return { ok: true, detail: `工单 ${id} 已解决；原单此前已退款，未重复冲账`, amount: 0, share: 0 }
+      }
       this.metrics.recordFundAction('ticket.refund', 'ok')
       this.metrics.addRefundAmount(amount)
       return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -440,7 +462,7 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
         return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
       })
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -508,7 +530,8 @@ export class BusinessController {
   @Post('orders/:id/refund') @RequirePerms('order.refund') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '订单退款（订单冲正→结算冲账→代理分润回收）· 幂等' })
   async refundOrder(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     // 缺省确定性幂等键：无 Idempotency-Key 时按原单 id 串行化，防止并发双退（对齐 cps.refund）。
-    const { result, replayed } = await this.idem.run(idemKey ?? `order.refund:${id}`, 'order.refund', async () => {
+    // 幂等键绑定原单 id：客户端把同一键复用到另一笔订单时各自执行，而非静默回放首单结果（看似成功实际没退）。
+    const { result, replayed } = await this.idem.run(idemKey ?? 'auto', 'order.refund', async () => {
       const amount = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({ where: { id } })
         if (!order || order.type === 'refund' || order.type === 'chargeback') return null
@@ -536,7 +559,7 @@ export class BusinessController {
       this.metrics.recordFundAction('order.refund', 'ok')
       this.metrics.addRefundAmount(amount.amt)
       return { ok: true, detail: `订单 ${id} 已退款，联动冲账完成`, amount: amount.amt, share: amount.share }
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -549,8 +572,9 @@ export class BusinessController {
     const data: Record<string, unknown> = {}
     if (dto.status !== undefined) data.status = dto.status
     if (dto.owner !== undefined) data.owner = dto.owner
+    if (dto.level !== undefined) data.level = dto.level
     await this.prisma.ticket.update({ where: { id }, data })
-    await this.audit.record({ user, action: 'ticket.update', resource: 'Ticket', resourceId: id, detail: `工单 ${id} ${dto.note ?? '已更新'}`, before: { status: before.status, owner: before.owner }, after: data })
+    await this.audit.record({ user, action: 'ticket.update', resource: 'Ticket', resourceId: id, detail: `工单 ${id} ${dto.note ?? '已更新'}`, before: { status: before.status, owner: before.owner, level: before.level }, after: data })
     return { ok: true, detail: `工单 ${id} 已更新` }
   }
 
@@ -572,14 +596,22 @@ export class BusinessController {
   @Post('config') @RequirePerms('config.write') @ApiOperation({ summary: '写入平台配置（键值，upsert）' })
   async setConfig(@Body() body: Record<string, unknown>, @CurrentUser() user: AuthUser) {
     this.assertPlatform(user)
-    const ALLOWED_KEYS = ['platformFeeRate', 'defaultSharePct', 'complaintThreshold', 'escalatedThreshold', 'chargebackThreshold', 'slaDefaultMin', 'reserveDefaultPct', 'autoReconcile', 'channelWeChat', 'channelAlipay', 'channelBank', 'channelApple', 'channelGoogle', 'channelStripe', 'channelPaypal']
+    const ALLOWED_KEYS = [
+      'platformFeeRate', 'defaultSharePct', 'complaintThreshold', 'escalatedThreshold', 'chargebackThreshold', 'slaDefaultMin', 'reserveDefaultPct', 'autoReconcile',
+      'channelWeChat', 'channelAlipay', 'channelBank', 'channelApple', 'channelGoogle', 'channelStripe', 'channelPaypal',
+      // 前端 store 镜像的复合配置对象（hydrateFromServer 回读同名键）。缺这 5 个键曾导致
+      // 配置写被静默过滤为 0 项却返回 ok:true —— 前端以为已保存，实际只活在本地 localStorage。
+      'attributionConfig', 'platformConfig', 'platformParams', 'slaConfig', 'channelStates',
+    ]
     const entries = Object.entries(body || {}).filter(([k]) => ALLOWED_KEYS.includes(k))
+    // 全部键被过滤 → 显式拒绝（而非 ok:true 假成功），让前端 mirror 能感知契约漂移并提示用户
+    if (entries.length === 0) return { ok: false, detail: '没有可保存的配置键（键名不在白名单）' }
     for (const [key, value] of entries) {
       const v = typeof value === 'string' ? value : JSON.stringify(value)
       await this.prisma.config.upsert({ where: { key }, create: { key, value: v }, update: { value: v } })
     }
     await this.audit.record({ user, action: 'config.write', resource: 'Config', resourceId: '-', detail: `平台配置已更新（${entries.length} 项）`, after: body })
-    return { ok: true, detail: `已保存 ${entries.length} 项配置` }
+    return { ok: true, detail: `已保存 ${entries.length} 项配置`, saved: entries.length }
   }
 
   // ── 订阅商品审核（内部）──
@@ -844,7 +876,7 @@ export class BusinessController {
         await this.audit.recordInTx(tx, { user, action: 'bundle.fulfill', resource: 'Bundle', resourceId: id, detail: `套餐 ${id} 受理 → 拆 ${out.length} 笔订单 ¥${totalAllocated} 经 ${dto.agentId} 履约` })
         return { ok: true, bundleId: id, orderIds: out.map((r) => r.orderId), matched: out, totalAllocated }
       })
-    })
+    }, id)
     return replayed ? { ...result, replayed: true } : result
   }
 }

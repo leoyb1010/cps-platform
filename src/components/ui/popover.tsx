@@ -74,7 +74,7 @@ function computePosition(
 }
 
 export function Popover({
-  anchor, onClose, children, width = 360, placement = 'auto', arrow = true, role,
+  anchor, onClose, children, width = 360, placement = 'auto', arrow = true, role, labelledBy,
 }: {
   anchor: AnchorRect | null
   onClose: () => void
@@ -83,6 +83,7 @@ export function Popover({
   placement?: Placement
   arrow?: boolean
   role?: string
+  labelledBy?: string
 }) {
   const cardRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ top: number; left: number; place: 'bottom' | 'top'; arrowLeft: number } | null>(null)
@@ -104,7 +105,11 @@ export function Popover({
     const fresh = () => performance.now() - openedAt > 150
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     const onDown = (e: MouseEvent) => { if (fresh() && cardRef.current && !cardRef.current.contains(e.target as Node)) onClose() }
-    const onScrollResize = () => { if (fresh()) onClose() }
+    // 气泡内部的滚动（可滚动 body）不应关闭自己；仅页面级滚动 / resize 关闭
+    const onScrollResize = (e: Event) => {
+      if (e.target instanceof Node && cardRef.current?.contains(e.target)) return
+      if (fresh()) onClose()
+    }
     document.addEventListener('keydown', onKey)
     document.addEventListener('mousedown', onDown, true)
     window.addEventListener('scroll', onScrollResize, true)
@@ -129,6 +134,7 @@ export function Popover({
     <div
       ref={cardRef}
       role={role}
+      aria-labelledby={labelledBy}
       // 不加入场动画：气泡瞬时出现，免疫"频繁重渲染反复重启 CSS 动画把卡片卡在 opacity:0"这类问题。
       className="fixed z-[92] rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)]"
       style={{
@@ -173,7 +179,7 @@ export function DetailPopover({
   const titleId = useId()
   if (!anchor) return null
   return (
-    <Popover anchor={anchor} onClose={onClose} width={width} role="dialog">
+    <Popover anchor={anchor} onClose={onClose} width={width} role="dialog" labelledBy={titleId}>
       <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
         <div>
           <h3 id={titleId} className="text-[14px] font-semibold text-ink">{title}</h3>

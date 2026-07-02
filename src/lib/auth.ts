@@ -5,7 +5,7 @@
 //  · 否则：演示态(前端 mock + localStorage)，接口形态与后端一致。
 // ════════════════════════════════════════════════════════════════
 import { useSyncExternalStore } from 'react'
-import { http, isRealApi, setAccessToken } from './http'
+import { http, isRealApi, setAccessToken, onAuthLost } from './http'
 
 /* ── 权限点字典（与 v4 §4 一致，按业务域分组） ── */
 export interface PermDef {
@@ -98,13 +98,16 @@ export interface User {
   scopeType?: string
   scopeId?: string | null
 }
-// 演示账户（真实环境由后端校验密码哈希）
+// 演示账户（真实环境由后端校验密码哈希）。含品牌/代理门户账户：
+// 演示模式三类入口（控制台 / 品牌门户 / 代理门户）都可完整体验，与 seed 的服务端账户对齐。
 export const DEMO_USERS: User[] = [
   { id: 'U-001', name: '李运营', account: 'admin', roleId: 'super' },
   { id: 'U-002', name: '周财务', account: 'finance', roleId: 'finance' },
   { id: 'U-003', name: '陈风控', account: 'risk', roleId: 'risk' },
   { id: 'U-004', name: '王运营', account: 'ops', roleId: 'ops' },
   { id: 'U-005', name: '赵审计', account: 'audit', roleId: 'audit' },
+  { id: 'U-101', name: '有道品牌运营', account: 'brand', roleId: 'brand', scopeType: 'brand', scopeId: 'youdao' },
+  { id: 'U-201', name: '量子增长工作室', account: 'agent', roleId: 'agent', scopeType: 'agent', scopeId: 'A-2041' },
 ]
 
 /* ── session store (external, persisted) ── */
@@ -142,9 +145,14 @@ export async function login(account: string, password = 'demo'): Promise<User> {
     const r = await http.post<{ access: string; user: User }>('/auth/login', { account, password })
     setAccessToken(r.access)
     setUser(r.user)
+    // 登录即水合：换账号/门户误入都以新账号的服务端真值起步，而非上个会话残留
+    void import('./store').then((m) => m.hydrateFromServer()).catch(() => {})
     return r.user
   }
-  const u = DEMO_USERS.find((x) => x.account === account) ?? DEMO_USERS[0]
+  // 演示模式：未知账号必须报错——静默回退成超管（旧行为）意味着任何乱输的账号密码都以最高权限进入
+  const u = DEMO_USERS.find((x) => x.account === account)
+  if (!u) throw new Error('账号不存在（演示账户见登录页下方列表）')
+  if (password !== 'demo') throw new Error('密码错误（演示账户密码均为 demo）')
   setUser(u)
   return u
 }
@@ -154,6 +162,8 @@ export async function logout() {
     await http.post('/auth/logout').catch(() => {})
     setAccessToken(null)
   }
+  // 清业务数据缓存（真实模式）：共享机器上不给下一位登录者看上一账号的水合数据
+  void import('./store').then((m) => m.clearStoreOnLogout()).catch(() => {})
   setUser(null)
 }
 
@@ -168,19 +178,39 @@ export function switchRole(roleId: RoleId) {
   setUser({ ...current, roleId, permissions: ROLES[roleId].perms, name: DEMO_USERS.find((u) => u.roleId === roleId)?.name ?? current.name })
 }
 
-/** 应用启动时：真实模式用 refresh cookie 静默换取登录态；返回是否已登录。 */
-export async function bootstrapAuth(): Promise<boolean> {
-  if (!isRealApi) return current != null
-  try {
-    const r = await http.post<{ access: string; user: User }>('/auth/refresh')
-    setAccessToken(r.access)
-    setUser(r.user)
-    return true
-  } catch {
-    setUser(null)
-    return false
+/** 应用启动时：真实模式用 refresh cookie 静默换取登录态；返回是否已登录。
+ * 模块级 once-promise 去重：StrictMode 双跑 effect / 多处调用只发一次 /auth/refresh。
+ * 刷新令牌是旋转式一次性的——并发两次 refresh，后到者会拿旧令牌触发"重放检测"，
+ * 服务端按被盗处理吊销全会话族（本地开发每次刷新页面都可能随机登出）。
+ * 跨标签页再用 Web Locks 串行化（同一 cookie 同时只有一个 tab 在旋转令牌）。 */
+let bootPromise: Promise<boolean> | null = null
+export function bootstrapAuth(): Promise<boolean> {
+  if (!isRealApi) return Promise.resolve(current != null)
+  if (!bootPromise) {
+    const doRefresh = async () => {
+      try {
+        const r = await http.post<{ access: string; user: User }>('/auth/refresh')
+        setAccessToken(r.access)
+        setUser(r.user)
+        return true
+      } catch {
+        setUser(null)
+        return false
+      }
+    }
+    bootPromise =
+      typeof navigator !== 'undefined' && 'locks' in navigator
+        ? navigator.locks.request('cps-auth-refresh', doRefresh)
+        : doRefresh()
   }
+  return bootPromise
 }
+
+// 会话中刷新彻底失败（refresh cookie 过期/被吊销）→ 清登录态，守卫自然弹回登录页；
+// 否则用户守着一个每个动作都报错的"僵尸控制台"，只能手动刷新才发现要重新登录。
+onAuthLost(() => {
+  if (current) setUser(null)
+})
 
 export function useAuth() {
   return useSyncExternalStore(

@@ -60,7 +60,9 @@ export default function Audit() {
         tone: a.category === 'fund' ? 'good' : a.category === 'risk' ? 'alert' : 'neutral',
         cat: (['fund', 'risk', 'config'].includes(a.category) ? a.category : 'other') as AuditRow['cat'],
       }))
-    : s.activity.map((a) => ({ id: String(a.id), t: a.t, actor: user?.name ?? '系统', text: a.text, tone: a.tone, cat: CAT_OF(a.text) }))
+    : // mock 活动流不携带操作者：标注为「当前会话」而非冒用当前用户名——
+      // 否则切换角色后，别人触发的历史事件也全被记到新用户名下（审计语义失真）
+      s.activity.map((a) => ({ id: String(a.id), t: a.t, actor: `本会话（${user?.name ?? '演示'}）`, text: a.text, tone: a.tone, cat: CAT_OF(a.text) }))
 
   const list = rows.filter((r) => (cat === 'all' ? true : r.cat === cat))
   const fundCount = rows.filter((r) => r.cat === 'fund').length

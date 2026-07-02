@@ -70,6 +70,62 @@
   --shadow-brand: 0 6px 16px -8px rgba(245, 51, 59, 0.7);
 }
 
+/* ── 暗色主题：令牌级整体换肤 ─────────────────────────
+   仪表盘暗色不是简单反色：canvas 压到近黑蓝灰，surface 抬一阶做卡片分层；
+   语义色整体提亮一档（暗底上原 ink 色对比不足），soft 底改为同色系深色薄膜。
+   所有组件走令牌，此处覆盖即全站生效。 */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-canvas: #101114;
+  --color-surface: #17181c;
+  --color-surface-muted: #1d1e23;
+  --color-surface-sunken: #22242a;
+  --color-rail: #131417;
+
+  --color-ink: #e9eaee;
+  --color-ink-2: #b3b6bf;
+  --color-ink-3: #8a8e99;
+  --color-ink-4: #666a75;
+  --color-ink-5: #666a75;
+  --color-hairtick: #3d4049;
+
+  --color-line: rgba(233, 234, 238, 0.09);
+  --color-line-strong: rgba(233, 234, 238, 0.16);
+
+  --color-brand: #f5545b;
+  --color-brand-hover: #ff6b71;
+  --color-brand-soft: rgba(245, 84, 91, 0.14);
+  --color-brand-ink: #ff8a8f;
+
+  --color-good: #34b873;
+  --color-good-soft: rgba(52, 184, 115, 0.13);
+  --color-good-ink: #6fd9a2;
+
+  --color-warn: #d9a13c;
+  --color-warn-soft: rgba(217, 161, 60, 0.13);
+  --color-warn-ink: #e8bf72;
+
+  --color-alert: #e05a5a;
+  --color-alert-soft: rgba(224, 90, 90, 0.13);
+  --color-alert-ink: #f08a8a;
+
+  --color-info: #5b8def;
+  --color-info-soft: rgba(91, 141, 239, 0.13);
+  --color-info-ink: #8fb1f5;
+
+  --color-violet: #9578e8;
+  --color-violet-soft: rgba(149, 120, 232, 0.13);
+  --color-violet-ink: #b8a3f2;
+
+  --color-neutral-soft: #24262c;
+  --color-soft-hover: #2b2d34;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-pop: 0 8px 28px -6px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-brand: 0 6px 16px -8px rgba(245, 84, 91, 0.55);
+}
+
 * {
   border-color: var(--color-line);
 }
@@ -169,12 +225,24 @@ summary,
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: rgba(233, 234, 238, 0.18);
+  background-clip: content-box;
+}
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(233, 234, 238, 0.3);
+  background-clip: content-box;
+}
 
 /* fine 24px engineering grid for the main work surface */
 .grid-bg {
   background-image: linear-gradient(rgba(20, 21, 26, 0.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(20, 21, 26, 0.018) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+:root[data-theme='dark'] .grid-bg {
+  background-image: linear-gradient(rgba(233, 234, 238, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(233, 234, 238, 0.022) 1px, transparent 1px);
 }
 
 /* ── instrument motion ─────────────────────────── */

@@ -32,7 +32,7 @@ export default function Marketplace() {
   const [specOpen, setSpecOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const toast = useToast()
-  const { brands, claims } = useStore()
+  const { brands, claims, platformParams } = useStore()
   const live = brands.filter((b) => b.status === 'live')
   const list = cat === '全部' ? live : live.filter((b) => b.category === cat)
 
@@ -55,13 +55,14 @@ export default function Marketplace() {
 
       <div className="mb-4 flex items-center justify-between">
         <Segmented value={cat} onChange={setCat} options={CATS.map((c) => ({ value: c, label: c === '全部' ? '全部' : c.split(' ')[0] }))} />
-        <span className="text-[12px] text-ink-4">{list.length} 个可投套餐</span>
+        <span className="text-[12px] text-ink-4">{list.reduce((n, b) => n + b.plans.length, 0)} 个可投套餐</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {list.flatMap((b) =>
           b.plans.map((p) => {
-            const agentShare = Math.round(b.feeRate * 0.72)
+            // 代理分润 = 品牌费率 × 分润占比（platformParams.agentSharePct，设置页可调，默认 72%）
+            const agentShare = Math.round(b.feeRate * (platformParams.agentSharePct / 100))
             return (
               <Card key={b.id + p.name} className="flex flex-col transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]">
                 <div className="flex items-start justify-between">

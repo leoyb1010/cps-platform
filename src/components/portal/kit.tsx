@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Inbox, WifiOff, AlertCircle } from 'lucide-react'
 import { Skeleton } from '../ui/primitives'
-import { isRealApi } from '../../lib/http'
 import { downloadText } from '../../lib/format'
 
 // ════════════════════════════════════════════════════════════
-//  客户门户公共套件 —— 两个 portal 共享，避免重复造 useReal/DemoNotice。
-//  真实 API only：mock 态客户门户不渲染业务数据（避免跨租户泄漏）。
+//  客户门户公共套件 —— 两个 portal 共享，避免重复造取数 hook / 通知组件。
+//  取数两种模式都真实发起：真实模式走 /portal/* scoped 端点（服务端按账户收窄）；
+//  演示模式由 portalApi 落到 portalDemo 合成的按租户隔离数据（youdao / A-2041）。
+//  'demo' 态与 DemoNotice 保留给仅真实后端可用的能力（如 AIGC 素材微服务）。
 // ════════════════════════════════════════════════════════════
 
 export type ResourceState = 'loading' | 'demo' | 'error' | 'ready'
@@ -17,10 +18,9 @@ export function usePortalResource<T>(fetcher: () => Promise<T>, deps: unknown[] 
   reload: () => void
 } {
   const [data, setData] = useState<T | null>(null)
-  const [state, setState] = useState<ResourceState>(isRealApi ? 'loading' : 'demo')
+  const [state, setState] = useState<ResourceState>('loading')
   const [tick, setTick] = useState(0)
   useEffect(() => {
-    if (!isRealApi) { setState('demo'); return }
     let alive = true
     setState('loading')
     fetcher()
@@ -43,7 +43,7 @@ function Notice({ icon, title, body }: { icon: ReactNode; title: string; body: s
 }
 
 export function DemoNotice() {
-  return <Notice icon={<WifiOff size={18} />} title="演示态不可用" body="客户门户需连接真实后端（数据按账户隔离，演示态无法保证隔离）。" />
+  return <Notice icon={<WifiOff size={18} />} title="演示态不可用" body="该能力依赖真实后端服务（如素材引擎微服务），演示模式暂不提供。" />
 }
 
 export function ErrorNotice({ onRetry }: { onRetry?: () => void }) {

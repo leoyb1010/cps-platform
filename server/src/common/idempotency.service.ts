@@ -17,11 +17,15 @@ export class IdempotencyService {
 
   /**
    * 包裹一次操作。key 为空时不做幂等（退化为直接执行，便于无键调用）。
+   * bind：把幂等键绑定到目标资源/租户（如订单 id、结算单 id、user scope）。
+   *   不绑定时，客户端把同一个 Idempotency-Key 复用在不同资源上会命中首次结果——
+   *   第二个资源的操作被静默跳过且返回成功（资金端点上等于"看似退款成功实际没退"）。
+   *   绑定后语义变为"键按资源隔离"：同资源同键回放，异资源各自执行。
    * 返回 { result, replayed } —— replayed=true 表示命中了首次结果。
    */
-  async run<T>(key: string | undefined, scope: string, op: () => Promise<T>): Promise<{ result: T; replayed: boolean }> {
+  async run<T>(key: string | undefined, scope: string, op: () => Promise<T>, bind?: string): Promise<{ result: T; replayed: boolean }> {
     if (!key) return { result: await op(), replayed: false }
-    const storageKey = this.storageKey(scope, key)
+    const storageKey = this.storageKey(scope, key, bind)
 
     // 已有最终结果 → 直接回放
     const done = await this.readIfDone<T>(storageKey)
@@ -55,8 +59,8 @@ export class IdempotencyService {
     }
   }
 
-  private storageKey(scope: string, key: string): string {
-    return `${scope}:${key}`
+  private storageKey(scope: string, key: string, bind?: string): string {
+    return bind ? `${scope}:${bind}:${key}` : `${scope}:${key}`
   }
 
   private async readIfDone<T>(key: string): Promise<{ hit: boolean; value?: T }> {

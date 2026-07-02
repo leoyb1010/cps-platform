@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { getStore, resetStore, resolveTicketWithRefund, clearSettlement, setAgentStatus, settleAgent, addMerchant, addBrand } from './store'
+import { getStore, resetStore, resolveTicketWithRefund, refundOrder, isOrderRefunded, clearSettlement, setAgentStatus, settleAgent, addMerchant, addBrand } from './store'
+import { brandById } from './data'
 
 beforeEach(() => {
   localStorage.clear()
@@ -62,6 +63,44 @@ describe('store · 工单退款核心联动', () => {
     const snapshot = getStore().orders.length
     resolveTicketWithRefund(t.id) // 二次
     expect(getStore().orders.length).toBe(snapshot) // 不再生成流水
+  })
+})
+
+describe('store · 退款防重（同原单跨路径至多一退）', () => {
+  it('同一订单二次退款 → 拒绝（资金不双扣）', () => {
+    const order = getStore().orders.find((o) => o.type === 'first')!
+    const agentBefore = getStore().agents.find((a) => a.id === order.agentId)!.payoutPending
+    refundOrder(order.id)
+    expect(isOrderRefunded(order.id)).toBe(true)
+    const afterFirst = getStore()
+    const ordersAfterFirst = afterFirst.orders.length
+    const agentAfterFirst = afterFirst.agents.find((a) => a.id === order.agentId)!.payoutPending
+    expect(agentAfterFirst).toBeLessThanOrEqual(agentBefore)
+    refundOrder(order.id) // 二次退款
+    const afterSecond = getStore()
+    expect(afterSecond.orders.length).toBe(ordersAfterFirst) // 无新退款流水
+    expect(afterSecond.agents.find((a) => a.id === order.agentId)!.payoutPending).toBe(agentAfterFirst) // 代理分润未被二次冲减
+  })
+
+  it('order.refund 先行 → 同原单工单退款只解决工单、不再动钱', () => {
+    const t = getStore().complaints.find((c) => c.status !== 'resolved' && getStore().orders.some((o) => o.id === c.orderId))!
+    refundOrder(t.orderId)
+    const mid = getStore()
+    const ordersMid = mid.orders.length
+    const settleMid = mid.settlements.find((s) => s.brandId === t.brandId)?.reversal ?? 0
+    resolveTicketWithRefund(t.id)
+    const after = getStore()
+    expect(after.complaints.find((c) => c.id === t.id)!.status).toBe('resolved') // 工单照常解决
+    expect(after.orders.length).toBe(ordersMid) // 不再生成第二笔退款流水
+    expect(after.settlements.find((s) => s.brandId === t.brandId)?.reversal ?? 0).toBe(settleMid) // 冲账未翻倍
+  })
+})
+
+describe('data · 活体实体解析（brandById 跟随运行时状态）', () => {
+  it('运行时新建品牌可被 brandById 解析（不再是「未知品牌」）', () => {
+    const id = addBrand({ name: '新brand测试', mark: '新', category: '工具', path: 'direct', feeRate: 20, period: 7, reservePct: 8, planName: '月度', firstPrice: 30, renewPrice: 25, channel: 'wechat' })
+    expect(brandById(id).name).toBe('新brand测试')
+    expect(brandById(id).feeRate).toBe(20)
   })
 })
 

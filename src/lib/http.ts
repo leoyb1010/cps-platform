@@ -32,10 +32,17 @@ async function raw(path: string, init: RequestInit = {}): Promise<Response> {
   })
 }
 
+// 会话丢失回调（auth 层注册）：刷新彻底失败时清登录态，避免"僵尸控制台"。
+// 用回调而非直接 import auth —— auth 依赖本模块，反向静态依赖会成环。
+let authLostCb: (() => void) | null = null
+export function onAuthLost(cb: () => void) {
+  authLostCb = cb
+}
+
 let refreshing: Promise<boolean> | null = null
 async function tryRefresh(): Promise<boolean> {
   if (!refreshing) {
-    refreshing = (async () => {
+    const doRefresh = async () => {
       try {
         const r = await raw('/auth/refresh', { method: 'POST' })
         if (!r.ok) return false
@@ -47,9 +54,17 @@ async function tryRefresh(): Promise<boolean> {
       } finally {
         setTimeout(() => (refreshing = null), 0)
       }
-    })()
+    }
+    // 跨标签页串行化：刷新令牌旋转是一次性的，两个 tab 并发 refresh 会触发服务端
+    // 重放检测（按令牌被盗处理，吊销全会话族）。Web Locks 保证同刻只有一个 tab 在旋转。
+    refreshing =
+      typeof navigator !== 'undefined' && 'locks' in navigator
+        ? navigator.locks.request('cps-auth-refresh', doRefresh)
+        : doRefresh()
   }
-  return refreshing
+  const ok = await refreshing
+  if (!ok) authLostCb?.()
+  return ok
 }
 
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {

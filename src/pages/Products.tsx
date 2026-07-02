@@ -5,6 +5,7 @@ import { Modal, useToast } from '../components/ui/overlays'
 import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Field, Input } from '../components/ui/forms'
 import { useApi, bizApi } from '../lib/adminApi'
+import { isRealApi } from '../lib/http'
 import { money, cx } from '../lib/format'
 
 interface Product {
@@ -61,6 +62,8 @@ export default function Products() {
         desc="品牌上架的订阅商品审核台。过审后进入用户订阅超市，可被自由搭配成组合套餐。"
         actions={<Button variant="ghost" onClick={() => setRuleOpen(true)}><Percent size={14} /> 组合优惠规则</Button>}
       />
+
+      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示模式 · 连接真实后端后展示服务端商品与审核台</div>}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card><Stat label="商品总数" value={String(products.length)} sub={<span>全平台</span>} /></Card>

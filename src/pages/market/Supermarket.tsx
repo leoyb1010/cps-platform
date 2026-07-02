@@ -41,7 +41,7 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
   const quoteSeq = useRef(0)
 
   useEffect(() => {
-    if (!isRealApi) { setLoadErr(true); setLoading(false); return }
+    // 演示/真实两种模式都能逛：marketApi 在演示模式回落到本地合成货架 + 同口径算价
     Promise.all([marketApi.products(), marketApi.rules().catch(() => [])])
       .then(([ps, ts]) => {
         setProducts(ps); setTiers(ts)
@@ -122,7 +122,7 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
           </a>
         </div>
         {loadErr
-          ? <div className="rounded-2xl border border-dashed border-line bg-surface-muted p-10 text-center text-[13px] text-ink-3">订阅超市需连接真实后端浏览上架商品。</div>
+          ? <div className="rounded-2xl border border-dashed border-line bg-surface-muted p-10 text-center text-[13px] text-ink-3">货架加载失败：{isRealApi ? '请确认后端服务已启动后刷新重试。' : '请刷新重试。'}</div>
           : <><ShelfBody {...shelfProps} /><BundlesPanel /></>}
       </>
     )
@@ -179,7 +179,7 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
 
       <main className="mx-auto max-w-[1180px] px-5 py-8 sm:px-8">
         {loadErr
-          ? <div className="rounded-2xl border border-dashed border-line bg-surface-muted p-10 text-center text-[13px] text-ink-3">订阅超市需连接真实后端浏览上架商品。</div>
+          ? <div className="rounded-2xl border border-dashed border-line bg-surface-muted p-10 text-center text-[13px] text-ink-3">货架加载失败：{isRealApi ? '请确认后端服务已启动后刷新重试。' : '请刷新重试。'}</div>
           : <ShelfBody {...shelfProps} />}
       </main>
     </div>

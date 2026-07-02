@@ -9,7 +9,17 @@ function useOverlayBehavior(open: boolean, onClose: () => void, panelRef?: React
     if (!open) return
     const prevActive = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') { onClose(); return }
+      // 最小焦点圈闭：Tab / Shift+Tab 在 aria-modal 对话框内循环，不逃到背景页面
+      if (e.key === 'Tab' && panelRef?.current) {
+        const panel = panelRef.current
+        const els = panel.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])')
+        if (!els.length) { e.preventDefault(); panel.focus(); return }
+        const first = els[0], last = els[els.length - 1]
+        const cur = document.activeElement
+        if (e.shiftKey && (cur === first || cur === panel || !panel.contains(cur))) { e.preventDefault(); last.focus() }
+        else if (!e.shiftKey && (cur === last || !panel.contains(cur))) { e.preventDefault(); first.focus() }
+      }
     }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
@@ -53,10 +63,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="fixed right-5 bottom-5 z-[100] flex flex-col gap-2">
+      <div role="status" aria-live="polite" className="fixed right-5 bottom-5 z-[100] flex flex-col gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
+            role="status"
             className="flex items-center gap-2.5 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-[13px] text-ink shadow-[var(--shadow-pop)]"
             style={{ animation: 'revUpSm .28s cubic-bezier(.22,1,.36,1) both', minWidth: 240 }}
           >
@@ -171,6 +182,9 @@ export function Confirm({
   confirmText?: string
   tone?: 'brand' | 'alert'
 }) {
+  // 首次点击即置 busy：快速双击不再触发两次 onConfirm（mock 模式下曾造成双重退款）
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { if (!open) setBusy(false) }, [open])
   return (
     <Modal
       open={open}
@@ -178,13 +192,16 @@ export function Confirm({
       title={title}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>取消</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
           <button
+            disabled={busy}
             onClick={() => {
+              if (busy) return
+              setBusy(true)
               onConfirm()
               onClose()
             }}
-            className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', tone === 'alert' ? 'bg-alert hover:opacity-90' : 'bg-brand hover:bg-brand-hover')}
+            className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white disabled:cursor-default disabled:opacity-60', tone === 'alert' ? 'bg-alert hover:opacity-90' : 'bg-brand hover:bg-brand-hover')}
           >
             {confirmText}
           </button>

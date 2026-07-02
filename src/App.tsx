@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useAuth, bootstrapAuth } from './lib/auth'
+import { useAuth, useCan, bootstrapAuth } from './lib/auth'
 import { isRealApi } from './lib/http'
 import { hydrateFromServer } from './lib/store'
 import AppLayout from './components/layout/AppLayout'
@@ -35,15 +35,26 @@ import { AgentHome, AgentMarket, AgentPlans, AgentPayouts, AgentCredit, AgentCon
 import { PortalAigc } from './pages/portal/PortalAigc'
 
 // 按 scopeType 分流：未登录按区送对应登录页；越区访问弹回自己的家区。
+// 未知 scopeType（新增租户类型/脏数据）不得落到 platform 默认——那等于放进内部控制台外壳，
+// 且 homeForScope 对未知值返回 '/' 会与本守卫互相弹跳成死循环。一律视为未授权送回登录页。
+const KNOWN_SCOPES = ['platform', 'brand', 'agent'] as const
 function RequireScope({ allow, children }: { allow: 'platform' | 'brand' | 'agent'; children: React.ReactNode }) {
   const user = useAuth()
   const loc = useLocation()
-  if (!user) {
-    const loginPath = loc.pathname.startsWith('/portal') ? '/portal/login' : '/login'
-    return <Navigate to={loginPath} replace state={{ from: loc.pathname }} />
-  }
-  const t = (user.scopeType ?? 'platform') as 'platform' | 'brand' | 'agent'
+  const loginPath = loc.pathname.startsWith('/portal') ? '/portal/login' : '/login'
+  if (!user) return <Navigate to={loginPath} replace state={{ from: loc.pathname }} />
+  const t = (user.scopeType ?? 'platform') as string
+  if (!KNOWN_SCOPES.includes(t as (typeof KNOWN_SCOPES)[number])) return <Navigate to={loginPath} replace />
   if (t !== allow) return <Navigate to={homeForScope(user)} replace />
+  return <>{children}</>
+}
+
+// 操作级权限守卫：路由不只靠导航隐藏——直接输 URL 也要按权限拦。
+// 无权限 → 回总览（audit 等只读角色不该打开配置中心并成功改配置）。
+function RequirePerm({ perm, anyPerm, children }: { perm?: string; anyPerm?: string[]; children: React.ReactNode }) {
+  const can = useCan()
+  const ok = anyPerm ? anyPerm.some((p) => can(p)) : can(perm)
+  if (!ok) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
@@ -120,25 +131,25 @@ export default function App() {
         }
       >
         <Route path="/" element={<Dashboard />} />
-        <Route path="/brands" element={<Brands />} />
-        <Route path="/brands/:id" element={<BrandDetail />} />
-        <Route path="/marketplace" element={<Marketplace />} />
-        <Route path="/agents" element={<Agents />} />
-        <Route path="/orders" element={<Orders />} />
-        <Route path="/contracts" element={<Contracts />} />
-        <Route path="/barter" element={<Barter />} />
-        <Route path="/aigc" element={<Aigc />} />
-        <Route path="/products" element={<Products />} />
-        <Route path="/supermarket" element={<Supermarket embedded />} />
-        <Route path="/settlement" element={<Settlement />} />
-        <Route path="/merchants" element={<Merchants />} />
-        <Route path="/risk" element={<RiskWorkspace />} />
-        <Route path="/complaints" element={<RiskWorkspace />} />
-        <Route path="/compliance" element={<RiskWorkspace />} />
-        <Route path="/analytics" element={<Analytics />} />
-        <Route path="/members" element={<Members />} />
-        <Route path="/audit" element={<Audit />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/brands" element={<RequirePerm perm="brand.read"><Brands /></RequirePerm>} />
+        <Route path="/brands/:id" element={<RequirePerm perm="brand.read"><BrandDetail /></RequirePerm>} />
+        <Route path="/marketplace" element={<RequirePerm perm="market.view"><Marketplace /></RequirePerm>} />
+        <Route path="/agents" element={<RequirePerm perm="agent.read"><Agents /></RequirePerm>} />
+        <Route path="/orders" element={<RequirePerm perm="order.read"><Orders /></RequirePerm>} />
+        <Route path="/contracts" element={<RequirePerm perm="contract.read"><Contracts /></RequirePerm>} />
+        <Route path="/barter" element={<RequirePerm perm="barter.view"><Barter /></RequirePerm>} />
+        <Route path="/aigc" element={<RequirePerm perm="aigc.view"><Aigc /></RequirePerm>} />
+        <Route path="/products" element={<RequirePerm perm="product.read"><Products /></RequirePerm>} />
+        <Route path="/supermarket" element={<RequirePerm perm="product.read"><Supermarket embedded /></RequirePerm>} />
+        <Route path="/settlement" element={<RequirePerm perm="settlement.read"><Settlement /></RequirePerm>} />
+        <Route path="/merchants" element={<RequirePerm perm="merchant.read"><Merchants /></RequirePerm>} />
+        <Route path="/risk" element={<RequirePerm anyPerm={['risk.read', 'ticket.read', 'compliance.view']}><RiskWorkspace /></RequirePerm>} />
+        <Route path="/complaints" element={<RequirePerm anyPerm={['risk.read', 'ticket.read', 'compliance.view']}><RiskWorkspace /></RequirePerm>} />
+        <Route path="/compliance" element={<RequirePerm anyPerm={['risk.read', 'ticket.read', 'compliance.view']}><RiskWorkspace /></RequirePerm>} />
+        <Route path="/analytics" element={<RequirePerm perm="analytics.view"><Analytics /></RequirePerm>} />
+        <Route path="/members" element={<RequirePerm perm="member.manage"><Members /></RequirePerm>} />
+        <Route path="/audit" element={<RequirePerm perm="audit.read"><Audit /></RequirePerm>} />
+        <Route path="/settings" element={<RequirePerm perm="config.write"><Settings /></RequirePerm>} />
         <Route path="/profile" element={<Profile />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

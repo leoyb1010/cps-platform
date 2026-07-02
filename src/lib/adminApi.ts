@@ -86,7 +86,7 @@ export const bizApi = {
   reconcile: (id: string, idem?: string) => http.post<Ok>(`/settlements/${id}/reconcile`, undefined, idemHdr(idem)),
   refundTicket: (id: string, idem?: string) => http.post<Ok>(`/tickets/${id}/refund`, undefined, idemHdr(idem)),
   refundOrder: (id: string, idem?: string) => http.post<Ok>(`/orders/${id}/refund`, undefined, idemHdr(idem)),
-  updateTicket: (id: string, body: { status?: string; owner?: string; note?: string }) => http.patch<Ok>(`/tickets/${id}`, body),
+  updateTicket: (id: string, body: { status?: string; owner?: string; level?: string; note?: string }) => http.patch<Ok>(`/tickets/${id}`, body),
   // 外部投诉接入（支付宝/12315/黑猫等 → 落 Ticket，按 orderId 反查归属）
   ingestComplaint: (body: { source: string; reason: string; level?: string; orderId?: string; brandId?: string; agentId?: string; externalRef?: string }) => http.post<Ok & { ticketId?: string; brandId?: string; agentId?: string; slaLeftMin?: number }>('/complaints/ingest', body),
   setMerchant: (id: string, state: string, label?: string) => http.post<Ok>(`/merchants/${id}/state`, { state, label }),

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat, HelpCircle } from 'lucide-react'
+import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat, HelpCircle, Sun, Moon, MonitorSmartphone } from 'lucide-react'
 import { NAV, BOARD_ICON } from './nav'
 import { GuideDrawer } from './GuideDrawer'
 import { GUIDES } from '../../lib/guides'
-import { useViewMode, setViewMode } from '../../lib/prefs'
+import { useViewMode, setViewMode, useTheme, setTheme, type Theme } from '../../lib/prefs'
 import { Segmented } from '../ui/primitives'
 import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
@@ -16,6 +16,29 @@ import { CommandPalette } from './CommandPalette'
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
+}
+
+/* 主题切换：亮 → 暗 → 跟随系统 三态循环（图标即状态） */
+const THEME_ORDER: Theme[] = ['light', 'dark', 'system']
+const THEME_META: Record<Theme, { icon: typeof Sun; label: string }> = {
+  light: { icon: Sun, label: '明亮' },
+  dark: { icon: Moon, label: '暗色' },
+  system: { icon: MonitorSmartphone, label: '跟随系统' },
+}
+export function ThemeToggle() {
+  const theme = useTheme()
+  const meta = THEME_META[theme]
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length]
+  return (
+    <button
+      aria-label={`主题：${meta.label}，点击切换`}
+      title={`主题：${meta.label}`}
+      onClick={() => setTheme(next)}
+      className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand"
+    >
+      <meta.icon size={15} strokeWidth={1.8} />
+    </button>
+  )
 }
 
 function LogoMark() {
@@ -143,6 +166,7 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
           <kbd className="tnum rounded-[3px] border border-line px-1.5 text-[10px] text-ink-5">⌘K</kbd>
         </button>
         <button aria-label="搜索" onClick={openPalette} className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand lg:hidden"><Search size={15} /></button>
+        <ThemeToggle />
         <button aria-label="重播动效" onClick={onReplay} title="重播动效" className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
           <RotateCcw size={15} strokeWidth={2} />
         </button>

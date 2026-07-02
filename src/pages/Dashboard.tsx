@@ -18,6 +18,7 @@ import { Confirm, useToast } from '../components/ui/overlays'
 import { EmptyState } from '../components/ui/forms'
 import { Term } from '../components/ui/Term'
 import { useViewMode } from '../lib/prefs'
+import { isRealApi } from '../lib/http'
 import {
   useStore,
   selectRisk,
@@ -50,9 +51,9 @@ function exportCsv(range: Range) {
   const rows = [
     ['指标', '数值', '口径'],
     ['R-NSC 风险调整后净订阅贡献', money(rnscOf(range)), '北极星 · 含估算成本项'],
-    [`${RANGE_LABEL[range]}基础流水`, money(kpi.gmvMtd), 'R-NSC 收入首项 · 扣款成交额'],
+    [`${RANGE_LABEL[range]}基础流水`, money(kpi.gmvMtd * RANGE_SCALE[range]), 'R-NSC 收入首项 · 扣款成交额'],
     ['净 LTV÷CAC', kpi.ltvCac.toFixed(2), '护栏指标'],
-    ['平台净收入', money(kpi.platformNetMtd), '可分配池−代理分润'],
+    ['平台净收入（本月）', money(kpi.platformNetMtd), '可分配池−代理分润'],
     ['续费率', pct(kpi.renewalRate), '连续包月'],
     ['综合投诉率', pct(kpi.complaintRate), '近7天累计'],
   ]
@@ -64,20 +65,11 @@ function exportCsv(range: Range) {
   URL.revokeObjectURL(a.href)
 }
 
-// R-NSC 北极星派生估算（dict.ts METRICS.rnsc 口径）。
-// 平台净收入 = 可分配池 − 渠道分润（真实数据，已扣分润），以它为起点，再减去风险与各项成本。
-// 带 EST_ 前缀的成本项目前用占位系数 × 基础流水估算，结果在 UI 标注"含估算项"，待真实流水接入。
-const EST_REFUND = 0.03 // 退款占基础流水
-const EST_COMPLAINT = 0.008 // 投诉处理成本
-const EST_RESERVE = 0.1 // 风险准备金计提
-const EST_MATERIAL = 0.015 // 素材成本
-const EST_MIDRISK = 0.006 // 商户号风险成本
+// R-NSC 北极星（唯一口径）：直接取 data.ts kpi.rnscMtd（RNSC_BREAKDOWN ∑ 恰等，部分项含估算系数），
+// 按区间用与基础流水相同的系数折算——不再本地估算成本项，避免与归因页权威值口径打架。
 const RANGE_SCALE: Record<Range, number> = { today: 1 / 30, week: 1 / 4, month: 1, quarter: 3 }
 function rnscOf(range: Range): number {
-  const k = RANGE_SCALE[range]
-  const net = kpi.platformNetMtd * k // 已扣渠道分润的平台净收入
-  const costs = kpi.gmvMtd * k * (EST_REFUND + EST_COMPLAINT + EST_RESERVE + EST_MATERIAL + EST_MIDRISK)
-  return Math.round(net - costs)
+  return Math.round(kpi.rnscMtd * RANGE_SCALE[range])
 }
 
 export default function Dashboard() {
@@ -93,7 +85,7 @@ export default function Dashboard() {
   const expert = mode === 'expert'
   const overall = risk.some((r) => r.health === 'red') ? 'red' : risk.some((r) => r.health === 'amber') ? 'amber' : 'green'
 
-  const gmvScale = range === 'today' ? 1 / 30 : range === 'week' ? 1 / 4 : range === 'quarter' ? 3 : 1
+  const gmvScale = RANGE_SCALE[range]
   const gmvShown = kpi.gmvMtd * gmvScale
 
   const atRisk = s.merchants.filter((m) => m.state !== 'healthy').sort((a, b) => b.complaintRate - a.complaintRate).slice(0, 4)
@@ -105,8 +97,10 @@ export default function Dashboard() {
   const toneOf = (v: number, red: number, amber: number): 'good' | 'warn' | 'alert' => (v >= red ? 'alert' : v >= amber ? 'warn' : 'good')
   const complaintTone = toneOf(peakComplaint, MERCHANT_THRESHOLD.complaint, MERCHANT_THRESHOLD.complaintWarn)
   const maxBrandGmv = Math.max(1, ...liveBrands.map((b) => b.gmvMtd))
-  const anomalies = s.orders.filter((o) => o.type === 'refund' || o.type === 'chargeback' || Math.abs(o.amount) >= 39).slice(0, 6)
+  const anomalies = s.orders.filter((o) => o.type === 'refund' || o.type === 'chargeback').slice(0, 6)
   const agentRisk = s.agents.filter((a) => a.status !== 'active')
+  const activeAgents = s.agents.filter((a) => a.status === 'active').length
+  const liveBrandCount = s.brands.filter((b) => b.status === 'live').length
   const agentPending = s.agents.reduce((x, a) => x + a.payoutPending, 0)
 
   return (
@@ -132,8 +126,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 演示剧本（一键触发联动）· 仅专家模式 */}
-      {expert && (
+      {/* 演示剧本（一键触发联动）· 仅专家模式 + 演示数据（真实模式隐藏：重置会覆盖服务端真值，退款剧本会触发真实冲账） */}
+      {expert && !isRealApi && (
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-line bg-surface-muted px-3 py-2 text-[12px]">
         <span className="font-medium text-ink-2">演示剧本</span>
         <button onClick={() => { runScenario('crisis'); toast({ tone: 'alert', text: '保号危机：M-XM-02 暂停新签' }) }} className="rounded-md bg-surface px-2.5 py-1 font-medium text-ink-2 ring-1 ring-line hover:ring-brand hover:text-brand">保号危机</button>
@@ -283,14 +277,14 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
-          <div className="mt-2 border-t border-line pt-3 text-[11px] text-ink-5">在投品牌 <span className="tnum text-ink">{kpi.liveBrands}</span> · 活跃订阅 <span className="tnum text-ink">{int(kpi.activeSubs)}</span></div>
+          <div className="mt-2 border-t border-line pt-3 text-[11px] text-ink-5">在投品牌 <span className="tnum text-ink">{liveBrandCount}</span> · 活跃订阅 <span className="tnum text-ink">{int(kpi.activeSubs)}</span></div>
         </Card>
 
         {/* 下游 · 代理质量（补齐三方对称） */}
         <Card style={rev(0.48)}>
           <CardTitle title="下游 · 代理质量" desc="服务商健康与风险" right={<Link to="/agents" className="text-[12px] text-ink-3 hover:text-ink">代理 →</Link>} />
           <div className="grid grid-cols-3 gap-2">
-            <QualBox v={String(kpi.activeAgents)} k="活跃代理" tone="good" />
+            <QualBox v={String(activeAgents)} k="活跃代理" tone="good" />
             <QualBox v={String(agentRisk.length)} k="风险代理" tone="alert" />
             <QualBox v={money(agentPending)} k="待结算" tone="info" />
           </div>
@@ -315,12 +309,12 @@ export default function Dashboard() {
         {/* 异常订单流（改造后：只看需处置的单） */}
         <Card style={rev(0.5)} pad={false} className="overflow-hidden">
           <div className="flex items-center justify-between border-b border-line px-5 pt-4 pb-3">
-            <div className="flex items-center gap-2.5"><span className="h-[7px] w-[7px] bg-brand" /><div className="text-[14px] font-semibold">异常订单流</div><span className="text-[11px] text-ink-4">退款 / 拒付 / 大额</span></div>
+            <div className="flex items-center gap-2.5"><span className="h-[7px] w-[7px] bg-brand" /><div className="text-[14px] font-semibold">异常订单流</div><span className="text-[11px] text-ink-4">退款 / 拒付</span></div>
             <Link to="/orders" className="text-[11.5px] text-ink-4 hover:text-ink">全部订单 →</Link>
           </div>
           <div className="px-2 py-2">
             {anomalies.length === 0 ? (
-              <EmptyState title="暂无异常订单" desc="退款、拒付、大额订单会在此聚合" />
+              <EmptyState title="暂无异常订单" desc="退款、拒付订单会在此聚合" />
             ) : (
               anomalies.map((o) => {
                 const t = ORDER_TYPE[o.type]

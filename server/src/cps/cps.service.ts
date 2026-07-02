@@ -44,8 +44,10 @@ export class CpsService {
   // ── 签约：建 SignOrder(signing)，生成 signOrderNo + 模拟收银台 url ──
   async sign(args: { appId: string; brandId: string; signContent: string; mobile: string; payChannel: number; extraInfo?: string }) {
     // 服务端权威定价：以签约商品（sign_content=商品ID）的续费价为单期扣款额；商品须存在且 live（未过审/下架不可签约扣款）。
-    const product = await this.prisma.product.findFirst({ where: { id: args.signContent, deletedAt: null, status: 'live' } })
-    if (!product) return { code: 40004, msg: '签约商品不存在或未上架', data: null }
+    // 归属校验：商品必须属于该凭证品牌——否则品牌 A 的凭证可签约品牌 B 的商品，
+    // GMV/结算全记到 A 头上（跨品牌资金归属错乱，曾在联调中实际发生）。
+    const product = await this.prisma.product.findFirst({ where: { id: args.signContent, brandId: args.brandId, deletedAt: null, status: 'live' } })
+    if (!product) return { code: 40004, msg: '签约商品不存在、未上架或不属于该品牌', data: null }
     const amount = product.renewPrice || product.firstPrice
     const so = 'SIGN-' + shortId()
     await this.prisma.signOrder.create({
@@ -85,6 +87,8 @@ export class CpsService {
   // ── 扣款核心（幂等）：走 fulfillment.ingestOrder 落账，恒等式安全。type=first/renew ──
   private async charge(signOrderNo: string, period: number, type: 'first' | 'renew', idemKey?: string) {
     const key = idemKey ?? `${signOrderNo}:${period}`
+    // 幂等键绑定签约单：外部调用方把同一 Idempotency-Key 复用到另一张签约单时各自执行，
+    // 而非静默回放首单结果（否则第二张签约单"看似扣款成功"实际没扣）。
     const { result, replayed } = await this.idem.run(key, 'cps.charge', async () => {
       return this.prisma.$transaction(async (tx) => {
         const so = await tx.signOrder.findUnique({ where: { id: signOrderNo } })
@@ -112,7 +116,7 @@ export class CpsService {
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge', resource: 'SignOrder', resourceId: so.id, detail: `${type === 'first' ? '首扣' : '续扣'} 第${period}期 · 订单 ${oid} · ¥${amount}` })
         return { ok: true, detail: '扣款成功', signOrderNo: so.id, orderId: oid, extOrderNo: ext, period, amount }
       })
-    })
+    }, signOrderNo)
     if (result.ok && !replayed) {
       this.metrics.recordFundAction('cps.charge', 'ok')
       // 扣款成功回调（2）
@@ -169,7 +173,7 @@ export class CpsService {
       this.metrics.recordFundAction('cps.refund', 'ok')
       this.metrics.addRefundAmount(r.amt)
       return { ok: true, detail: '退款成功', amount: r.amt, share: r.share, period: r.period }
-    })
+    }, signOrderNo)
     if (result.ok && !replayed) await this.webhook.deliver(signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: result.amount, period: result.period ?? 0, operateTime: new Date() })
     return replayed ? { ...result, replayed: true } : result
   }
