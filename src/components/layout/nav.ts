@@ -14,7 +14,6 @@ import {
   ScrollText,
   Repeat,
   Sparkles,
-  ShoppingBag,
   Megaphone,
   type LucideIcon,
 } from 'lucide-react'
@@ -61,8 +60,7 @@ export const NAV: NavGroup[] = [
       { to: '/contracts', label: '增长合约', icon: FileSignature, perm: 'contract.read' },
       { to: '/barter', label: '资源置换', icon: Repeat, perm: 'barter.view' },
       { to: '/aigc', label: 'AIGC 素材', icon: Sparkles, perm: 'aigc.view' },
-      { to: '/products', label: '订阅商品', icon: Package, perm: 'product.read' },
-      { to: '/supermarket', label: '订阅超市', icon: ShoppingBag, perm: 'product.read' },
+      { to: '/products', label: '订阅商品', icon: Package, perm: 'product.read', activeMatch: ['/products', '/supermarket'] },
     ],
   },
 

@@ -169,7 +169,8 @@ export default function App() {
         <Route path="/barter" element={<RequirePerm perm="barter.view"><Barter /></RequirePerm>} />
         <Route path="/aigc" element={<RequirePerm perm="aigc.view"><Aigc /></RequirePerm>} />
         <Route path="/products" element={<RequirePerm perm="product.read"><Products /></RequirePerm>} />
-        <Route path="/supermarket" element={<RequirePerm perm="product.read"><Supermarket embedded /></RequirePerm>} />
+        {/* 订阅超市已并入「订阅商品」页；旧直链重定向，避免书签失效 */}
+        <Route path="/supermarket" element={<Navigate to="/products" replace />} />
         <Route path="/settlement" element={<RequirePerm perm="settlement.read"><Settlement /></RequirePerm>} />
         <Route path="/settlement/run" element={<RequirePerm perm="settlement.clear"><SettlementRun /></RequirePerm>} />
         <Route path="/merchants" element={<RequirePerm perm="merchant.read"><Merchants /></RequirePerm>} />

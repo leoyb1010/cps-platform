@@ -256,6 +256,12 @@ table tbody td {
     linear-gradient(90deg, rgba(233, 234, 238, 0.022) 1px, transparent 1px);
 }
 
+/* 品牌 logo 是黑字 PNG：暗色主题下反白，否则融进深色侧栏/顶栏看不见（"logo 挂了"的真因）。
+   项目暗色走 [data-theme='dark'] 属性而非 .dark class，故 Tailwind dark: 变体不生效，用此规则统一处理。 */
+:root[data-theme='dark'] .logo-mark {
+  filter: brightness(0) invert(1);
+}
+
 /* ── instrument motion ─────────────────────────── */
 @keyframes revUp {
   from {

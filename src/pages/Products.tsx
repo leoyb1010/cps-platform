@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Package, Check, X, Percent } from 'lucide-react'
+import { Package, Check, X, Percent, ShoppingBag } from 'lucide-react'
 import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row, BrandMark } from '../components/ui/primitives'
 import { Modal, useToast } from '../components/ui/overlays'
 import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
@@ -7,6 +7,8 @@ import { Field, Input } from '../components/ui/forms'
 import { useApi, bizApi } from '../lib/adminApi'
 import { isRealApi } from '../lib/http'
 import { money, cx } from '../lib/format'
+import { BundlesPanel } from './market/Supermarket'
+import { demoProducts, demoBundleRules } from '../lib/adminDemo'
 
 interface Product {
   id: string; brandId: string; brandName: string; brandMark: string; name: string; category: string; description: string
@@ -25,8 +27,12 @@ const CYCLE: Record<string, string> = { monthly: '月付', yearly: '年付', con
 
 export default function Products() {
   const toast = useToast()
-  const productsApi = useApi(() => bizApi.products<Product[]>(), [])
-  const rulesApi = useApi(() => bizApi.bundleRules<BundleRule[]>(), [])
+  // 三视图合一：商品审核台 + 套餐受理台账（超市同源）合并进「订阅商品」一个控制台入口，
+  // 消除「订阅商品 / 订阅超市」两个平级 tab 的困惑。C 端用户货架（/market）不受影响。
+  const [tab, setTab] = useState<'review' | 'fulfill'>('review')
+  // 演示态 fallback：种子合成的审核台/规则数据，让演示模式也能看到审核台与组合规则（能看不能落库）
+  const productsApi = useApi(() => bizApi.products<Product[]>(), [], isRealApi ? null : (demoProducts() as Product[]))
+  const rulesApi = useApi(() => bizApi.bundleRules<BundleRule[]>(), [], isRealApi ? null : (demoBundleRules() as BundleRule[]))
   const [filter, setFilter] = useState<'all' | 'pending' | 'live'>('all')
   const [openId, setOpenId] = useState<string | null>(null)
   const pop = useAnchoredPopover()
@@ -59,12 +65,19 @@ export default function Products() {
     <>
       <PageHeader
         title="订阅商品"
-        desc="品牌上架的订阅商品审核台。过审后进入用户订阅超市，可被自由搭配成组合套餐。"
-        actions={<Button variant="ghost" onClick={() => setRuleOpen(true)}><Percent size={14} /> 组合优惠规则</Button>}
+        desc="商品从审核上架到用户组套餐、运营受理拆单履约的全链路。用户端货架见「订阅超市」（免登录）。"
+        actions={<>
+          <Segmented value={tab} onChange={setTab} options={[{ value: 'review', label: '商品审核' }, { value: 'fulfill', label: '套餐受理' }]} />
+          {tab === 'review' && <Button variant="ghost" onClick={() => setRuleOpen(true)}><Percent size={14} /> 组合优惠规则</Button>}
+          <a href="#/market" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:border-line-strong hover:bg-surface-muted"><ShoppingBag size={13} /> 预览用户货架</a>
+        </>}
       />
 
-      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示模式 · 连接真实后端后展示服务端商品与审核台</div>}
+      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示数据 · 审核/受理操作为本地演示，连接真实后端后为服务端权威</div>}
 
+      {/* 套餐受理 Tab：复用超市的套餐台账（用户组的套餐 → 受理拆单履约） */}
+      {tab === 'fulfill' ? <BundlesPanel /> : (
+      <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card><Stat label="商品总数" value={String(products.length)} sub={<span>全平台</span>} /></Card>
         <Card><Stat label="待审核" value={String(pendingCount)} sub={<span className={pendingCount > 0 ? 'text-warn-ink' : 'text-good-ink'}>{pendingCount > 0 ? '需处理' : '已清空'}</span>} /></Card>
@@ -132,6 +145,8 @@ export default function Products() {
           </div>
         )}
       </Modal>
+      </>
+      )}
     </>
   )
 }

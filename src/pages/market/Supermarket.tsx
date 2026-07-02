@@ -6,6 +6,7 @@ import { money, cx } from '../../lib/format'
 import { resolveBrandLogo } from '../../lib/brandLogos'
 import { useCountUp } from '../../lib/useCountUp'
 import { useApi, bizApi } from '../../lib/adminApi'
+import { demoBundles, demoAgentsLite } from '../../lib/adminDemo'
 import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row } from '../../components/ui/primitives'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Select } from '../../components/ui/forms'
@@ -133,7 +134,7 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
     <div className="min-h-screen bg-canvas">
       {/* 顶栏 */}
       <header className="sticky top-0 z-20 flex h-[58px] items-center gap-2.5 border-b border-line bg-canvas/85 px-5 backdrop-blur-md sm:px-8">
-        <img src="./youdao-logo.png" alt="网易有道" className="h-[22px] w-auto" />
+        <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-[22px] w-auto" />
         <span className="h-[18px] w-px shrink-0 bg-line" />
         <div className="flex items-center gap-2"><ShoppingBag size={16} className="text-brand" /><span className="text-[13px] font-semibold text-ink">订阅超市</span></div>
         <span className="ml-1 hidden rounded-md bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand-ink sm:inline">自由搭配 · 组合更省</span>
@@ -480,10 +481,13 @@ const LEDGER_FILTERS: { value: LedgerFilter; label: string }[] = [
   { value: 'all', label: '全部' },
 ]
 
-function BundlesPanel() {
+// 套餐受理台账：用户在超市生成的套餐 → 运营受理拆单履约。
+// 导出供「订阅商品」控制台页作为「套餐受理」Tab 复用（与超市 embedded 视图同源）。
+export function BundlesPanel() {
   const toast = useToast()
-  const bundlesApi = useApi(() => bizApi.bundles<BundleRow[]>(), [])
-  const agentsApi = useApi(() => bizApi.agents<AgentLite[]>(), [])
+  // 演示态 fallback：种子合成的套餐台账（1 已支付待受理 / 1 未支付），让受理台账在演示模式可看
+  const bundlesApi = useApi(() => bizApi.bundles<BundleRow[]>(), [], isRealApi ? null : (demoBundles() as BundleRow[]))
+  const agentsApi = useApi(() => bizApi.agents<AgentLite[]>(), [], isRealApi ? null : (demoAgentsLite() as AgentLite[]))
   const [acceptId, setAcceptId] = useState<string | null>(null)
   const [agentId, setAgentId] = useState('')
   const [busy, setBusy] = useState(false)

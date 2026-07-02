@@ -43,7 +43,7 @@ export default function Login() {
     >
       <div className="mb-6">
         <div className="mb-3 flex items-center gap-2 lg:hidden">
-          <img src="./youdao-logo.png" alt="网易有道" className="h-6 w-auto" />
+          <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-6 w-auto" />
         </div>
         <h2 className="text-[22px] font-semibold tracking-[-0.015em] text-ink">登录控制台</h2>
         <p className="mt-1.5 text-[13px] text-ink-3">订阅增长交易与风险清结算平台 · 平台运营入口</p>

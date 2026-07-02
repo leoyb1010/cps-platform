@@ -40,6 +40,17 @@ interface GenItem {
   credits: number
 }
 
+// 演示态素材类型配置：无需连 agent-studio 也能完整体验「生成素材」流程（模拟生成）
+const DEMO_CFG: FactoryConfig = {
+  ok: true,
+  assetTypes: [
+    { id: 'carousel', label: '图文轮播', modality: 'image', description: '小红书/朋友圈多图种草', defaultPlatform: 'xhs' },
+    { id: 'poster', label: '单图海报', modality: 'image', description: '信息流单图创意', defaultPlatform: 'xhs' },
+    { id: 'reel', label: '短视频脚本', modality: 'video', description: '抖音/视频号口播脚本 + 分镜', defaultPlatform: 'douyin' },
+    { id: 'copy', label: '投放文案', modality: 'text', description: '标题 + 正文多版本', defaultPlatform: 'xhs' },
+  ],
+}
+
 export default function Aigc() {
   const [f, setF] = useState<'all' | CreativeType>('all')
   const [openId, setOpenId] = useState<string | null>(null)
@@ -185,9 +196,10 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
   const [estimate, setEstimate] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // 真实模式才可用：拉取素材类型/预设；mock 或微服务未连显示占位
+  // 演示态：用内置素材类型让"生成素材"可完整体验（模拟生成，不调真实 agent-studio）。
+  // 真实模式：拉素材引擎配置；微服务未连才显示占位。
   useEffect(() => {
-    if (!isRealApi) { setLoadErr(true); return }
+    if (!isRealApi) { setCfg(DEMO_CFG); setAssetType(DEMO_CFG.assetTypes[0].id); return }
     aigcApi.config().then((c) => {
       setCfg(c)
       if (c.assetTypes?.[0]) setAssetType(c.assetTypes[0].id)
@@ -199,8 +211,16 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
   const platform = current?.defaultPlatform ?? 'xhs'
   const payload = (): GeneratePayload => ({ assetType, platform, intent, prompt: prompt.trim(), modelPreset: preset })
 
+  // 演示态积分估算：按档位 × 素材类型给确定性估值（与真实引擎口径近似）
+  const demoEstimate = () => {
+    const base = assetType.includes('video') || assetType === 'reel' ? 40 : assetType === 'copy' ? 8 : 20
+    const mult = preset === 'quality' ? 2 : preset === 'cheap' ? 0.6 : 1
+    return Math.round(base * mult)
+  }
+
   const doEstimate = async () => {
     if (!prompt.trim()) { toast({ tone: 'info', text: '先填一句话描述要生成什么' }); return }
+    if (!isRealApi) { setEstimate(demoEstimate()); return }
     try {
       const r = await aigcApi.estimate(payload())
       setEstimate(r.creditsEstimated)
@@ -211,6 +231,17 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
 
   const doGenerate = async () => {
     if (!prompt.trim()) { toast({ tone: 'info', text: '先填一句话描述要生成什么' }); return }
+    // 演示态：模拟生成（不调真实 agent-studio），落一条"本次生成"记录，走通完整体验
+    if (!isRealApi) {
+      const cost = estimate ?? demoEstimate()
+      onGenerated(
+        { jobId: 'GEN-' + Math.random().toString(36).slice(2, 8).toUpperCase(), assetType, assetLabel: current?.label ?? assetType, prompt: prompt.trim(), credits: cost },
+        undefined,
+      )
+      toast({ tone: 'good', text: `已生成（演示）· ${current?.label ?? assetType}` })
+      onClose()
+      return
+    }
     setBusy(true)
     try {
       const r = await aigcApi.generate(payload())

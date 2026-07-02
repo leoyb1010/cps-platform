@@ -54,7 +54,7 @@ export default function PortalLogin() {
     >
       <div className="mb-6">
         <div className="mb-3 flex items-center gap-2 lg:hidden">
-          <img src="./youdao-logo.png" alt="网易有道" className="h-6 w-auto" />
+          <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-6 w-auto" />
         </div>
         <h2 className="text-[22px] font-semibold tracking-[-0.015em] text-ink">客户门户登录</h2>
         <p className="mt-1.5 text-[13px] text-ink-3">品牌方管理接入与结算 · 代理商领取投放与提现</p>

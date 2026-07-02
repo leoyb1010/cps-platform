@@ -20,7 +20,7 @@ export interface ClientBranding {
 function PortalLogo({ branding }: { branding: ClientBranding }) {
   return (
     <div className="flex items-center gap-2.5">
-      <img src="./youdao-logo.png" alt="网易有道" className="h-[22px] w-auto" />
+      <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-[22px] w-auto" />
       <span className="h-[18px] w-px shrink-0 bg-line" />
       <div className="leading-[1.12] whitespace-nowrap">
         <div className="text-[11.5px] font-semibold text-ink">{branding.name}</div>
