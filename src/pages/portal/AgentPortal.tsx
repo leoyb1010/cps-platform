@@ -9,7 +9,7 @@ import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars } from '../../components/portal/kit'
 import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
-import { money, pct } from '../../lib/format'
+import { money, pct, cx } from '../../lib/format'
 
 export function AgentHome() {
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
@@ -257,21 +257,23 @@ export function AgentCredit() {
   )
 }
 
+type ContractRow = { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number }
 export function AgentContracts() {
   const toast = useToast()
-  const [rows, setRows] = useState<{ id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number }[] | null>(null)
+  const [rows, setRows] = useState<ContractRow[] | null>(null)
   const [err, setErr] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [sim, setSim] = useState<ContractRow | null>(null) // 接单模拟器目标合约
   const load = () => {
     // 演示/真实两种模式都取数：portalApi 在演示态落到 portalDemo 的 scoped 合约（含可接挂单）
-    portalApi.contracts<{ id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number }[]>().then(setRows).catch(() => setErr(true))
+    portalApi.contracts<ContractRow[]>().then(setRows).catch(() => setErr(true))
   }
   useEffect(load, [])
   const claim = async (id: string) => {
     setBusy(id)
     try {
       const r = await portalApi.claimContract(id)
-      if (r.ok) load()
+      if (r.ok) { load(); setSim(null); toast({ tone: 'good', text: `已接单 ${id}，进入履约` }) }
       else toast({ tone: 'alert', text: r.detail || '接单失败（可能已被接走）' })
     } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally {
       setBusy(null)
@@ -279,7 +281,7 @@ export function AgentContracts() {
   }
   return (
     <>
-      <PageHeader title="我的接单" desc="你接下的增长合约 + 可接的挂单。接单后状态转为履约中。" />
+      <PageHeader title="我的接单" desc="你接下的增长合约 + 可接的挂单。接单前用「接单模拟器」估算分润与风险，再决定。" />
       {err ? <DemoNotice /> : (
         <Card pad={false}>
           <TableShell className="px-2 pb-2" head={<><Th className="pl-3">合约</Th><Th>品牌</Th><Th>结算模型</Th><Th right>目标 GMV</Th><Th right>状态</Th><Th right>操作</Th></>}>
@@ -294,7 +296,7 @@ export function AgentContracts() {
                   <Td right><Badge tone={claimable ? 'info' : c.status === 'active' || c.status === 'fulfilling' ? 'good' : 'neutral'}>{claimable ? '挂单中' : c.status}</Badge></Td>
                   <Td right>
                     {claimable
-                      ? <button onClick={() => claim(c.id)} disabled={busy === c.id} className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-hover disabled:opacity-50">{busy === c.id ? '接单中…' : '接单'}</button>
+                      ? <button onClick={() => setSim(c)} className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-hover">接单</button>
                       : <span className="text-[12px] text-ink-4">—</span>}
                   </Td>
                 </Row>
@@ -303,7 +305,63 @@ export function AgentContracts() {
           </TableShell>
         </Card>
       )}
+      {sim && <BidSimulator c={sim} busy={busy === sim.id} onClose={() => setSim(null)} onConfirm={() => claim(sim.id)} />}
     </>
+  )
+}
+
+/* 接单模拟器：拖 GMV 滑杆 → 实时估分润/准备金占用/违约风险。把"划不划算"从心算变滑杆。 */
+function BidSimulator({ c, busy, onClose, onConfirm }: { c: ContractRow; busy: boolean; onClose: () => void; onConfirm: () => void }) {
+  const [gmv, setGmv] = useState(Math.round(c.targetGmv * 0.6))
+  // 分润估算：CPS 分成默认 35%，保底+阶梯默认 32%（与资源广场口径一致）
+  const sharePct = c.settleModel.includes('保底') ? 0.32 : 0.35
+  const payout = Math.round(gmv * sharePct)
+  const reservePct = 0.1
+  const reserve = Math.round(payout * reservePct)
+  const net = payout - reserve
+  const hitTarget = gmv >= c.targetGmv
+  const risk = gmv < c.targetGmv * 0.5 ? '偏低：达不到目标 GMV 可能触发违约条款' : gmv >= c.targetGmv ? '达标：可拿满额分润，无违约风险' : '中等：接近目标，注意投放节奏'
+  const riskTone = gmv < c.targetGmv * 0.5 ? 'alert' : gmv >= c.targetGmv ? 'good' : 'warn'
+  const T = { alert: 'text-alert-ink', warn: 'text-warn-ink', good: 'text-good-ink' } as const
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center px-4" style={{ animation: 'fadeIn .2s both' }}>
+      <div className="absolute inset-0 bg-ink/45" onClick={onClose} />
+      <div className="relative w-full max-w-[440px] rounded-2xl bg-surface p-5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .2s both' }}>
+        <div className="mb-1 text-[15px] font-semibold text-ink">接单模拟器 · {c.id}</div>
+        <div className="text-[12px] text-ink-4">{c.brandId} · {c.settleModel} · 目标 GMV {money(c.targetGmv)}</div>
+
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between text-[12.5px]"><span className="text-ink-2">预估你能做到的 GMV</span><span className="tnum font-semibold text-brand">{money(gmv)}</span></div>
+          <input type="range" min={Math.round(c.targetGmv * 0.2)} max={Math.round(c.targetGmv * 1.5)} step={10000} value={gmv} onChange={(e) => setGmv(Number(e.target.value))} className="w-full accent-brand" />
+          <div className="mt-0.5 flex justify-between text-[10px] text-ink-5"><span>{money(Math.round(c.targetGmv * 0.2))}</span><span>目标 {money(c.targetGmv)}</span><span>{money(Math.round(c.targetGmv * 1.5))}</span></div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <SimBox k="预估分润" v={money(payout)} sub={`${Math.round(sharePct * 100)}% 分成`} />
+          <SimBox k="准备金占用" v={money(reserve)} sub={`${Math.round(reservePct * 100)}% 冻结`} />
+          <SimBox k="预估净入" v={money(net)} sub="释放后可提" highlight />
+        </div>
+
+        <div className={cx('mt-3 rounded-lg px-3 py-2 text-[12px]', hitTarget ? 'bg-good-soft/50' : riskTone === 'alert' ? 'bg-alert-soft/50' : 'bg-warn-soft/50')}>
+          <span className={cx('font-medium', T[riskTone])}>风险提示：</span>
+          <span className="text-ink-3">{risk}</span>
+        </div>
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-muted">再看看</button>
+          <button onClick={onConfirm} disabled={busy} className="rounded-lg bg-brand px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-brand-hover disabled:opacity-50">{busy ? '接单中…' : '确认接单'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+function SimBox({ k, v, sub, highlight }: { k: string; v: string; sub: string; highlight?: boolean }) {
+  return (
+    <div className={cx('rounded-lg border px-2.5 py-2', highlight ? 'border-brand/25 bg-brand-soft/30' : 'border-line')}>
+      <div className="text-[10.5px] text-ink-4">{k}</div>
+      <div className={cx('tnum mt-0.5 text-[14px] font-semibold', highlight ? 'text-brand' : 'text-ink')}>{v}</div>
+      <div className="text-[10px] text-ink-5">{sub}</div>
+    </div>
   )
 }
 
