@@ -29,6 +29,7 @@ import {
   SETTLE_PATH_LABEL,
   AGENT_STATUS,
 } from '../lib/data'
+import { FundSankey } from '../components/ui/charts'
 import { useStore, clearSettlement, reconcileSettlement, settleAgent } from '../lib/store'
 import { useViewMode } from '../lib/prefs'
 import { Confirm, useToast } from '../components/ui/overlays'
@@ -115,6 +116,9 @@ export default function Settlement() {
           />
         </Card>
       </div>
+
+      {/* 资金流向 Sankey —— 把对账恒等式画出来（两模式都展示：小白一眼看懂钱怎么分的） */}
+      <FundFlowCard settlements={settlements} />
 
       {/* 分润瀑布 + 资金路径（口径说明，专家视图展开） */}
       {expert && (
@@ -378,6 +382,62 @@ function SettlementDrawer({ s, anchor, onClose, onClear, onReconcile }: { s: Set
         资金路径 {b.path === 'direct' ? '直连：钱由品牌商户号结算给平台，再结算给代理' : b.path === 'licensed' ? '持牌分账：持牌机构按分账指令清分给三方' : '混合：核心直连、长尾走持牌分账'} · 账期 T+{b.period}
       </div>
     </DetailPopover>
+  )
+}
+
+/* 资金流向卡：把全平台结算恒等式聚合成一张 Sankey。差异股标红。
+   简洁模式默认展示图（一眼看懂钱怎么分），专家模式图/表可切。 */
+function FundFlowCard({ settlements }: { settlements: SettlementT[] }) {
+  const expert = useViewMode() === 'expert'
+  const [view, setView] = useState<'flow' | 'table'>('flow')
+  const sum = (k: keyof SettlementT) => settlements.reduce((s, x) => s + (Number(x[k]) || 0), 0)
+  const gross = sum('gross')
+  const brandShare = sum('brandShare')
+  const platformFee = sum('platformFee')
+  const agentPayout = sum('agentPayout')
+  const reserve = sum('reserve')
+  const reversal = sum('reversal')
+  const diff = sum('reconcileDiff')
+  const flows = [
+    { label: '品牌留存', value: brandShare, tone: 'good' as const },
+    { label: '平台服务费', value: platformFee, tone: 'brand' as const },
+    { label: '代理分润', value: agentPayout, tone: 'info' as const },
+    { label: '风险准备金', value: reserve, tone: 'violet' as const },
+    { label: '逆向冲账', value: reversal, tone: 'alert' as const, alert: diff > 0 },
+  ]
+  const showTable = expert && view === 'table'
+  return (
+    <Card className="mt-4" pad={false}>
+      <div className="flex items-center justify-between p-5 pb-3">
+        <CardTitle title="资金流向" desc="流水 = 品牌留存 + 平台费 + 代理分润 + 准备金 + 冲账 · 对账恒等式可视化" />
+        {expert && (
+          <Segmented value={view} onChange={setView} options={[{ value: 'flow', label: '流向图' }, { value: 'table', label: '明细' }]} />
+        )}
+      </div>
+      {showTable ? (
+        <div className="px-5 pb-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {flows.map((f) => (
+              <div key={f.label} className="rounded-lg border border-line px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ background: f.alert ? 'var(--color-alert)' : toneVar[f.tone] }} />{f.label}</div>
+                <div className="tnum mt-1 text-[15px] font-semibold text-ink">{money(f.value)}</div>
+                <div className="tnum text-[10.5px] text-ink-4">{gross > 0 ? ((Math.abs(f.value) / gross) * 100).toFixed(1) : '0'}%</div>
+              </div>
+            ))}
+            <div className="rounded-lg border border-line bg-surface-muted px-3 py-2.5">
+              <div className="text-[11.5px] text-ink-3">流水 GROSS</div>
+              <div className="tnum mt-1 text-[15px] font-semibold text-brand">{money(gross)}</div>
+              <div className="text-[10.5px] text-ink-4">恒等式左端</div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="px-3 pb-4">
+          {gross > 0 ? <FundSankey gross={gross} flows={flows} /> : <div className="py-10 text-center text-[12.5px] text-ink-4">暂无结算数据</div>}
+          {diff > 0 && <div className="mx-4 mt-1 rounded-lg bg-alert-soft/50 px-3 py-2 text-[12px] text-alert-ink">存在对账差异 {money(diff)}（已在「逆向冲账」股标红）· 到「核销差异」处理</div>}
+        </div>
+      )}
+    </Card>
   )
 }
 

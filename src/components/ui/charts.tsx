@@ -415,3 +415,78 @@ export function CrosshairChart({
     </div>
   )
 }
+
+/* ── 资金流向 Sankey（单层分流）──────────────────
+   把对账恒等式 gross = 品牌留存 + 平台费 + 代理分润 + 准备金 + 冲账 画出来：
+   左一根粗流 → 右按金额分股，宽度=占比，差异股标红。这是平台最该有的一张图。 */
+export function FundSankey({
+  gross,
+  flows,
+  height = 300,
+}: {
+  gross: number
+  flows: { label: string; value: number; tone: Tone; alert?: boolean }[]
+  height?: number
+}) {
+  const id = useId().replace(/:/g, '')
+  const W = 640
+  const H = height
+  const padY = 20
+  const srcX = 40
+  const srcW = 24
+  const dstX = W - 220
+  const nodeW = 14
+  const total = Math.max(1, gross)
+  const usable = H - padY * 2
+  // 源节点整条
+  const srcTop = padY
+  const srcH = usable
+  // 目标节点按占比堆叠
+  let acc = srcTop
+  const segs = flows.map((f) => {
+    const h = Math.max(2, (Math.abs(f.value) / total) * usable)
+    const seg = { ...f, y: acc, h }
+    acc += h
+    return seg
+  })
+  // 源侧出口按同顺序分段（与目标一一对应，形成不交叉的缎带）
+  let sacc = srcTop
+  const srcSegs = segs.map((s) => {
+    const seg = { y: sacc, h: s.h }
+    sacc += s.h
+    return seg
+  })
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
+      {/* 源节点 */}
+      <rect x={srcX} y={srcTop} width={srcW} height={srcH} rx={3} fill="var(--color-ink-3)" />
+      <text x={srcX + srcW / 2} y={srcTop - 6} textAnchor="middle" fontSize="10.5" fill="var(--color-ink-3)" className="tnum">流水 GROSS</text>
+      {/* 缎带 + 目标节点 + 标签 */}
+      {segs.map((s, i) => {
+        const ss = srcSegs[i]
+        const x0 = srcX + srcW
+        const x1 = dstX
+        const c = (x0 + x1) / 2
+        const p = `M${x0},${ss.y} C${c},${ss.y} ${c},${s.y} ${x1},${s.y} L${x1},${s.y + s.h} C${c},${s.y + s.h} ${c},${ss.y + ss.h} ${x0},${ss.y + ss.h} Z`
+        const color = s.alert ? 'var(--color-alert)' : toneVar[s.tone]
+        const pct = ((Math.abs(s.value) / total) * 100).toFixed(1)
+        return (
+          <g key={s.label}>
+            <path d={p} fill={color} fillOpacity={s.alert ? 0.5 : 0.28} style={{ animation: `fadeIn .6s ${0.15 + i * 0.08}s both` }}>
+              <title>{s.label}：{s.value.toLocaleString('zh-CN')}（{pct}%）</title>
+            </path>
+            <rect x={dstX} y={s.y} width={nodeW} height={s.h} rx={2} fill={color} />
+            <text x={dstX + nodeW + 8} y={s.y + s.h / 2 - 2} fontSize="11.5" fill="var(--color-ink-2)" dominantBaseline="middle">
+              {s.label}
+              {s.alert && <tspan fill="var(--color-alert-ink)" fontSize="9.5"> · 差异</tspan>}
+            </text>
+            <text x={dstX + nodeW + 8} y={s.y + s.h / 2 + 12} fontSize="10.5" fill="var(--color-ink-4)" className="tnum" dominantBaseline="middle">
+              ¥{(Math.abs(s.value) / 1e4).toFixed(1)}万 · {pct}%
+            </text>
+          </g>
+        )
+      })}
+      <defs><linearGradient id={`sk-${id}`} /></defs>
+    </svg>
+  )
+}
