@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, CornerDownLeft, Package, Users, CreditCard, MessageSquareWarning, Receipt } from 'lucide-react'
-import { useStore } from '../../lib/store'
+import { Search, CornerDownLeft, Package, Users, CreditCard, MessageSquareWarning, Receipt, Zap, Landmark, Moon, Sun } from 'lucide-react'
+import { useStore, refundOrder, setMerchantState, isOrderRefunded } from '../../lib/store'
 import { CHANNEL_LABEL } from '../../lib/data'
+import { useCan } from '../../lib/auth'
+import { setTheme } from '../../lib/prefs'
+import { useToast } from '../ui/overlays'
 import { cx } from '../../lib/format'
 
 interface Hit {
   label: string
   sub: string
-  to: string
+  to?: string
   icon: React.ReactNode
   kw: string
+  run?: () => void // 动作命中：执行而非跳转
+  danger?: boolean // 资金/状态类：需二次确认
 }
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
+  const [confirm, setConfirm] = useState<Hit | null>(null)
   const nav = useNavigate()
   const s = useStore()
+  const can = useCan()
+  const toast = useToast()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,8 +46,30 @@ export function CommandPalette() {
     }
   }, [open])
 
+  // 可执行动作：⌘K 从"搜索"升级为"动作"。有权限才出现，资金/状态类走二次确认。
+  // 高频操作从 3-4 次点击降到一次键入（如「退款 O-99812」「熔断 M-BL-01」「开始结算」）。
+  const actions = useMemo<Hit[]>(() => {
+    const list: Hit[] = []
+    // 全局动作（始终可用）
+    list.push({ label: '切换深色主题', sub: '动作 · 主题', icon: <Moon size={15} />, kw: '切暗色 深色 dark theme 主题', run: () => setTheme('dark') })
+    list.push({ label: '切换明亮主题', sub: '动作 · 主题', icon: <Sun size={15} />, kw: '切亮色 明亮 light theme 主题', run: () => setTheme('light') })
+    if (can('settlement.clear')) list.push({ label: '开始本期结算', sub: '动作 · 进入结算工作台', icon: <Landmark size={15} />, kw: '开始结算 结算工作台 月结 settle', to: '/settlement/run' })
+    // 资源型动作：退款(按订单)、熔断/恢复(按号池)——绑定具体资源，需权限 + 确认
+    if (can('order.refund')) {
+      for (const o of s.orders.filter((o) => o.type !== 'refund' && o.type !== 'chargeback' && !isOrderRefunded(o.id)).slice(0, 20)) {
+        list.push({ label: `退款 ${o.id}`, sub: `动作 · ${o.plan} ¥${Math.abs(o.amount)}（自动追回分成）`, icon: <Zap size={15} className="text-brand" />, kw: `退款 refund ${o.id} ${o.plan}`, danger: true, run: () => { refundOrder(o.id); toast({ tone: 'good', text: `${o.id} 已退款，联动冲账完成` }) } })
+      }
+    }
+    if (can('merchant.write')) {
+      for (const m of s.merchants.filter((m) => m.state !== 'fused').slice(0, 20)) {
+        list.push({ label: `熔断 ${m.id}`, sub: `动作 · 停止进单（${CHANNEL_LABEL[m.channel]}）`, icon: <Zap size={15} className="text-alert-ink" />, kw: `熔断 fuse ${m.id}`, danger: true, run: () => { setMerchantState(m.id, 'fused', '熔断'); toast({ tone: 'alert', text: `${m.id} 已熔断` }) } })
+      }
+    }
+    return list
+  }, [s, can, toast])
+
   const hits = useMemo<Hit[]>(() => {
-    const all: Hit[] = [
+    const nav: Hit[] = [
       ...s.brands.map((b) => ({ label: b.name, sub: `品牌 · ${b.category}`, to: `/brands/${b.id}`, icon: <Package size={15} />, kw: b.name + b.id + b.category })),
       ...s.agents.map((a) => ({ label: a.name, sub: `代理 · ${a.id}，信用分 ${a.creditScore}`, to: '/agents', icon: <Users size={15} />, kw: a.name + a.id })),
       ...s.merchants.map((m) => ({ label: m.id, sub: `商户号 · ${CHANNEL_LABEL[m.channel]}，${m.mid}`, to: '/merchants', icon: <CreditCard size={15} />, kw: m.id + m.mid })),
@@ -47,16 +77,23 @@ export function CommandPalette() {
       ...s.orders.slice(0, 12).map((o) => ({ label: o.id, sub: `订单 · ${o.plan}`, to: '/orders', icon: <Receipt size={15} />, kw: o.id + o.plan })),
     ]
     const query = q.trim().toLowerCase()
-    if (!query) return all.slice(0, 8)
-    return all.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 10)
-  }, [q, s])
+    if (!query) return [...actions.slice(0, 3), ...nav.slice(0, 6)]
+    // 动作优先展示（用户键入动词时先看到可执行项）
+    const matchedActions = actions.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 6)
+    const matchedNav = nav.filter((h) => h.kw.toLowerCase().includes(query)).slice(0, 8)
+    return [...matchedActions, ...matchedNav].slice(0, 12)
+  }, [q, s, actions])
 
   useEffect(() => {
     if (sel >= hits.length) setSel(0)
   }, [hits.length, sel])
 
   if (!open) return null
-  const go = (h: Hit) => { nav(h.to); setOpen(false) }
+  const go = (h: Hit) => {
+    if (h.danger && h.run) { setConfirm(h); return } // 资金/状态类：先确认
+    if (h.run) { h.run(); setOpen(false); return }
+    if (h.to) { nav(h.to); setOpen(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center px-4 pt-[12vh]">
@@ -73,7 +110,7 @@ export function CommandPalette() {
               else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((i) => Math.max(0, i - 1)) }
               else if (e.key === 'Enter' && hits[sel]) go(hits[sel])
             }}
-            placeholder="搜索品牌 / 代理 / 商户号 / 工单 / 订单…"
+            placeholder="搜索或执行动作：退款 O-99812 · 熔断 M-BL-01 · 开始结算…"
             className="flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-4"
           />
           <kbd className="tnum rounded-[3px] border border-line px-1.5 text-[10px] text-ink-5">ESC</kbd>
@@ -89,8 +126,9 @@ export function CommandPalette() {
                 onClick={() => go(h)}
                 className={cx('flex w-full items-center gap-3 px-4 py-2.5 text-left', i === sel ? 'bg-surface-muted' : '')}
               >
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-surface-sunken text-ink-3">{h.icon}</span>
+                <span className={cx('grid h-7 w-7 shrink-0 place-items-center rounded-md', h.run ? 'bg-brand-soft text-brand-ink' : 'bg-surface-sunken text-ink-3')}>{h.icon}</span>
                 <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium text-ink">{h.label}</span><span className="block truncate text-[11px] text-ink-4">{h.sub}</span></span>
+                {h.danger && <span className="shrink-0 rounded bg-alert-soft px-1.5 py-0.5 text-[9.5px] font-medium text-alert-ink">需确认</span>}
                 {i === sel && <CornerDownLeft size={13} className="text-ink-4" />}
               </button>
             ))
@@ -98,10 +136,26 @@ export function CommandPalette() {
         </div>
         <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-ink-4">
           <span><kbd className="tnum rounded border border-line px-1">↑↓</kbd> 选择</span>
-          <span><kbd className="tnum rounded border border-line px-1">↵</kbd> 打开</span>
+          <span><kbd className="tnum rounded border border-line px-1">↵</kbd> 执行</span>
+          <span className="text-ink-5">试试输入：退款 · 熔断 · 开始结算</span>
           <span className="ml-auto">⌘K 唤起</span>
         </div>
       </div>
+
+      {/* 资金/状态类动作二次确认（沿用 Confirm 语义，不绕过守卫） */}
+      {confirm && (
+        <div className="absolute inset-0 z-[130] grid place-items-center px-4" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-ink/50" onClick={() => setConfirm(null)} />
+          <div className="relative w-full max-w-[400px] rounded-xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .18s both' }}>
+            <div className="text-[14px] font-semibold text-ink">确认执行：{confirm.label}</div>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">{confirm.sub}。此操作涉及资金或状态变更，确认后立即生效。</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setConfirm(null)} className="rounded-lg border border-line px-3 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-surface-muted">取消</button>
+              <button onClick={() => { confirm.run?.(); setConfirm(null); setOpen(false) }} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">确认执行</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
