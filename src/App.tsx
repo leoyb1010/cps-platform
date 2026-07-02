@@ -19,6 +19,7 @@ import Settlement from './pages/Settlement'
 import Merchants from './pages/Merchants'
 import Analytics from './pages/Analytics'
 import RiskWorkspace from './pages/workspaces/RiskWorkspace'
+import SettlementRun from './pages/workspaces/SettlementRun'
 import Settings from './pages/Settings'
 import Members from './pages/Members'
 import Audit from './pages/Audit'
@@ -151,6 +152,7 @@ export default function App() {
         <Route path="/products" element={<RequirePerm perm="product.read"><Products /></RequirePerm>} />
         <Route path="/supermarket" element={<RequirePerm perm="product.read"><Supermarket embedded /></RequirePerm>} />
         <Route path="/settlement" element={<RequirePerm perm="settlement.read"><Settlement /></RequirePerm>} />
+        <Route path="/settlement/run" element={<RequirePerm perm="settlement.clear"><SettlementRun /></RequirePerm>} />
         <Route path="/merchants" element={<RequirePerm perm="merchant.read"><Merchants /></RequirePerm>} />
         <Route path="/risk" element={<RequirePerm anyPerm={['risk.read', 'ticket.read', 'compliance.view']}><RiskWorkspace /></RequirePerm>} />
         <Route path="/complaints" element={<RequirePerm anyPerm={['risk.read', 'ticket.read', 'compliance.view']}><RiskWorkspace /></RequirePerm>} />

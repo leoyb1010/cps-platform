@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Wallet,
   RotateCcw,
@@ -42,13 +43,11 @@ export default function Settlement() {
   const { settlements, agents } = useStore()
   const expert = useViewMode() === 'expert'
   const toast = useToast()
+  const nav = useNavigate()
   const [tab, setTab] = useState<'brand' | 'agent'>('brand')
   const [openId, setOpenId] = useState<string | null>(null)
-  const [batchConfirm, setBatchConfirm] = useState(false)
   const pop = useAnchoredPopover()
   const activeS = settlements.find((s) => s.id === openId) ?? null
-  // 本期待结算单（发起本期结算 = 一次性清掉全部 pending，需二次确认）
-  const pendingSettles = settlements.filter((x) => x.status === 'pending')
 
   const totalPlatformFee = settlements.reduce((s, x) => s + x.platformFee, 0)
   const totalReversal = settlements.reduce((s, x) => s + x.reversal, 0)
@@ -66,14 +65,9 @@ export default function Settlement() {
         actions={
           <>
             <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (pendingSettles.length === 0) { toast({ tone: 'info', text: '本期无待结算单' }); return }
-                setBatchConfirm(true)
-              }}
-            >
-              发起本期结算 <ArrowRight size={14} />
+            {/* 结算工作台：把月结日四处横跳收成一屏 Checklist（小白友好的引导式动线） */}
+            <Button variant="primary" onClick={() => nav('/settlement/run')}>
+              开始本期结算 <ArrowRight size={14} />
             </Button>
           </>
         }
@@ -315,19 +309,6 @@ export default function Settlement() {
         onReconcile={() => { if (activeS) { reconcileSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 差异已核销` }) } }}
       />
 
-      {/* 批量结算二次确认：一次性清掉全部 pending，属资金动作，不可静默执行 */}
-      <Confirm
-        open={batchConfirm}
-        onClose={() => setBatchConfirm(false)}
-        onConfirm={() => {
-          const ids = pendingSettles.map((x) => x.id)
-          ids.forEach((id) => clearSettlement(id))
-          toast({ tone: 'good', text: `已发起本期结算 · ${ids.length} 单完成` })
-        }}
-        title="发起本期结算"
-        body={<span>将一次性结算 <b className="tnum">{pendingSettles.length}</b> 张待结算单，合计流水 <b className="tnum">{money(pendingSettles.reduce((s, x) => s + x.gross, 0))}</b>、代理分润 <b className="tnum">{money(pendingSettles.reduce((s, x) => s + x.agentPayout, 0))}</b>。确认发起？</span>}
-        confirmText="确认结算"
-      />
     </>
   )
 }
