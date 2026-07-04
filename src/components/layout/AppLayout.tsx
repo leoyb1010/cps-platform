@@ -231,7 +231,7 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
                 <div className="flex items-center justify-between border-b border-line px-4 py-2.5"><span className="text-[13px] font-semibold text-ink">通知 · 联动事件</span><span className="text-[11px] text-ink-4">{activity.length} 条</span></div>
                 <div className="max-h-[300px] overflow-y-auto py-1.5">
                   {activity.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-[12px] text-ink-4">暂无通知 · 处理待办后这里会记录</div>
+                    <div className="px-4 py-5 text-center"><img src="./img/empty-bell.webp" alt="" className="mx-auto mb-1 h-16 w-16 object-contain opacity-90" /><div className="text-[12px] text-ink-4">暂无通知 · 处理待办后这里会记录</div></div>
                   ) : (
                     activity.map((a) => (
                       <div key={a.id} className="flex items-start gap-2.5 px-4 py-2">

@@ -118,7 +118,7 @@ function PortalBell() {
           <div className="absolute right-0 top-10 z-40 w-[320px] rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)]">
             <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5"><span className="text-[12.5px] font-semibold text-ink">通知</span>{unread > 0 && <span className="text-[11px] text-ink-4">{unread} 条未读</span>}</div>
             <div className="max-h-[360px] overflow-y-auto">
-              {items.length === 0 ? <div className="px-3.5 py-8 text-center text-[12px] text-ink-4">暂无通知</div> : items.map((n) => (
+              {items.length === 0 ? <div className="px-3.5 py-6 text-center"><img src="./img/empty-bell.webp" alt="" className="mx-auto mb-1 h-16 w-16 object-contain opacity-90" /><div className="text-[12px] text-ink-4">暂无通知</div></div> : items.map((n) => (
                 <button key={n.id} onClick={() => markRead(n)} className={cx('block w-full border-b border-line/60 px-3.5 py-2.5 text-left transition-colors hover:bg-surface-muted', !n.read && 'bg-brand-soft/30')}>
                   <div className="flex items-center gap-1.5"><span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', n.read ? 'bg-transparent' : 'bg-brand')} /><span className="text-[12.5px] font-medium text-ink">{n.title}</span></div>
                   <div className="ml-3 mt-0.5 text-[11.5px] leading-snug text-ink-4">{n.body}</div>

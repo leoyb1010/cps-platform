@@ -10,7 +10,7 @@ import { type PeriodValue } from '../../lib/period'
 import { BARTER_RESOURCE_TYPES, INVOICE_STATUS } from '../../lib/dict'
 import { TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
 import { portalApi, type BrandSummary } from '../../lib/portalApi'
-import { usePortalResource, PortalState, TableSkeleton, exportCsv } from '../../components/portal/kit'
+import { usePortalResource, PortalState, TableSkeleton, exportCsv, PortalBanner } from '../../components/portal/kit'
 import { money, pct } from '../../lib/format'
 
 export function BrandHome() {
@@ -18,7 +18,7 @@ export function BrandHome() {
   const { data, state, reload } = usePortalResource<BrandSummary>(() => portalApi.summary<BrandSummary>(period), [period.preset, period.from, period.to])
   return (
     <>
-      <PageHeader title="我的经营" desc="你的品牌在网易有道订阅增长平台的核心经营数据。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
+      <PortalBanner src="./img/banner-brand-home.webp" title="我的经营" desc="你的品牌在网易有道订阅增长平台的核心经营数据。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>

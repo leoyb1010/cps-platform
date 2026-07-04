@@ -176,8 +176,8 @@ export default function LandingPage() {
 
               {phase === 'done' ? (
                 <div className="animate-pop mt-4 rounded-2xl border border-good/40 bg-good-soft/50 p-5 text-center">
-                  <CheckCircle2 size={30} className="mx-auto text-good-ink" />
-                  <div className="mt-2 text-[15px] font-semibold text-ink">订阅开通中</div>
+                  <img src="./img/illust-success.webp" alt="" className="mx-auto -mb-1 h-24 w-24 object-contain" />
+                  <div className="mt-1 text-[15px] font-semibold text-ink">订阅开通中</div>
                   <div className="mt-0.5 text-[11.5px] text-ink-4">已付 {money(quote.finalPrice)} · 平台正为你拆单开通各项订阅</div>
                   <a href="#/market/me" className="mt-3 inline-block text-[12.5px] font-medium hover:underline" style={{ color: theme }}>查看开通进度 →</a>
                 </div>

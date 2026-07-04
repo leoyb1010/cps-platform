@@ -7,7 +7,7 @@ import { Field, Input, Textarea } from '../../components/ui/forms'
 import { PeriodFilter } from '../../components/ui/filters'
 import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
-import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars } from '../../components/portal/kit'
+import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars, PortalBanner } from '../../components/portal/kit'
 import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
 import { money, pct, cx } from '../../lib/format'
 
@@ -16,7 +16,7 @@ export function AgentHome() {
   const { data, state, reload } = usePortalResource<AgentSummary>(() => portalApi.summary<AgentSummary>(period), [period.preset, period.from, period.to])
   return (
     <>
-      <PageHeader title="我的投放" desc="你作为推广渠道的核心数据：消耗、首单、待结分润、信用分。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
+      <PortalBanner src="./img/banner-agent-home.webp" title="我的投放" desc="你作为推广渠道的核心数据：消耗、首单、待结分润、信用分。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>

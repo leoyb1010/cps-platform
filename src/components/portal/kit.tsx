@@ -61,6 +61,25 @@ export function EmptyNotice({ title = '暂无数据', body = '这里还没有内
   return <Notice icon={<Inbox size={18} />} title={title} body={body} />
 }
 
+// 门户首页装饰横幅：氛围图作右侧图层，左侧渐变遮罩淡出保证叠加的标题/描述文字可读
+// （代理 banner 底色饱和，遮罩尤为必要）。纯装饰，标题内容仍由页面自己的 PageHeader 承载。
+export function PortalBanner({ src, title, desc, actions }: { src: string; title: string; desc?: string; actions?: ReactNode }) {
+  return (
+    <div className="relative mb-6 overflow-hidden rounded-2xl border border-line bg-surface" style={{ height: 128 }}>
+      <img src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover object-right" />
+      {/* 左→右白色淡出遮罩：暗色主题下改用 surface 色，避免白块 */}
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, var(--color-surface) 30%, color-mix(in srgb, var(--color-surface) 55%, transparent) 55%, transparent 78%)' }} />
+      <div className="relative flex h-full items-center justify-between gap-4 px-6">
+        <div>
+          <h1 className="t-h1 text-ink">{title}</h1>
+          {desc && <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-3">{desc}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+    </div>
+  )
+}
+
 // 状态机渲染：loading→骨架；demo→演示提示；error→错误+重试；ready 且空→空态；ready→children
 export function PortalState<T>({
   state,
