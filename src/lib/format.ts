@@ -9,15 +9,6 @@ export function yuan(n: number, opts?: { decimals?: number; sign?: boolean }) {
   return (opts?.sign && n > 0 ? '+' : '') + '¥' + s
 }
 
-// 万元口径（大额展示）
-export function wan(n: number, decimals = 1) {
-  const v = n / 1e4
-  return v.toLocaleString('zh-CN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })
-}
-
 // 自动选择 元/万/亿
 export function money(n: number) {
   const abs = Math.abs(n)

@@ -115,7 +115,7 @@ export default function Agents() {
               <Row key={a.id} className={black ? 'opacity-70' : ''}>
                 <Td className="pl-3">
                   <button onClick={(e) => { setOpenId(a.id); pop.openAt(e) }} className="flex items-center gap-2.5 text-left">
-                    <span className={cx('grid h-7 w-7 place-items-center rounded-full text-[11px] font-medium', black ? 'bg-surface-sunken text-ink-3' : 'bg-ink text-white')}>
+                    <span className={cx('grid h-7 w-7 place-items-center rounded-full text-[11px] font-medium', black ? 'bg-surface-sunken text-ink-3' : 'bg-avatar text-avatar-fg')}>
                       {black ? <Ban size={13} /> : a.type === '企业' ? '企' : '个'}
                     </span>
                     <div>

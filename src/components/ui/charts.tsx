@@ -398,7 +398,7 @@ export function CrosshairChart({
       </svg>
       {hi !== null && (
         <div
-          className="pointer-events-none absolute rounded-md bg-ink px-2.5 py-1.5 text-[11px] whitespace-nowrap text-white"
+          className="pointer-events-none absolute rounded-md bg-avatar px-2.5 py-1.5 text-[11px] whitespace-nowrap text-avatar-fg"
           style={{ left: `${(xs[hi] / VBW) * 100}%`, top: gy[hi] - 14, transform: 'translate(-50%,-100%)', boxShadow: 'var(--shadow-pop)' }}
         >
           <div className="tnum mb-1 text-[10px] text-ink-5">{labels[hi]}</div>

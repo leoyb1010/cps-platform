@@ -8,6 +8,11 @@
   --color-surface-sunken: #eceef1;
   --color-rail: #fbfcfd; /* 侧栏底色（原硬编码 #fbfcfd 提为令牌） */
 
+  /* 反相片：字母头像/图表提示气泡等"深底浅字"元素。两个主题都保持深底浅字，
+     不能用 --color-ink 当底色——它在暗色会翻成近白，导致白字白底不可见。 */
+  --color-avatar: #14151a;
+  --color-avatar-fg: #ffffff;
+
   /* ── Ink / text ────────────────────────────── */
   --color-ink: #14151a;
   --color-ink-2: #565b64;
@@ -82,6 +87,10 @@
   --color-surface-muted: #1d1e23;
   --color-surface-sunken: #22242a;
   --color-rail: #131417;
+
+  /* 反相片在暗色下抬到中深灰，避免纯黑贴在近黑画布上糊成一片；仍是深底浅字 */
+  --color-avatar: #3a3d46;
+  --color-avatar-fg: #f2f3f5;
 
   --color-ink: #e9eaee;
   --color-ink-2: #b3b6bf;

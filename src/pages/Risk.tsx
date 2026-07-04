@@ -158,7 +158,7 @@ export default function Risk() {
               </button>
               <button
                 onClick={() => { toggleRule(r.id); toast({ tone: r.on ? 'warn' : 'good', text: `${r.name} 已${r.on ? '停用' : '启用'}` }) }}
-                className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', r.on ? 'bg-ink' : 'bg-line-strong')}
+                className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', r.on ? 'bg-brand' : 'bg-line-strong')}
               >
                 <span className={cx('absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white transition-all', r.on ? 'left-[18px]' : 'left-[2px]')} />
               </button>

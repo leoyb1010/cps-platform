@@ -11,6 +11,19 @@ export const SETTLE_PATH_LABEL: Record<SettlePath, string> = {
   licensed: '持牌分账',
   mixed: '混合',
 }
+// 结算路径 → 徽标色调（此前 Brands 本地 PATH_TONE + Compliance/Marketplace 内联三元，口径分散）
+export const SETTLE_PATH_TONE: Record<SettlePath, 'good' | 'info' | 'violet'> = { direct: 'good', licensed: 'info', mixed: 'violet' }
+
+// 计费周期 → 人话（Products / BrandProducts / Supermarket 曾各抄一份同样的 CYCLE 表）
+export const BILLING_CYCLE_LABEL: Record<string, string> = { monthly: '月付', yearly: '年付', continuous: '连续包月' }
+
+// 商品状态 → 标签 + 色调（Products 与 BrandProducts 各有一份且 pending 文案漂移："待审核" vs "审核中"，统一为"审核中"）
+export const PRODUCT_STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' | 'alert' }> = {
+  live: { label: '已上架', tone: 'good' },
+  pending: { label: '审核中', tone: 'warn' },
+  draft: { label: '草稿', tone: 'neutral' },
+  delisted: { label: '已下架', tone: 'alert' },
+}
 
 export type ChannelType = 'wechat' | 'alipay' | 'bank'
 export const CHANNEL_LABEL: Record<ChannelType, string> = {

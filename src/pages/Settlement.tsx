@@ -306,7 +306,7 @@ export default function Settlement() {
         anchor={pop.anchorRect}
         onClose={() => { setOpenId(null); pop.close() }}
         onClear={() => { if (activeS) { clearSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 已结算` }); setOpenId(null) } }}
-        onReconcile={() => { if (activeS) { reconcileSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 差异已核销` }) } }}
+        onReconcile={() => { if (activeS) { reconcileSettlement(activeS.id); toast({ tone: 'good', text: `${activeS.id} 差异已核销` }); setOpenId(null) } }}
       />
 
     </>

@@ -20,7 +20,7 @@ import { Donut } from '../components/ui/charts'
 import { Modal } from '../components/ui/overlays'
 import { DocModal } from '../components/ui/DocModal'
 import { Term } from '../components/ui/Term'
-import { fundSplit, directSharePct, SETTLE_PATH_LABEL } from '../lib/data'
+import { fundSplit, directSharePct, SETTLE_PATH_LABEL, SETTLE_PATH_TONE } from '../lib/data'
 import { useStore, setChannelState } from '../lib/store'
 import { pct, cx } from '../lib/format'
 import { useState } from 'react'
@@ -134,9 +134,9 @@ export default function Compliance() {
         <div className="flex flex-wrap gap-2">
           {brands.map((b) => (
             <div key={b.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-              <span className="grid h-6 w-6 place-items-center rounded-md bg-ink text-[10px] font-semibold text-white">{b.mark}</span>
+              <span className="grid h-6 w-6 place-items-center rounded-md bg-avatar text-[10px] font-semibold text-avatar-fg">{b.mark}</span>
               <span className="text-[12px] text-ink-2">{b.name.slice(0, 6)}</span>
-              <Badge tone={b.path === 'direct' ? 'good' : b.path === 'licensed' ? 'info' : 'violet'}>{SETTLE_PATH_LABEL[b.path]}</Badge>
+              <Badge tone={SETTLE_PATH_TONE[b.path]}>{SETTLE_PATH_LABEL[b.path]}</Badge>
             </div>
           ))}
         </div>

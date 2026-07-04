@@ -130,6 +130,8 @@ export default function App() {
         <Route path="/portal/brand/aigc" element={<PortalAigc />} />
         <Route path="/portal/brand/insights" element={<BrandInsights />} />
         <Route path="/portal/brand/plaza" element={<BrandPlaza />} />
+        {/* 未知子路径回品牌门户首页，避免落在空 Outlet 上（与平台console的 * 兜底一致） */}
+        <Route path="/portal/brand/*" element={<Navigate to="/portal/brand" replace />} />
       </Route>
 
       {/* 代理商门户 */}
@@ -149,6 +151,7 @@ export default function App() {
         <Route path="/portal/agent/tickets" element={<AgentTickets />} />
         <Route path="/portal/agent/aigc" element={<PortalAigc />} />
         <Route path="/portal/agent/landing" element={<AgentLanding />} />
+        <Route path="/portal/agent/*" element={<Navigate to="/portal/agent" replace />} />
       </Route>
 
       {/* 内部控制台（仅平台账户）*/}

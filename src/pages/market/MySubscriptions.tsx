@@ -140,7 +140,7 @@ function UnsubscribeFlow({ name, onConfirm, onClose }: { name: string; onConfirm
                 <button key={r} onClick={() => setReason(r)} className={reason === r ? 'rounded-full border border-brand bg-brand/[0.06] px-3 py-1.5 text-[12px] font-medium text-brand' : 'rounded-full border border-line px-3 py-1.5 text-[12px] text-ink-2 hover:border-line-strong'}>{r}</button>
               ))}
             </div>
-            <button disabled={!reason} onClick={() => setStep(2)} className="mt-4 w-full rounded-xl bg-ink px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-40">下一步</button>
+            <button disabled={!reason} onClick={() => setStep(2)} className="mt-4 w-full rounded-xl border border-line-strong bg-surface-sunken px-4 py-2.5 text-[13px] font-semibold text-ink hover:border-ink-4 disabled:opacity-40">下一步</button>
           </>
         )}
         {step === 2 && (

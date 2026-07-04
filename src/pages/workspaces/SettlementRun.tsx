@@ -4,7 +4,7 @@ import { Check, ChevronRight, ArrowLeft, FileDown, CircleCheck, Landmark, GitCom
 import { PageHeader, Card, Badge, Button } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
 import { useStore, reconcileSettlement, clearSettlement, settleAgent } from '../../lib/store'
-import { money, cx, downloadText } from '../../lib/format'
+import { money, cx, downloadText, csvCell } from '../../lib/format'
 import { brandById } from '../../lib/data'
 import { isRealApi } from '../../lib/http'
 
@@ -56,8 +56,11 @@ export default function SettlementRun() {
   const payoutAgents = agents.filter((a) => a.payoutPending > 0)
 
   const genReport = () => {
-    const rows = settlements.map((s) => [s.id, brandById(s.brandId)?.name ?? s.brandId, s.period, s.gross, s.platformFee, s.agentPayout, s.reversal, s.status].join(','))
-    const csv = '﻿结算单,品牌,周期,流水,平台费,代理分润,冲账,状态\n' + rows.join('\n')
+    // 每个字段都过 csvCell：品牌名/周期为用户可控字符串，裸 join(',') 会被 =/+/-/@ 触发
+    // Excel 公式注入，且含逗号/换行会串列（与其它导出口径统一，downloadText 已带 BOM）。
+    const head = ['结算单', '品牌', '周期', '流水', '平台费', '代理分润', '冲账', '状态'].map(csvCell).join(',')
+    const rows = settlements.map((s) => [s.id, brandById(s.brandId)?.name ?? s.brandId, s.period, s.gross, s.platformFee, s.agentPayout, s.reversal, s.status].map(csvCell).join(','))
+    const csv = head + '\n' + rows.join('\n')
     downloadText('本期结算报告.csv', csv)
     setReportReady(true)
     toast({ tone: 'good', text: '本期结算报告已生成并导出' })

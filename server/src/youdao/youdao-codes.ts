@@ -14,7 +14,7 @@ export const YD_CODE = {
   SERVER_ERROR: 500,       // 服务器错误
 } as const
 
-export const YD_MSG: Record<number, string> = {
+const YD_MSG: Record<number, string> = {
   0: 'OK',
   [-1]: 'fail',
   107: '下单频率过高',

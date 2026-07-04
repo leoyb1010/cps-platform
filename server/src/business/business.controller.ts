@@ -459,6 +459,9 @@ export class BusinessController {
       return this.prisma.$transaction(async (tx) => {
         const r = await tx.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
         if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
+        // 结算即打款：把该代理仍挂 pending 的提现申请一并终结为 paid，避免与 payoutPending 脱钩
+        // 留下悬空记录（后续若接入"审批放款"流程，悬空的 pending 会造成重复打款）。
+        await tx.payoutRequest.updateMany({ where: { agentId: id, status: 'pending' }, data: { status: 'paid', decidedAt: new Date() } })
         await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
         return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
       })

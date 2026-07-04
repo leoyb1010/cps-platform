@@ -14,7 +14,7 @@ import { Modal, useToast } from '../components/ui/overlays'
 import { DocModal } from '../components/ui/DocModal'
 import { TableShell, Th, Td, Row } from '../components/ui/primitives'
 import { EmptyState } from '../components/ui/forms'
-import { SETTLE_PATH_LABEL, brandById } from '../lib/data'
+import { SETTLE_PATH_LABEL, SETTLE_PATH_TONE, brandById } from '../lib/data'
 import { useStore, addClaim } from '../lib/store'
 import { pct, cx, copyText } from '../lib/format'
 
@@ -75,7 +75,7 @@ export default function Marketplace() {
                       <div className="text-[11px] text-ink-4">{b.category}</div>
                     </div>
                   </div>
-                  <Badge tone={b.path === 'direct' ? 'good' : b.path === 'licensed' ? 'info' : 'violet'}>{SETTLE_PATH_LABEL[b.path]}</Badge>
+                  <Badge tone={SETTLE_PATH_TONE[b.path]}>{SETTLE_PATH_LABEL[b.path]}</Badge>
                 </div>
 
                 <div className="mt-3 rounded-xl bg-surface-muted p-3">

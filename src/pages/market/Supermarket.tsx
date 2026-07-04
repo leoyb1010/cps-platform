@@ -7,12 +7,11 @@ import { resolveBrandLogo } from '../../lib/brandLogos'
 import { useCountUp } from '../../lib/useCountUp'
 import { useApi, bizApi } from '../../lib/adminApi'
 import { demoBundles, demoAgentsLite } from '../../lib/adminDemo'
+import { BILLING_CYCLE_LABEL as CYCLE } from '../../lib/data'
 import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row } from '../../components/ui/primitives'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Select } from '../../components/ui/forms'
 import { useAnchoredPopover, DetailPopover } from '../../components/ui/popover'
-
-const CYCLE: Record<string, string> = { monthly: '月付', yearly: '年付', continuous: '连续包月' }
 
 /* 商品卡 logo：复用 BrandMark（真实品牌 logo，回退首字） */
 function ProductLogo({ p, size = 40 }: { p: MarketProduct; size?: number }) {

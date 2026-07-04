@@ -6,15 +6,12 @@ import { Field, Input, Select, Textarea, TagInput } from '../../components/ui/fo
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton } from '../../components/portal/kit'
 import { money } from '../../lib/format'
+import { PRODUCT_STATUS as STATUS, BILLING_CYCLE_LABEL as CYCLE } from '../../lib/data'
 
 interface Product {
   id: string; name: string; category: string; billingCycle: string
   firstPrice: number; renewPrice: number; defaultSharePct: number; status: string; reviewNote: string
 }
-const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' | 'alert' }> = {
-  live: { label: '已上架', tone: 'good' }, pending: { label: '审核中', tone: 'warn' }, draft: { label: '草稿', tone: 'neutral' }, delisted: { label: '已下架', tone: 'alert' },
-}
-const CYCLE: Record<string, string> = { monthly: '月付', yearly: '年付', continuous: '连续包月' }
 
 export function BrandProducts() {
   const toast = useToast()
@@ -83,6 +80,10 @@ function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; on
   const [tags, setTags] = useState<string[]>([])
   const submit = async () => {
     if (!f.name.trim()) { onError('请填写商品名称'); return }
+    // 价格/分成必须为有效正数：清空数字框会得到 +'' === 0，"1-" 之类得到 NaN，
+    // 若不拦截会创建 ¥0 或 NaN% 的草稿商品推进审核。
+    if (!(f.firstPrice > 0) || !(f.renewPrice > 0)) { onError('首单价与续费价需大于 0'); return }
+    if (!(f.defaultSharePct >= 0 && f.defaultSharePct <= 100)) { onError('代理分成需在 0–100% 之间'); return }
     try {
       const r = await portalApi.addBrandProduct({ ...f, bundleEligible, exclusiveGroup: exclusiveGroup.trim(), tags })
       if (r.ok) { onClose(); onDone() } else { onError('创建失败，请重试') }

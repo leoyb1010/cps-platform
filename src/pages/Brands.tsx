@@ -18,7 +18,7 @@ import { Meter } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
 import { DocModal } from '../components/ui/DocModal'
 import { Steps, Field, Input, Select } from '../components/ui/forms'
-import { SETTLE_PATH_LABEL, type SettlePath } from '../lib/data'
+import { SETTLE_PATH_LABEL, SETTLE_PATH_TONE as PATH_TONE, type SettlePath } from '../lib/data'
 import { useStore, addBrand, setBrandStatus, type NewBrandInput } from '../lib/store'
 import { money, int, pct, cx } from '../lib/format'
 
@@ -27,7 +27,6 @@ const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' 
   review: { label: '审核中', tone: 'warn' },
   paused: { label: '已暂停', tone: 'neutral' },
 }
-const PATH_TONE: Record<SettlePath, 'good' | 'info' | 'violet'> = { direct: 'good', licensed: 'info', mixed: 'violet' }
 
 const blankForm: NewBrandInput = {
   name: '', mark: '', category: '工具 / 知识', path: 'direct', feeRate: 42, period: 7, reservePct: 8,

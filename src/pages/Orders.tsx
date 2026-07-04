@@ -29,7 +29,7 @@ import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../com
 import { Timeline } from '../components/ui/forms'
 import { Bars } from '../components/ui/charts'
 import { series } from '../lib/data'
-import { int, pct, cx, csvCell } from '../lib/format'
+import { int, pct, cx, csvCell, downloadText } from '../lib/format'
 
 // 完整订阅生命周期 7 态（PDF 6.4 订阅留存与退订体验）：合规退订不是损失，
 // 而是降低投诉、保护商户号、提高长期信任的成本。
@@ -84,7 +84,7 @@ export default function Orders() {
           <>
             <Segmented value={view} onChange={setView} options={[{ value: 'orders', label: '订单流' }, { value: 'lifecycle', label: '订阅生命周期' }]} />
             <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成' }) }}><RefreshCcw size={14} /> 同步回传</Button>
-            <Button variant="primary" onClick={() => { const csv = '﻿订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '订单对账.csv'; a.click(); URL.revokeObjectURL(a.href); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
+            <Button variant="primary" onClick={() => { const csv = '订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); downloadText('订单对账.csv', csv); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
           </>
         }
       />

@@ -30,7 +30,7 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', on ? 'bg-ink' : 'bg-line-strong')}
+      className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-line-strong')}
     >
       <span className={cx('absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-all', on ? 'left-[18px]' : 'left-[2px]')} />
     </button>

@@ -9,6 +9,7 @@ import { isRealApi } from '../lib/http'
 import { money, cx } from '../lib/format'
 import { BundlesPanel } from './market/Supermarket'
 import { demoProducts, demoBundleRules } from '../lib/adminDemo'
+import { PRODUCT_STATUS as STATUS, BILLING_CYCLE_LABEL as CYCLE } from '../lib/data'
 
 interface Product {
   id: string; brandId: string; brandName: string; brandMark: string; name: string; category: string; description: string
@@ -17,13 +18,6 @@ interface Product {
 }
 interface BundleRule { id: string; name: string; kind: string; params: string; active: boolean }
 
-const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' | 'alert' }> = {
-  live: { label: '已上架', tone: 'good' },
-  pending: { label: '待审核', tone: 'warn' },
-  draft: { label: '草稿', tone: 'neutral' },
-  delisted: { label: '已下架', tone: 'alert' },
-}
-const CYCLE: Record<string, string> = { monthly: '月付', yearly: '年付', continuous: '连续包月' }
 
 export default function Products() {
   const toast = useToast()

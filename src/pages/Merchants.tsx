@@ -18,7 +18,7 @@ import {
   TONE,
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
-import { Drawer, Modal, useToast } from '../components/ui/overlays'
+import { Drawer, Modal, useToast, Confirm } from '../components/ui/overlays'
 import { DetailPopover, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Timeline, Field, Select, Input } from '../components/ui/forms'
 import {
@@ -55,6 +55,10 @@ export default function Merchants() {
   const pop = useAnchoredPopover()
   const [newOpen, setNewOpen] = useState(false)
   const [routeOpen, setRouteOpen] = useState(false)
+  // 熔断 = 全量交易暂停（不可逆的重动作），行内与抽屉两处入口统一走二次确认，
+  // 与处置舱一致；恢复/暂停新签为轻动作，无需拦截。
+  const [fuseId, setFuseId] = useState<string | null>(null)
+  const doFuse = (id: string) => { setMerchantState(id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${id} 已熔断下线` }) }
   // brands 可能为空（真实模式无 brand.read 权限时水合为空数组）——可选链兜底，避免首渲染崩溃
   const [nf, setNf] = useState({ brandId: brands[0]?.id ?? '', channel: 'wechat' as 'wechat' | 'alipay' | 'bank', weight: 30 })
   const activeM = merchants.find((m) => m.id === openId) ?? null
@@ -271,7 +275,7 @@ export default function Merchants() {
                       {canWrite && (m.state === 'fused' ? (
                         <button onClick={() => { setMerchantState(m.id, 'healthy', '健康'); toast({ tone: 'good', text: `${m.id} 已恢复进单` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-good-ink hover:bg-good-soft">恢复</button>
                       ) : (
-                        <button onClick={() => { setMerchantState(m.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${m.id} 已熔断下线` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-alert-ink hover:bg-alert-soft">熔断</button>
+                        <button onClick={() => setFuseId(m.id)} className="rounded-md px-2 py-1 text-[12px] font-medium text-alert-ink hover:bg-alert-soft">熔断</button>
                       ))}
                       {!canWrite && <span className="text-[11.5px] text-ink-5">只读</span>}
                     </span>
@@ -294,7 +298,7 @@ export default function Merchants() {
         m={activeM}
         anchor={pop.anchorRect}
         onClose={() => { setOpenId(null); pop.close() }}
-        onFuse={() => { if (activeM) { setMerchantState(activeM.id, 'fused', '暂停交易'); toast({ tone: 'alert', text: `${activeM.id} 已熔断下线` }) } }}
+        onFuse={() => { if (activeM) setFuseId(activeM.id) }}
         onPause={() => { if (activeM) { setMerchantState(activeM.id, 'paused', '暂停新签·21天'); toast({ tone: 'warn', text: `${activeM.id} 已暂停新签` }) } }}
         onResume={() => { if (activeM) { setMerchantState(activeM.id, 'healthy', '健康'); toast({ tone: 'good', text: `${activeM.id} 已恢复进单` }) } }}
       />
@@ -343,6 +347,16 @@ export default function Merchants() {
           </div>
         </div>
       </Drawer>
+
+      <Confirm
+        open={!!fuseId}
+        onClose={() => setFuseId(null)}
+        onConfirm={() => { if (fuseId) doFuse(fuseId); setFuseId(null) }}
+        title={`确认熔断 ${fuseId ?? ''}`}
+        tone="alert"
+        confirmText="确认熔断下线"
+        body={<>熔断将<b>立即暂停该商户号的全部进单</b>，日均约 <span className="tnum font-medium text-ink">{money((merchants.find((m) => m.id === fuseId)?.gmvMtd ?? 0) / 30)}</span> 流水按健康兄弟号权重改道。确认后即时生效并写审计。</>}
+      />
     </>
   )
 }

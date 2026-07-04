@@ -43,7 +43,7 @@ import {
   AGENT_STATUS,
   CHANNEL_LABEL,
 } from '../lib/data'
-import { money, pct, int, cx, csvCell } from '../lib/format'
+import { money, pct, int, cx, csvCell, downloadText } from '../lib/format'
 
 const wan = (n: number) => '¥' + Math.round(n / 1e4).toLocaleString('zh-CN') + '万'
 const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s cubic-bezier(.22,1,.36,1) both` })
@@ -60,12 +60,8 @@ function exportCsv(range: Range) {
     ['续费率', pct(kpi.renewalRate), '连续包月'],
     ['综合投诉率', pct(kpi.complaintRate), '近7天累计'],
   ]
-  const csv = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\n')
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-  a.download = `经营总览-${RANGE_LABEL[range]}.csv`
-  a.click()
-  URL.revokeObjectURL(a.href)
+  const csv = rows.map((r) => r.map(csvCell).join(',')).join('\n')
+  downloadText(`经营总览-${RANGE_LABEL[range]}.csv`, csv) // downloadText 已带 BOM，勿再手动前置
 }
 
 // R-NSC 北极星（唯一口径）：直接取 data.ts kpi.rnscMtd（RNSC_BREAKDOWN ∑ 恰等，部分项含估算系数），
@@ -271,7 +267,7 @@ export default function Dashboard() {
               const tone = st.tone === 'neutral' ? 'alert' : st.tone
               return (
                 <div key={m.id} className="flex items-center gap-2.5">
-                  <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[5px] bg-ink text-[11px] font-semibold text-white">{brandById(m.brandId).mark}</span>
+                  <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[5px] bg-avatar text-[11px] font-semibold text-avatar-fg">{brandById(m.brandId).mark}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex justify-between"><span className="tnum text-[12px] whitespace-nowrap text-ink">{m.id}</span><span className={cx('tnum text-[11px]', TONE[tone].ink)}>{pct(m.complaintRate)}</span></div>
                     <div className="relative mt-1.5 h-[5px] overflow-hidden rounded-[2px] bg-surface-sunken">
@@ -344,7 +340,7 @@ export default function Dashboard() {
                 return (
                   <div key={o.id} className="flex items-center gap-2.5 rounded-md px-2.5 py-2.5 transition-colors hover:bg-surface-muted">
                     <span className="tnum w-[34px] text-[10.5px] text-ink-5">{o.time.slice(0, 5)}</span>
-                    <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[5px] bg-ink text-[10px] text-white">{brandById(o.brandId).mark}</span>
+                    <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[5px] bg-avatar text-[10px] text-avatar-fg">{brandById(o.brandId).mark}</span>
                     <div className="min-w-0 flex-1"><div className="truncate text-[12px] text-ink">{o.plan}</div><div className="text-[10.5px] text-ink-5">{o.agentId} · {CHANNEL_LABEL[o.channel]}</div></div>
                     <Badge tone={t.tone} dot={o.type === 'refund' || o.type === 'chargeback'}>{t.label}</Badge>
                     <span className={cx('tnum w-[52px] text-right text-[12.5px] font-semibold', o.amount < 0 ? 'text-alert-ink' : 'text-ink')}>{o.amount < 0 ? '−' : ''}¥{Math.abs(o.amount)}</span>
