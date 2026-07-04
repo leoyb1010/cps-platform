@@ -27,6 +27,8 @@ const SHOTS = [
   { name: 'portal-agent', hash: '#/portal/agent', height: 1160, auth: AGENT },
   { name: 'agent-landing', hash: '#/portal/agent/landing', height: 1080, auth: AGENT },
   { name: 'members', hash: '#/members', height: 950 },
+  { name: 'products', hash: '#/products', height: 1000, expert: true },
+  { name: 'aigc', hash: '#/aigc', height: 1000, expert: true },
 ]
 
 mkdirSync(OUT, { recursive: true })
