@@ -31,7 +31,7 @@ import { Wizard } from '../components/ui/Wizard'
 import { useStore } from '../lib/store'
 import { useApi, bizApi } from '../lib/adminApi'
 import { isRealApi } from '../lib/http'
-import { money, pct } from '../lib/format'
+import { money, pct, csvCell } from '../lib/format'
 
 export default function Contracts() {
   const toast = useToast()
@@ -87,7 +87,7 @@ export default function Contracts() {
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">
           <CardTitle title="合约列表" desc="品牌 ↔ 渠道 · 结算模型、履约进度、投诉责任" />
-          <Button variant="ghost" onClick={() => { const csv = '﻿合约号,品牌,渠道,结算模型,LTV窗口,投诉责任,准备金%,目标,已履约,状态\n' + contracts.map((c) => [c.id, brandById(c.brandId)?.name, c.agentId ?? '挂单中', SETTLE_MODEL_LABEL[c.settleModel].label, c.ltvWindow, COMPLAINT_LIABILITY_LABEL[c.complaintLiability], c.reservePct, c.targetGmv, c.achievedGmv, CONTRACT_STATUS[c.status].label].join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '增长合约.csv'; a.click(); URL.revokeObjectURL(a.href); toast({ tone: 'good', text: '合约明细已导出 CSV' }) }}><Download size={14} /> 导出</Button>
+          <Button variant="ghost" onClick={() => { const csv = '﻿合约号,品牌,渠道,结算模型,LTV窗口,投诉责任,准备金%,目标,已履约,状态\n' + contracts.map((c) => [c.id, brandById(c.brandId)?.name, c.agentId ?? '挂单中', SETTLE_MODEL_LABEL[c.settleModel].label, c.ltvWindow, COMPLAINT_LIABILITY_LABEL[c.complaintLiability], c.reservePct, c.targetGmv, c.achievedGmv, CONTRACT_STATUS[c.status].label].map(csvCell).join(',')).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '增长合约.csv'; a.click(); URL.revokeObjectURL(a.href); toast({ tone: 'good', text: '合约明细已导出 CSV' }) }}><Download size={14} /> 导出</Button>
         </div>
         <TableShell
           className="px-2 pb-2"

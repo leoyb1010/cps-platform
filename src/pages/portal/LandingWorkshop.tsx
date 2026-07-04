@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, Sparkles, Tag, ShoppingBag, Trash2, ExternalLink, Code2, Palette } from 'lucide-react'
 import { PageHeader, Card, CardTitle, BrandMark, Badge } from '../../components/ui/primitives'
-import { useToast } from '../../components/ui/overlays'
+import { useToast, Confirm } from '../../components/ui/overlays'
 import { EmptyState } from '../../components/ui/forms'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'
 import { portalApi } from '../../lib/portalApi'
 import { marketApi, type Quote, type MarketProduct } from '../../lib/marketApi'
-import { money, cx } from '../../lib/format'
+import { money, cx, copyText } from '../../lib/format'
 import { LandingPreview } from '../market/LandingPage'
 import { createLandingPage, deleteLandingPage, useLandingPages, landingUrl, landingIframeSnippet, brandColorOf, type LandingPage } from '../../lib/landing'
 
@@ -50,6 +50,7 @@ export function LandingWorkshop({
   const [channel, setChannel] = useState('')
   const seq = useRef(0)
   const pointsDirty = useRef(false) // 用户手动编辑过卖点（含清空）后不再自动填充
+  const [delId, setDelId] = useState<string | null>(null) // 待确认删除的落地页（删除会毁掉页面+台账，需二次确认）
 
   const all = data ?? []
   const eligible = all.filter((p) => p.status === 'live' && p.bundleEligible)
@@ -167,7 +168,7 @@ export function LandingWorkshop({
                 <Card pad={false}>
                   <div className="p-5 pb-3"><CardTitle title="我的落地页" desc="曝光 / 下单 / 转化金额（演示态本地累加）" /></div>
                   <div className="divide-y divide-line/70 px-5 pb-4">
-                    {myPages.map((pg) => <PageRow key={pg.id} pg={pg} onCopy={(u) => copy(u, toast)} onDelete={() => { deleteLandingPage(pg.id); toast({ tone: 'info', text: '落地页已删除' }) }} />)}
+                    {myPages.map((pg) => <PageRow key={pg.id} pg={pg} onCopy={(u) => copy(u, toast)} onDelete={() => setDelId(pg.id)} />)}
                   </div>
                 </Card>
               )}
@@ -198,6 +199,15 @@ export function LandingWorkshop({
           </div>
         )}
       </PortalState>
+      <Confirm
+        open={!!delId}
+        onClose={() => setDelId(null)}
+        onConfirm={() => { if (delId) { deleteLandingPage(delId); toast({ tone: 'info', text: '落地页已删除' }) } setDelId(null) }}
+        title="删除落地页"
+        tone="alert"
+        confirmText="删除"
+        body="删除后该落地页链接立即失效，曝光/下单台账一并清除，不可恢复。确认删除？"
+      />
     </>
   )
 }
@@ -212,7 +222,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 }
 
 function copy(text: string, toast: ReturnType<typeof useToast>) {
-  navigator.clipboard.writeText(text).then(() => toast({ tone: 'good', text: '已复制' })).catch(() => toast({ tone: 'info', text }))
+  copyText(text).then((ok) => toast(ok ? { tone: 'good', text: '已复制' } : { tone: 'info', text }))
 }
 
 function PageRow({ pg, onCopy, onDelete }: { pg: LandingPage; onCopy: (u: string) => void; onDelete: () => void }) {

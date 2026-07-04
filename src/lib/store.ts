@@ -270,9 +270,14 @@ export async function hydrateFromServer() {
     safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
     safe(bizApi.config<Record<string, unknown>>()), // 配置 KV（平台配置/通道/SLA/归因）回读
   ])
-  const orders = ordersPage?.items ?? null
+  // 订单是游标分页 { items, nextCursor }，与其它扁平数组不同。
+  // safe() 在 403 时返回 []（空数组），成功时返回 { items }。必须区分三态：
+  //   403 → []（安全空数组，与其它集合一致地按数据级 RBAC 清空，防越权用户续看旧单）
+  //   网络错/5xx → null（保留现值，一次瞬时错误不清屏）
+  //   成功 → items
+  const orders = ordersPage === null ? null : Array.isArray(ordersPage) ? [] : (ordersPage.items ?? [])
   // 全部失败（如完全离线）：保留本地 seed，不阻断演示
-  if (!brands && !agents && !merchants && !orders && !settlements && !tickets) return
+  if (!brands && !agents && !merchants && orders === null && !settlements && !tickets) return
   const seedB = new Map(seedBrands.map((b) => [b.id, b]))
   const seedA = new Map(seedAgents.map((a) => [a.id, a]))
   const seedM = new Map(seedMerchants.map((m) => [m.id, m]))

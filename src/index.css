@@ -153,8 +153,7 @@ body {
 a,
 button,
 summary,
-[role='button'],
-.ix {
+[role='button'] {
   transition:
     background-color 0.16s ease,
     color 0.16s ease,

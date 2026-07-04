@@ -54,7 +54,9 @@ export default function Analytics() {
           <Gauge value={kpi.rnscMtd / 10000} max={kpi.rnscTarget / 10000} target={kpi.rnscTarget / 10000} status={kpi.rnscMtd >= kpi.rnscTarget ? '达标' : kpi.rnscMtd >= kpi.rnscTarget * 0.8 ? '接近' : '待追'} decimals={0} />
           <div className="mt-3 flex items-center justify-between text-[12px]">
             <span className="text-ink-3">本月 <b className="tnum text-ink">{money(kpi.rnscMtd)}</b></span>
-            {(() => { const d = ((kpi.rnscMtd - kpi.rnscPrevMtd) / kpi.rnscPrevMtd) * 100; const up = d >= 0; return <span className={cx('tnum font-medium', up ? 'text-good-ink' : 'text-alert-ink')}>{up ? '▲' : '▼'} {Math.abs(d).toFixed(1)}% 环比</span> })()}
+            {kpi.rnscPrevMtd > 0
+              ? (() => { const d = ((kpi.rnscMtd - kpi.rnscPrevMtd) / kpi.rnscPrevMtd) * 100; const up = d >= 0; return <span className={cx('tnum font-medium', up ? 'text-good-ink' : 'text-alert-ink')}>{up ? '▲' : '▼'} {Math.abs(d).toFixed(1)}% 环比</span> })()
+              : <span className="tnum text-ink-4">上月无基数</span>}
           </div>
         </Card>
         <Card className="lg:col-span-3">

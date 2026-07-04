@@ -8,8 +8,8 @@ import { PeriodFilter } from '../../components/ui/filters'
 import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars, PortalBanner } from '../../components/portal/kit'
-import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
-import { money, pct, cx } from '../../lib/format'
+import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE, SETTLE_MODEL_LABEL as SETTLE_MODEL } from '../../lib/data'
+import { money, pct, cx, copyText } from '../../lib/format'
 
 export function AgentHome() {
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
@@ -114,7 +114,7 @@ export function AgentPlans() {
   const toast = useToast()
   const { data, state, reload } = usePortalResource<AgentPlanRow[]>(() => portalApi.agentPlans())
   const claimsApi = usePortalResource<ClaimRow[]>(() => portalApi.agentClaims())
-  const copy = (url: string) => { navigator.clipboard?.writeText(url).then(() => toast({ tone: 'good', text: '追踪链接已复制' })).catch(() => {}) }
+  const copy = (url: string) => { copyText(url).then((ok) => toast(ok ? { tone: 'good', text: '追踪链接已复制' } : { tone: 'info', text: url })) }
   return (
     <>
       <PageHeader
@@ -259,7 +259,8 @@ export function AgentCredit() {
 
 type ContractRow = { id: string; brandId: string; agentId: string | null; status: string; settleModel: string; targetGmv: number; reservePct?: number; agentSharePct?: number | null }
 // 结算模型机器键 → 人话（表格与模拟器共用；直接渲染 'floor_tiered' 是给用户看代码）
-const SETTLE_MODEL_LABEL: Record<string, string> = { cps_share: 'CPS 分成', floor_tiered: '保底 + 阶梯', mutual_quota: '互销额度' }
+// 取平台统一口径 SETTLE_MODEL_LABEL(data.ts)，避免本地再抄一份标签表导致与合约页文案漂移。
+const settleLabel = (k: string) => SETTLE_MODEL[k as keyof typeof SETTLE_MODEL]?.label ?? k
 export function AgentContracts() {
   const toast = useToast()
   const [rows, setRows] = useState<ContractRow[] | null>(null)
@@ -293,7 +294,7 @@ export function AgentContracts() {
                 <Row key={c.id}>
                   <Td className="pl-3 text-[12.5px] font-medium text-ink">{c.id}</Td>
                   <Td className="text-[12px] text-ink-3">{c.brandId}</Td>
-                  <Td>{SETTLE_MODEL_LABEL[c.settleModel] ?? c.settleModel}{c.agentSharePct ? <span className="ml-1 text-[11px] text-ink-4">· {c.agentSharePct}%</span> : null}</Td>
+                  <Td>{settleLabel(c.settleModel)}{c.agentSharePct ? <span className="ml-1 text-[11px] text-ink-4">· {c.agentSharePct}%</span> : null}</Td>
                   <Td right mono>{money(c.targetGmv)}</Td>
                   <Td right><Badge tone={claimable ? 'info' : c.status === 'active' || c.status === 'fulfilling' ? 'good' : 'neutral'}>{claimable ? '挂单中' : c.status}</Badge></Td>
                   <Td right>
@@ -336,7 +337,7 @@ function BidSimulator({ c, busy, onClose, onConfirm }: { c: ContractRow; busy: b
       <div className="absolute inset-0 bg-ink/45" onClick={onClose} />
       <div className="relative w-full max-w-[440px] rounded-2xl bg-surface p-5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .2s both' }}>
         <div className="mb-1 text-[15px] font-semibold text-ink">接单模拟器 · {c.id}</div>
-        <div className="text-[12px] text-ink-4">{c.brandId} · {SETTLE_MODEL_LABEL[c.settleModel] ?? c.settleModel} · 目标 GMV {money(c.targetGmv)}</div>
+        <div className="text-[12px] text-ink-4">{c.brandId} · {settleLabel(c.settleModel)} · 目标 GMV {money(c.targetGmv)}</div>
 
         {isQuota ? (
           /* 互销额度：以量换量，不存在 CPS 分成——给解释而不是假数字 */

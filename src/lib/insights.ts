@@ -18,7 +18,7 @@ export function buildInsights(s: StoreState): Insight[] {
   const out: Insight[] = []
 
   // 1) 号池：投诉率最高且逼近阈值的商户号。
-  // 阈值必须取平台统一口径 MERCHANT_THRESHOLD（红线 1.0/预警 0.8）——此前硬编码 1.2 当红线，
+  // 阈值必须取平台统一口径 MERCHANT_THRESHOLD（红线 complaint 1.0 / 预警 complaintWarn 0.6）——此前硬编码 1.2 当红线，
   // 同一商户号在总览标"触发管控"、晨报却说"逼近阈值"，两行字互相打架。
   const risky = s.merchants.filter((m) => m.state !== 'fused').slice().sort((a, b) => b.complaintRate - a.complaintRate)[0]
   if (risky && risky.complaintRate >= MERCHANT_THRESHOLD.complaintWarn) {

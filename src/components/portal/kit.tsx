@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Inbox, WifiOff, AlertCircle } from 'lucide-react'
 import { Skeleton } from '../ui/primitives'
-import { downloadText } from '../../lib/format'
+import { downloadText, csvCell } from '../../lib/format'
 
 // ════════════════════════════════════════════════════════════
 //  客户门户公共套件 —— 两个 portal 共享，避免重复造取数 hook / 通知组件。
@@ -135,8 +135,8 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
 
 // CSV 导出：把行数组按列定义导出为 CSV 文本并下载
 export function exportCsv<T>(filename: string, rows: T[], columns: { key: string; label: string; get: (r: T) => string | number }[]) {
-  const head = columns.map((c) => c.label).join(',')
-  const body = rows.map((r) => columns.map((c) => `"${String(c.get(r)).replace(/"/g, '""')}"`).join(',')).join('\n')
+  const head = columns.map((c) => csvCell(c.label)).join(',')
+  const body = rows.map((r) => columns.map((c) => csvCell(c.get(r))).join(',')).join('\n')
   downloadText(filename, head + '\n' + body)
 }
 

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Copy, Check, KeyRound, Webhook, Code2, Activity, ShieldCheck, Upload, Play } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button, TableShell, Th, Td, Row, Segmented } from '../../components/ui/primitives'
-import { Modal, useToast } from '../../components/ui/overlays'
+import { Modal, useToast, Confirm } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'
 import { LANGS, stringToSign, TS_SENTINEL, type CodeGenInput } from '../../lib/codeGen'
+import { copyText } from '../../lib/format'
 
 interface DevConfig {
   custId: string | null
@@ -36,7 +37,7 @@ export function BrandDeveloper() {
   const { data, state, reload } = usePortalResource<DevConfig>(() => portalApi.developer<DevConfig>())
   const [tab, setTab] = useState<Tab>('cred')
   const [copied, setCopied] = useState('')
-  const copy = (text: string, tag: string) => navigator.clipboard?.writeText(text).then(() => { setCopied(tag); setTimeout(() => setCopied(''), 1500) })
+  const copy = (text: string, tag: string) => { copyText(text).then((ok) => { if (ok) { setCopied(tag); setTimeout(() => setCopied(''), 1500) } }) }
 
   return (
     <div className="space-y-5">
@@ -74,6 +75,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
   const [newPriv, setNewPriv] = useState<{ publicKey: string; privateKey: string } | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
   const [pubInput, setPubInput] = useState('')
+  const [regenOpen, setRegenOpen] = useState(false) // 已有密钥时重新生成会作废线上验签，需二次确认
   const callbackValue = cbUrl ?? c.callbackUrl ?? ''
 
   const keygen = async () => {
@@ -102,7 +104,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
               <span className="font-mono text-ink-2">{c.publicKeyHint ? `••••${c.publicKeyHint}` : '—'}{c.keySource && <Badge tone="neutral" >{c.keySource === 'keygen' ? '系统生成' : '上传'}</Badge>}</span>
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Button variant="ghost" onClick={keygen}><KeyRound size={13} /> {c.hasPublicKey ? '重新生成密钥' : '生成密钥对'}</Button>
+              <Button variant="ghost" onClick={() => (c.hasPublicKey ? setRegenOpen(true) : keygen())}><KeyRound size={13} /> {c.hasPublicKey ? '重新生成密钥' : '生成密钥对'}</Button>
               <Button variant="ghost" onClick={() => setUploadOpen(true)}><Upload size={13} /> 上传公钥</Button>
             </div>
             <p className="text-xs text-ink-4">私钥由你自留，仅生成时下载一次；系统只存公钥用于验签。生产请妥善保管私钥。</p>
@@ -128,6 +130,16 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
         </ol>
         <p className="mt-2 text-xs text-ink-4">对接基址：<code className="rounded bg-surface-muted px-1 font-mono">{c.apiBase}</code> · 测试 https://dict-paycenter-test.youdao.com/client</p>
       </Card>
+
+      <Confirm
+        open={regenOpen}
+        onClose={() => setRegenOpen(false)}
+        onConfirm={() => { setRegenOpen(false); keygen() }}
+        title="重新生成 RSA 密钥"
+        tone="alert"
+        confirmText="仍要重新生成"
+        body="重新生成会立即作废当前公钥，用旧私钥签名的所有请求将验签失败（线上对接中断），直到你把新私钥同步到调用方。确认继续？"
+      />
 
       {/* 私钥一次性下载 Modal */}
       <Modal open={!!newPriv} onClose={() => setNewPriv(null)} title="RSA 密钥对已生成" width={560}>
@@ -263,7 +275,7 @@ function HealthTab() {
               {result.checks.map((ch) => (
                 <div key={ch.item} className="flex items-center gap-3 rounded-lg border border-line px-3 py-2 text-sm">
                   {ch.pass ? <Check size={15} className="text-good" /> : <span className="text-alert">✗</span>}
-                  <span className="text-ink-1">{ch.item}</span>
+                  <span className="text-ink">{ch.item}</span>
                   <span className="ml-auto text-xs text-ink-4">{ch.detail}</span>
                 </div>
               ))}
@@ -316,7 +328,7 @@ function Kv({ label, val, copy, copied, tag }: { label: string; val: string | nu
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-ink-3">{label}</span>
-      {val ? <button onClick={() => copy(val, tag)} className="flex items-center gap-1.5 font-mono text-ink-1 hover:text-brand">{val}{copied === tag ? <Check size={13} className="text-good" /> : <Copy size={13} className="text-ink-4" />}</button> : <span className="text-ink-4">—</span>}
+      {val ? <button onClick={() => copy(val, tag)} className="flex items-center gap-1.5 font-mono text-ink hover:text-brand">{val}{copied === tag ? <Check size={13} className="text-good" /> : <Copy size={13} className="text-ink-4" />}</button> : <span className="text-ink-4">—</span>}
     </div>
   )
 }

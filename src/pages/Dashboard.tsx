@@ -43,7 +43,7 @@ import {
   AGENT_STATUS,
   CHANNEL_LABEL,
 } from '../lib/data'
-import { money, pct, int, cx } from '../lib/format'
+import { money, pct, int, cx, csvCell } from '../lib/format'
 
 const wan = (n: number) => '¥' + Math.round(n / 1e4).toLocaleString('zh-CN') + '万'
 const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s cubic-bezier(.22,1,.36,1) both` })
@@ -60,7 +60,7 @@ function exportCsv(range: Range) {
     ['续费率', pct(kpi.renewalRate), '连续包月'],
     ['综合投诉率', pct(kpi.complaintRate), '近7天累计'],
   ]
-  const csv = '﻿' + rows.map((r) => r.join(',')).join('\n')
+  const csv = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\n')
   const a = document.createElement('a')
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
   a.download = `经营总览-${RANGE_LABEL[range]}.csv`

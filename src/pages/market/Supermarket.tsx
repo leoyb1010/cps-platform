@@ -196,12 +196,13 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
 function HeroSampleCard({ products }: { products: MarketProduct[] }) {
   const sample = products.slice(0, 3)
   if (sample.length === 0) return <div className="hidden lg:block" />
+  // 示意卡仅展示"前 3 件合计"，不可交互；真实折扣由服务端按满件档位实时算价，
+  // 这里不得凭空造一个折扣价（此前 list*0.85 硬编码 15% off 会误导定价）。
   const list = sample.reduce((s, p) => s + p.firstPrice, 0)
-  const final = +(list * 0.85).toFixed(2)
   return (
     <div className="animate-in mx-auto w-full max-w-[360px] lg:ml-auto">
       <div className="rounded-2xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)]">
-        <div className="mb-3 flex items-center gap-2"><Sparkles size={14} className="text-brand" /><span className="text-[12.5px] font-semibold text-ink">示例套餐</span><span className="ml-auto tnum rounded-full bg-good-soft/60 px-2 py-0.5 text-[10.5px] font-medium text-good-ink">省 {Math.round((1 - final / list) * 100)}%</span></div>
+        <div className="mb-3 flex items-center gap-2"><Sparkles size={14} className="text-brand" /><span className="text-[12.5px] font-semibold text-ink">示例套餐</span><span className="ml-auto tnum rounded-full bg-good-soft/60 px-2 py-0.5 text-[10.5px] font-medium text-good-ink">满件再省</span></div>
         <div className="space-y-2.5">
           {sample.map((p) => (
             <div key={p.id} className="flex items-center gap-2.5">
@@ -212,8 +213,8 @@ function HeroSampleCard({ products }: { products: MarketProduct[] }) {
           ))}
         </div>
         <div className="mt-3 flex items-end justify-between border-t border-line pt-3">
-          <div><div className="text-[11px] text-ink-4 line-through tnum">{money(list)}</div><div className="text-[11.5px] font-medium text-ink">套餐价</div></div>
-          <span className="tnum text-[24px] font-semibold leading-none text-brand">{money(final)}</span>
+          <div><div className="text-[11px] text-ink-4">前 3 件合计 · 满件再省</div><div className="text-[11.5px] font-medium text-ink">示意套餐</div></div>
+          <span className="tnum text-[24px] font-semibold leading-none text-brand">{money(list)}</span>
         </div>
       </div>
       <p className="mt-2.5 text-center text-[11px] text-ink-4">↓ 下方自由搭配你的专属套餐</p>
@@ -253,6 +254,8 @@ function ShelfBody(s: ShelfProps) {
   // 商品详情气泡：点「详情」在按钮旁锚定弹出（不触发选中）
   const detail = useAnchoredPopover()
   const [detailP, setDetailP] = useState<MarketProduct | null>(null)
+  // 支付渠道：此前支付宝/微信按钮与「去支付」CTA 全硬编码 alipay，点微信也走支付宝——静默错付。
+  const [channel, setChannel] = useState<'alipay' | 'wechat'>('alipay')
   let detailTags: string[] = []; if (detailP) { try { detailTags = JSON.parse(detailP.tags) } catch { /* */ } }
   return (
     <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_340px]">
@@ -404,18 +407,18 @@ function ShelfBody(s: ShelfProps) {
                       <div className="mt-1.5 tnum text-[22px] font-semibold leading-none text-brand">{money(s.done.finalPrice)}</div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button disabled={s.paying} onClick={() => s.pay('alipay')}
-                        className="flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all hover:border-[#1677ff]/50 hover:bg-[#1677ff]/5 active:scale-[0.98] disabled:opacity-50">
+                      <button disabled={s.paying} onClick={() => setChannel('alipay')}
+                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all active:scale-[0.98] disabled:opacity-50', channel === 'alipay' ? 'border-[#1677ff] bg-[#1677ff]/5 ring-1 ring-[#1677ff]/30' : 'border-line bg-surface hover:border-[#1677ff]/50')}>
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#1677ff] text-[9px] font-bold text-white">支</span>支付宝
                       </button>
-                      <button disabled={s.paying} onClick={() => s.pay('wechat')}
-                        className="flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all hover:border-[#07c160]/50 hover:bg-[#07c160]/5 active:scale-[0.98] disabled:opacity-50">
+                      <button disabled={s.paying} onClick={() => setChannel('wechat')}
+                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all active:scale-[0.98] disabled:opacity-50', channel === 'wechat' ? 'border-[#07c160] bg-[#07c160]/5 ring-1 ring-[#07c160]/30' : 'border-line bg-surface hover:border-[#07c160]/50')}>
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#07c160] text-[9px] font-bold text-white">微</span>微信
                       </button>
                     </div>
-                    <button disabled={s.paying} onClick={() => s.pay('alipay')}
+                    <button disabled={s.paying} onClick={() => s.pay(channel)}
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
-                      {s.paying ? '支付处理中…' : <><Wallet size={14} /> 去支付 {money(s.done.finalPrice)}</>}
+                      {s.paying ? '支付处理中…' : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
                     </button>
                     <div className="mt-2 text-center text-[10.5px] text-ink-4">演示模式 · 模拟支付不会真实扣款</div>
                     <button onClick={s.reset} className="mt-1.5 block w-full text-center text-[12px] font-medium text-brand hover:underline">重新搭配 →</button>

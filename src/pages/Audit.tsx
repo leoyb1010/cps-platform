@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Download, ScrollText, ShieldCheck } from 'lucide-react'
+import { csvCell } from '../lib/format'
 import {
   Card,
   CardTitle,
@@ -70,8 +71,8 @@ export default function Audit() {
 
   const exportCsv = () => {
     const head = ['时间', '操作人', '类别', '内容']
-    const body = list.map((r) => [r.t, r.actor, CAT_LABEL[r.cat].label, r.text.replace(/,/g, '，')])
-    const csv = '﻿' + [head, ...body].map((x) => x.join(',')).join('\n')
+    const body = list.map((r) => [r.t, r.actor, CAT_LABEL[r.cat].label, r.text])
+    const csv = '﻿' + [head, ...body].map((x) => x.map(csvCell).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
     a.download = '操作审计日志.csv'

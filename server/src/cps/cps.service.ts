@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { randomUUID, createHash } from 'crypto'
+import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { FulfillmentService } from '../business/fulfillment.service'
 import { SettlementService } from '../business/settlement.service'
@@ -11,7 +11,6 @@ import { SignWebhookService } from './sign-webhook.service'
 import { YD_STATUS } from '../youdao/youdao-status'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
-export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
 // 手机号脱敏：前 3 后 4，中间 ****（不存全量 PII）。
 export function maskMobile(m: string): string {

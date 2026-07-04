@@ -35,6 +35,9 @@ export default function LandingPage() {
         const mine = page.productIds.map((pid) => all.find((p) => p.id === pid)).filter(Boolean) as MarketProduct[]
         if (s !== seq.current) return null
         setProducts(mine)
+        // 有商品被下架/删除 → 报错而非静默按子集算价：否则连续包月合规提示会因商品缺失被绕过，
+        // 用户却仍按原价被扣（合规红线）。
+        if (mine.length !== page.productIds.length) { setErr('套餐内有商品已下架，暂不可购买'); return null }
         return marketApi.quote(page.productIds)
       })
       .then((q) => { if (q && s === seq.current) setQuote(q) })

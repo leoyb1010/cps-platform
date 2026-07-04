@@ -88,8 +88,8 @@ export default function MySubscriptions() {
               </div>
 
               <div className="mt-4 space-y-2.5">
-                {result.items.map((it) => (
-                  <div key={it.name} className="rounded-xl border border-line bg-surface p-3.5">
+                {result.items.map((it, i) => (
+                  <div key={`${it.name}-${i}`} className="rounded-xl border border-line bg-surface p-3.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {it.status === 'active' ? <CheckCircle2 size={16} className="text-good-ink" /> : it.status === 'cancelled' ? <XCircle size={16} className="text-ink-4" /> : <Clock size={16} className="text-warn-ink" />}

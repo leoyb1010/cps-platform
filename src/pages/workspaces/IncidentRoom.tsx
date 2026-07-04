@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ShieldAlert, Activity, Zap, Ban, Gauge, RotateCcw, TriangleAlert, CheckCircle2 } from 'lucide-react'
 import { PageHeader, Card, CardTitle, Badge, Button, BrandMark, TONE } from '../../components/ui/primitives'
 import { Sparkline } from '../../components/ui/charts'
-import { useToast } from '../../components/ui/overlays'
+import { useToast, Confirm } from '../../components/ui/overlays'
 import { useStore, setMerchantState } from '../../lib/store'
 import { brandById, type MerchantState } from '../../lib/data'
 import { money, cx } from '../../lib/format'
@@ -15,6 +15,7 @@ import { money, cx } from '../../lib/format'
  */
 export default function IncidentRoom() {
   const { mid = '' } = useParams()
+  const [pending, setPending] = useState<{ next: MerchantState; label: string } | null>(null)
   const nav = useNavigate()
   const toast = useToast()
   // 单次 useStore：hooks 必须无条件且次数恒定——曾在 JSX 三元里按分支调用 useStore()，
@@ -46,9 +47,14 @@ export default function IncidentRoom() {
   // 建议动作（规则引擎默认：投诉率越阈值 → 熔断；否则降权观察）
   const suggested: MerchantState = m.complaintRate >= 1.2 || m.chargebackRate >= 0.6 ? 'fused' : m.complaintRate >= 0.8 ? 'paused' : 'watch'
 
-  const act = (next: MerchantState, label: string) => {
+  const doAct = (next: MerchantState, label: string) => {
     setMerchantState(m.id, next, label)
     toast({ tone: next === 'healthy' ? 'good' : 'alert', text: `${m.id} 已${label}` })
+  }
+  // 熔断/暂停会改道真实进单（GMV），处置舱的立意就是"看得见影响再决定"——单击直接生效违背初衷，走二次确认。
+  const act = (next: MerchantState, label: string) => {
+    if (next === 'fused' || next === 'paused') setPending({ next, label })
+    else doAct(next, label)
   }
 
   // 30 天投诉曲线（演示：围绕当前值抖动）
@@ -177,6 +183,16 @@ export default function IncidentRoom() {
           )}
         </div>
       </div>
+
+      <Confirm
+        open={!!pending}
+        onClose={() => setPending(null)}
+        onConfirm={() => { if (pending) doAct(pending.next, pending.label); setPending(null) }}
+        title={`确认${pending?.label ?? ''} ${m.id}`}
+        tone="alert"
+        confirmText={`确认${pending?.label ?? ''}`}
+        body={<>该操作将改变商户号进单状态，{pending?.next === 'fused' ? '停止其全部进单' : '暂停新签'}，日均约 <span className="tnum font-medium text-ink">{money(dailyGmv)}</span> 流水将按健康兄弟号权重改道。确认后立即生效并写审计。</>}
+      />
     </>
   )
 }
