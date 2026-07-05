@@ -36,14 +36,23 @@ fi
 #   生产 → 仅 bootstrap 首个管理员（密码 env 注入 / 随机打印一次，首登强制改密）；
 #          需要演示数据（预发/沙箱）显式 SEED_DEMO=true 才灌。
 #   非生产 → 灌演示数据便于本地体验。
+# 运行 seed/bootstrap：容器内用预编译 JS（prisma-dist/），本地开发回退 ts-node。
+run_script() {
+  base="$1" # seed | bootstrap-admin
+  if [ -f "prisma-dist/prisma/$base.js" ]; then
+    node "prisma-dist/prisma/$base.js"
+  else
+    npx ts-node "prisma/$base.ts"
+  fi
+}
 NEED_SEED=$(node -e "const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.user.count().then(c=>{console.log(c);process.exit(0)}).catch(()=>{console.log(0);process.exit(0)})")
 if [ "$NEED_SEED" = "0" ]; then
   if [ "$NODE_ENV" = "production" ] && [ "$SEED_DEMO" != "true" ]; then
     echo "[entrypoint] bootstrapping first admin (生产：不灌演示数据)…"
-    npx ts-node prisma/bootstrap-admin.ts || echo "[entrypoint] bootstrap failed (continuing)"
+    run_script bootstrap-admin || echo "[entrypoint] bootstrap failed (continuing)"
   else
     echo "[entrypoint] seeding demo data…"
-    npx ts-node prisma/seed.ts || echo "[entrypoint] seed skipped/failed (continuing)"
+    run_script seed || echo "[entrypoint] seed skipped/failed (continuing)"
   fi
 else
   echo "[entrypoint] data present ($NEED_SEED users) — skip seed/bootstrap"

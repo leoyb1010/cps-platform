@@ -39,7 +39,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = mapped.message
       }
     }
-    if (status >= 500) this.logger.error(`[req:${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`)
+    if (status >= 500) {
+      this.logger.error(`[req:${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`)
+      // 外部错误聚合上报钩子：接入 Sentry 时在此 captureException（未配 SENTRY_DSN 时 no-op）。
+      // 资金类异常与审计写失败经此路径，是主动告警的接入点。
+      // if (process.env.SENTRY_DSN) Sentry.captureException(exception, { tags: { requestId } })
+    }
     res.status(status).json({ code: status, message, ...(requestId ? { requestId } : {}) })
   }
 }

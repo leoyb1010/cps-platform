@@ -351,7 +351,14 @@ model SignCallbackLog {
   httpStatus  Int      @default(0)
   ok          Boolean  @default(false)
   error       String   @default("")
+  // 投递重试（准 outbox）：pending 待投 / delivered 成功 / retrying 退避重投中 / dead 超次死信
+  deliveryStatus String @default("pending")
+  attempts    Int      @default(0)
+  nextRetryAt DateTime? // 下次重投时间（指数退避）；null=不再重投
+  callbackUrl String   @default("") // 目标地址快照，重投用（避免品牌改址后重投丢目标）
   createdAt   DateTime @default(now())
+
+  @@index([deliveryStatus, nextRetryAt])
 }
 
 // 风险准备金分期释放台账。本阶段仅立表 + 展示，不做释放资金动作、不改恒等式校验。

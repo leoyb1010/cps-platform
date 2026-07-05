@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
@@ -7,6 +7,7 @@ import { MetricsService } from '../common/metrics.service'
 import { ReconciliationService } from './reconciliation.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { CpsService } from '../cps/cps.service'
+import { SignWebhookService } from '../cps/sign-webhook.service'
 
 /**
  * 定时任务（端点先行 + cron 后挂）。
@@ -18,9 +19,19 @@ import { CpsService } from '../cps/cps.service'
  *   - 测试环境（NODE_ENV=test）跳过自动触发，避免干扰 e2e 的资金状态断言。
  */
 @Injectable()
-export class ScheduledTasksService {
+export class ScheduledTasksService implements OnModuleInit {
   private readonly logger = new Logger(ScheduledTasksService.name)
   private readonly enabled = process.env.NODE_ENV !== 'test'
+
+  /**
+   * 启动补跑：进程恰在 02:07 前后重启会跳过当日准备金释放。释放本身按 dueAt 查询 +
+   * 日期级幂等键，天然支持 catch-up——启动时调一次即可补齐漏跑，且不会重复释放。
+   * 生产多副本时靠幂等键去重（不双花），非阻塞：失败仅告警不影响服务启动。
+   */
+  async onModuleInit(): Promise<void> {
+    if (!this.enabled) return
+    this.releaseDueReserves().catch((e) => this.logger.warn(`[启动补跑] 准备金释放失败：${e instanceof Error ? e.message : e}`))
+  }
 
   constructor(
     private prisma: PrismaService,
@@ -30,7 +41,16 @@ export class ScheduledTasksService {
     private recon: ReconciliationService,
     private reserve: ReserveReleaseService,
     private cps: CpsService,
+    private webhook: SignWebhookService,
   ) {}
+
+  /** 每分钟重投到期的失败回调（准 outbox 指数退避；超 5 次转死信告警）。 */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async webhookRetrySweep(): Promise<void> {
+    if (!this.enabled) return
+    const r = await this.webhook.retrySweep(new Date())
+    if (r.swept > 0) this.logger.log(`[定时] 回调重投：扫 ${r.swept}，成功 ${r.delivered}，死信 ${r.dead}`)
+  }
 
   /** 每日 02:07 释放所有到期准备金（与手动 POST /reserve/release-due 同逻辑）。 */
   @Cron('7 2 * * *')

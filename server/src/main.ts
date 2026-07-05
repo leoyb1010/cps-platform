@@ -23,6 +23,17 @@ function assertSecrets() {
   if (!pk.includes('PRIVATE KEY')) {
     throw new Error('[安全] 生产环境 YOUDAO_PLATFORM_PRIVATE_KEY 未设置真实 RSA 私钥（PEM）——回退 demo 私钥会被伪造回调')
   }
+  // 指纹比对：仅检查"含 PRIVATE KEY 字样"不够——把仓库内 demo 私钥原样粘进 env 也能过。
+  // 用规范化后哈希比对，若与 demo 私钥相同则拒启（demo 私钥公开在仓库，等于无签名保护）。
+  {
+    // 延迟 require 避免测试/非生产路径加载 demo key
+    const { DEMO_RSA_PRIVATE } = require('./youdao/demo-keys') as { DEMO_RSA_PRIVATE: string }
+    const { createHash } = require('crypto') as typeof import('crypto')
+    const norm = (s: string) => s.replace(/\s+/g, '')
+    if (createHash('sha256').update(norm(pk)).digest('hex') === createHash('sha256').update(norm(DEMO_RSA_PRIVATE)).digest('hex')) {
+      throw new Error('[安全] YOUDAO_PLATFORM_PRIVATE_KEY 使用了仓库内公开的 demo 私钥——生产必须换成自有私钥')
+    }
+  }
 }
 
 async function bootstrap() {

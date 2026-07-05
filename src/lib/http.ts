@@ -20,16 +20,28 @@ export class ApiError extends Error {
   }
 }
 
+const REQUEST_TIMEOUT_MS = 15000 // 请求超时：弱网下不再无限挂起，超时归一为可读错误
+
 async function raw(path: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(API_BASE + path, {
-    ...init,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(init.headers || {}),
-    },
-  })
+  // 调用方未自带 signal 时，挂 15s 超时（AbortSignal.timeout 现代浏览器均支持）
+  const signal = init.signal ?? (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined)
+  try {
+    return await fetch(API_BASE + path, {
+      ...init,
+      signal,
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(init.headers || {}),
+      },
+    })
+  } catch (e) {
+    // 超时(TimeoutError/AbortError) 与网络错误归一为 status=0 的 ApiError，
+    // 供上层区分（0=网络/超时→保留旧数据，非 403）并给用户可读提示。
+    const timeout = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')
+    throw new ApiError(0, timeout ? '请求超时，请检查网络后重试' : '网络异常，请稍后重试')
+  }
 }
 
 // 会话丢失回调（auth 层注册）：刷新彻底失败时清登录态，避免"僵尸控制台"。

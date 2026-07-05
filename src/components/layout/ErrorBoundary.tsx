@@ -1,8 +1,9 @@
 import { Component, type ReactNode } from 'react'
+import { reportError } from '../../lib/monitoring'
 
 /**
  * 根级错误边界：渲染异常 / lazy chunk 加载失败（发版后旧 HTML 引用改名资源）时
- * 给出可自救的界面，而非整站白屏。上报钩子留空实现（Sentry 等后续接入）。
+ * 给出可自救的界面，而非整站白屏。异常经 monitoring.reportError 统一上报（接入 Sentry 只需配置）。
  */
 export class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -12,8 +13,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
   }
 
   componentDidCatch(error: Error) {
-    // 上报钩子：接入 Sentry 时在此调用 captureException
-    console.error('[ErrorBoundary]', error)
+    reportError(error, { boundary: 'root' })
   }
 
   render() {

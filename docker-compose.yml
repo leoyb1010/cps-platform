@@ -6,8 +6,8 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: file:/data/prod.db
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET 必填：openssl rand -hex 32}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET 必填：openssl rand -hex 32}
       ACCESS_TTL: 900s
       REFRESH_TTL_DAYS: "14"
       PORT: "3001"
