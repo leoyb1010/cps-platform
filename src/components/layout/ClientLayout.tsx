@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Menu, X, LogOut, Bell } from 'lucide-react'
 import type { PortalNavGroup } from './portalNav'
@@ -8,6 +8,7 @@ import { portalApi } from '../../lib/portalApi'
 import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
 import { OfflineBanner } from './OfflineBanner'
+import { PageSkeleton } from './PageSkeleton'
 import { brandTheme } from '../../lib/whitelabel'
 import { useTheme, resolvedTheme } from '../../lib/prefs'
 
@@ -158,7 +159,9 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
           </header>
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
             <OfflineBanner />
-            <Outlet />
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>

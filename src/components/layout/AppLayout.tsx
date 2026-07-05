@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat, HelpCircle, Sun, Moon, MonitorSmartphone, ChevronDown, Pin, Star, Rows3 } from 'lucide-react'
 import { NAV, BOARD_ICON, NAV_BY_TO } from './nav'
 import { GuideDrawer } from './GuideDrawer'
 import { OfflineBanner } from './OfflineBanner'
+import { PageSkeleton } from './PageSkeleton'
 import { GUIDES } from '../../lib/guides'
 import { useViewMode, setViewMode, useTheme, setTheme, type Theme, useCollapsedGroups, toggleNavGroup, usePinned, togglePinned, useDensity, setDensity } from '../../lib/prefs'
 import { Segmented } from '../ui/primitives'
@@ -381,7 +382,10 @@ export default function AppLayout() {
           <Topbar title={title} base={base} onReplay={replay} onMenu={() => setNavOpen(true)} onOpenGuide={() => setGuideOpen(true)} />
           <main key={`${loc.pathname}-${epoch}`} className="mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
             <OfflineBanner />
-            <Outlet />
+            {/* 壳内 Suspense：lazy 页加载时只在内容区出骨架，侧栏/顶栏常驻，不整屏闪白 */}
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
         <CommandPalette />

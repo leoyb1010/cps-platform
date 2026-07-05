@@ -176,8 +176,9 @@ export function Card({
 }
 
 /* ── Skeleton (loading placeholder) ──────────────── */
+// 统一用 .skeleton 扫光（shimmer），与 C 端骨架同一质感；不再用 animate-pulse 呼吸
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cx('animate-pulse rounded-md bg-surface-sunken', className)} />
+  return <div className={cx('skeleton rounded-md', className)} />
 }
 
 export function CardTitle({

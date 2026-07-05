@@ -35,13 +35,42 @@ function useOverlayBehavior(open: boolean, onClose: () => void, panelRef?: React
   }, [open, onClose, panelRef])
 }
 
+/**
+ * 退场存在感：open 变 false 后仍保留渲染 `exitMs`，期间标记 closing=true 供反向动画。
+ * 让 Modal/Drawer 关闭时有淡出/滑出，而非瞬间卸载消失。
+ * 返回 { render: 是否渲染, closing: 是否处于退场中 }。
+ */
+function useExitPresence(open: boolean, exitMs = 200): { render: boolean; closing: boolean } {
+  const [render, setRender] = useState(open)
+  const [closing, setClosing] = useState(false)
+  useEffect(() => {
+    if (open) {
+      setRender(true)
+      setClosing(false)
+      return
+    }
+    if (!render) return
+    // open→false：进入退场，exitMs 后真正卸载
+    setClosing(true)
+    const t = setTimeout(() => {
+      setRender(false)
+      setClosing(false)
+    }, exitMs)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+  return { render, closing }
+}
+
 /* ── Toast ─────────────────────────────────────── */
 type ToastTone = 'good' | 'warn' | 'alert' | 'info'
 interface Toast {
   id: number
   tone: ToastTone
   text: string
+  leaving?: boolean // 退场中：播 toastOut 动画后再移除
 }
+const TOAST_MAX = 4 // 堆叠上限，超出丢弃最旧
 const ToastCtx = createContext<(t: { tone?: ToastTone; text: string }) => void>(() => {})
 export const useToast = () => useContext(ToastCtx)
 
@@ -57,8 +86,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const push = useCallback((t: { tone?: ToastTone; text: string }) => {
     const id = ++toastSeq
-    setToasts((cur) => [...cur, { id, tone: t.tone ?? 'info', text: t.text }])
-    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), 3400)
+    setToasts((cur) => {
+      const next = [...cur, { id, tone: t.tone ?? 'info', text: t.text }]
+      return next.length > TOAST_MAX ? next.slice(next.length - TOAST_MAX) : next // 超上限丢最旧
+    })
+    // 3400ms 后先标记退场（播 toastOut），再 200ms 真正移除，避免硬闪
+    setTimeout(() => setToasts((cur) => cur.map((x) => (x.id === id ? { ...x, leaving: true } : x))), 3400)
+    setTimeout(() => setToasts((cur) => cur.filter((x) => x.id !== id)), 3600)
   }, [])
   return (
     <ToastCtx.Provider value={push}>
@@ -69,7 +103,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             role="status"
             className="flex items-center gap-2.5 rounded-lg border border-line bg-surface px-3.5 py-2.5 text-[13px] text-ink shadow-[var(--shadow-pop)]"
-            style={{ animation: 'revUpSm .28s cubic-bezier(.22,1,.36,1) both', minWidth: 240 }}
+            style={{ animation: t.leaving ? 'toastOut .18s var(--ease-out) both' : 'revUpSm .28s var(--ease-out) both', minWidth: 240 }}
           >
             <span className={cx('grid h-6 w-6 shrink-0 place-items-center rounded-md', TONE[t.tone].soft, TONE[t.tone].ink)}>{TOAST_ICON[t.tone]}</span>
             <span className="flex-1">{t.text}</span>
@@ -100,11 +134,12 @@ export function Drawer({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
+  const { render, closing } = useExitPresence(open, 240)
   useOverlayBehavior(open, onClose, panelRef)
-  if (!open) return null
+  if (!render) return null
   return (
     <div className="fixed inset-0 z-[90]">
-      <div className="absolute inset-0 bg-ink/35" style={{ animation: 'fadeIn .2s both' }} onClick={onClose} />
+      <div className="absolute inset-0 bg-ink/35" style={{ animation: closing ? 'fadeOut .2s both' : 'fadeIn .2s both' }} onClick={onClose} />
       <div
         ref={panelRef}
         role="dialog"
@@ -112,7 +147,7 @@ export function Drawer({
         aria-labelledby={titleId}
         tabIndex={-1}
         className="absolute top-0 right-0 flex h-full flex-col bg-surface shadow-[var(--shadow-pop)] outline-none"
-        style={{ width, animation: 'drawerIn .32s cubic-bezier(.22,1,.36,1) both' }}
+        style={{ width, animation: closing ? 'drawerOut .24s var(--ease-out) both' : 'drawerIn .32s var(--ease-out) both' }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>
@@ -148,12 +183,13 @@ export function Modal({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
+  const { render, closing } = useExitPresence(open, 200)
   useOverlayBehavior(open, onClose, panelRef)
-  if (!open) return null
+  if (!render) return null
   return (
     <div className="fixed inset-0 z-[95] grid place-items-center p-4">
-      <div className="absolute inset-0 bg-ink/35" style={{ animation: 'fadeIn .2s both' }} onClick={onClose} />
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="relative w-full rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)] outline-none" style={{ maxWidth: width, animation: 'revUpSm .26s cubic-bezier(.22,1,.36,1) both' }}>
+      <div className="absolute inset-0 bg-ink/35" style={{ animation: closing ? 'fadeOut .18s both' : 'fadeIn .2s both' }} onClick={onClose} />
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="relative w-full rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)] outline-none" style={{ maxWidth: width, animation: closing ? 'modalOut .18s var(--ease-out) both' : 'revUpSm .26s var(--ease-out) both' }}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h3 id={titleId} className="text-[14.5px] font-semibold text-ink">{title}</h3>
           <button aria-label="关闭" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink"><X size={16} /></button>

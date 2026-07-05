@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ShoppingBag, Check, Sparkles, ArrowRight, CheckCircle2, Tag, ShieldCheck, Zap, Plus, ExternalLink, Wallet } from 'lucide-react'
+import { ShoppingBag, Check, Sparkles, ArrowRight, CheckCircle2, Tag, ShieldCheck, Zap, Plus, ExternalLink, Wallet, Loader2 } from 'lucide-react'
 import { marketApi, type MarketProduct, type Quote, type BundleTier } from '../../lib/marketApi'
 import { isRealApi } from '../../lib/http'
 import { money, cx } from '../../lib/format'
@@ -344,7 +344,7 @@ function ShelfBody(s: ShelfProps) {
               <>
                 <div className="space-y-2">
                   {s.chosen.map((p) => (
-                    <div key={p.id} className="flex items-center gap-2.5">
+                    <div key={p.id} className="animate-row flex items-center gap-2.5">
                       <ProductLogo p={p} size={26} />
                       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{p.name}</span>
                       <span className="tnum shrink-0 text-[12.5px] text-ink-3">{money(p.firstPrice)}</span>
@@ -418,7 +418,7 @@ function ShelfBody(s: ShelfProps) {
                     {/* 真实模式：尚未接入真实支付渠道，禁用支付避免走"沙箱假支付"，只诚实提示即将开放 */}
                     <button disabled={s.paying || isRealApi} onClick={() => s.pay(channel)}
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
-                      {isRealApi ? <>在线支付即将开放</> : s.paying ? '支付处理中…' : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
+                      {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
                     </button>
                     <div className="mt-2 text-center text-[10.5px] text-ink-4">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
                     <button onClick={s.reset} className="mt-1.5 block w-full text-center text-[12px] font-medium text-brand hover:underline">重新搭配 →</button>

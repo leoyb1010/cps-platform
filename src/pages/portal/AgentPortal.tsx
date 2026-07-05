@@ -85,7 +85,7 @@ export function AgentMarket() {
         {(d) => (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {apply(d).map((b) => (
-              <Card key={b.id} hover className="group transition-all duration-200 hover:-translate-y-0.5">
+              <Card key={b.id} hover className="group">
                 <div className="flex items-center gap-3">
                   <BrandMark brand={b.id} mark={b.mark} size={34} />
                   <div className="min-w-0 flex-1">

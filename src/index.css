@@ -73,6 +73,16 @@
   --shadow-pop: 0 8px 28px -6px rgba(20, 21, 26, 0.16),
     0 2px 6px rgba(20, 21, 26, 0.06);
   --shadow-brand: 0 6px 16px -8px rgba(245, 51, 59, 0.7);
+
+  /* ── Motion（统一缓动与时长口径，收编散落的 cubic-bezier/duration）──── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* 入/出场主曲线（easeOutQuint 风） */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* 通用标准曲线（Material） */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 弹性（勾章/成功） */
+  --ease-draw: cubic-bezier(0.45, 0, 0.15, 1); /* 图表路径绘制 */
+  --dur-fast: 0.16s; /* 悬停/小反馈 */
+  --dur-base: 0.24s; /* 入/出场基准 */
+  --dur-slow: 0.4s; /* 强调入场 */
+  --dur-draw: 1.1s; /* 图表绘制 */
 }
 
 /* ── 暗色主题：令牌级整体换肤 ─────────────────────────
@@ -188,8 +198,10 @@ summary,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important; /* 清零延迟：否则带 delay 的入场元素会先以 from(opacity:0) 空等再瞬现 */
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
@@ -325,6 +337,11 @@ table tbody td {
   }
 }
 
+/* 实时脉冲点：给"实时/在线"状态点一个呼吸动画（此前 Orders 引用了未定义的 .pulse-dot） */
+.pulse-dot {
+  animation: blink 1.6s ease-in-out infinite;
+}
+
 @keyframes drawerIn {
   from {
     opacity: 0.4;
@@ -334,6 +351,24 @@ table tbody td {
     opacity: 1;
     transform: none;
   }
+}
+
+/* ── 退场动画（overlay 关闭时反向） ────────────── */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes modalOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+@keyframes drawerOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(24px); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateX(12px); }
 }
 
 .animate-in {
