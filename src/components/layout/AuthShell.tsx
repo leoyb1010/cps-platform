@@ -34,8 +34,8 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
             backgroundSize: '28px 28px',
           }}
         />
-        <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-[#f5333b]/[0.13] blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-[#f5333b]/[0.07] blur-3xl" />
+        <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand/[0.13] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-brand/[0.07] blur-3xl" />
 
         {/* 顶：Logo */}
         <div className="relative flex items-center gap-2.5" style={{ animation: 'revUpSm .5s .05s cubic-bezier(.22,1,.36,1) both' }}>

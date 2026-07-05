@@ -16,9 +16,9 @@
   /* ── Ink / text ────────────────────────────── */
   --color-ink: #14151a;
   --color-ink-2: #565b64;
-  --color-ink-3: #868b95;
-  --color-ink-4: #a6abb3; /* 合并原 ink-4/ink-5 为单一弱化阶 */
-  --color-ink-5: #a6abb3; /* 别名保留，避免连锁改动；与 ink-4 同值 */
+  --color-ink-3: #6b7079; /* 对比度提至 4.98:1(白底)，正文级说明达 AA；原 #868b95 仅 3.42 */
+  --color-ink-4: #7c828c; /* 对比度提至 3.87:1(白底)，小字辅助达非文本线；原 #a6abb3 仅 2.31 */
+  --color-ink-5: #7c828c; /* 别名保留，与 ink-4 同值 */
   --color-hairtick: #cdd1d7;
 
   /* ── Hairlines ─────────────────────────────── */
@@ -94,9 +94,9 @@
 
   --color-ink: #e9eaee;
   --color-ink-2: #b3b6bf;
-  --color-ink-3: #8a8e99;
-  --color-ink-4: #666a75;
-  --color-ink-5: #666a75;
+  --color-ink-3: #8a8e99; /* 暗底 5.41:1，正文级达 AA */
+  --color-ink-4: #7e828d; /* 提至暗底 4.62:1（原 #666a75 仅 3.28）；小字辅助达标 */
+  --color-ink-5: #7e828d;
   --color-hairtick: #3d4049;
 
   --color-line: rgba(233, 234, 238, 0.09);

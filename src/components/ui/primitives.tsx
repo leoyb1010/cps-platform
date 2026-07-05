@@ -281,6 +281,7 @@ export function PageHeader({
 export function Button({
   children,
   variant = 'ghost',
+  size = 'md',
   onClick,
   className,
   busyMs,
@@ -289,7 +290,8 @@ export function Button({
   disabled,
 }: {
   children: ReactNode
-  variant?: 'primary' | 'ghost' | 'soft'
+  variant?: 'primary' | 'ghost' | 'soft' | 'danger'
+  size?: 'sm' | 'md'
   onClick?: () => void
   className?: string
   busyMs?: number // show a brief loading spinner for this long on click
@@ -298,14 +300,17 @@ export function Button({
   disabled?: boolean
 }) {
   const [busy, setBusy] = useState(false)
+  const sizeCls = size === 'sm' ? 'px-2.5 py-1 text-[12px]' : 'px-3 py-1.5 text-[13px]'
   const base =
-    'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,color,border-color,box-shadow,transform] cursor-pointer select-none active:scale-[0.98] disabled:cursor-default disabled:opacity-60'
+    `inline-flex items-center justify-center gap-1.5 rounded-lg ${sizeCls} font-medium transition-[background-color,color,border-color,box-shadow,transform] cursor-pointer select-none active:scale-[0.98] disabled:cursor-default disabled:opacity-60`
   const v =
     variant === 'primary'
       ? 'bg-brand text-white hover:bg-brand-hover shadow-[var(--shadow-brand)]'
-      : variant === 'soft'
-        ? 'bg-surface-sunken text-ink-2 hover:bg-soft-hover'
-        : 'border border-line text-ink-2 hover:border-line-strong hover:bg-surface-muted hover:text-ink'
+      : variant === 'danger'
+        ? 'bg-alert text-white hover:opacity-90'
+        : variant === 'soft'
+          ? 'bg-surface-sunken text-ink-2 hover:bg-soft-hover'
+          : 'border border-line text-ink-2 hover:border-line-strong hover:bg-surface-muted hover:text-ink'
   const handle = () => {
     if (!onClick || busy) return
     if (busyMs) {

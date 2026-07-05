@@ -193,18 +193,18 @@ export function Confirm({
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>取消</Button>
-          <button
-            disabled={busy}
+          <Button
+            variant={tone === 'alert' ? 'danger' : 'primary'}
+            loading={busy}
             onClick={() => {
               if (busy) return
               setBusy(true)
               onConfirm()
               onClose()
             }}
-            className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white disabled:cursor-default disabled:opacity-60', tone === 'alert' ? 'bg-alert hover:opacity-90' : 'bg-brand hover:bg-brand-hover')}
           >
             {confirmText}
-          </button>
+          </Button>
         </>
       }
     >
