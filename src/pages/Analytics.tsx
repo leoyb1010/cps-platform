@@ -21,6 +21,19 @@ import { kpi, series, RNSC_BREAKDOWN } from '../lib/data'
 import { useStore, setAttributionConfig, type AttributionConfig } from '../lib/store'
 import { useViewMode } from '../lib/prefs'
 import { money, int, pct, cx } from '../lib/format'
+import { isRealApi } from '../lib/http'
+
+// 真实模式聚合指标缺后端源时的统一空态卡（参照 Dashboard「聚合指标接入中」）
+function AggPending({ title, body, className }: { title: string; body: string; className?: string }) {
+  return (
+    <Card className={className}>
+      <div className="grid place-items-center gap-1.5 py-12 text-center">
+        <div className="text-[13px] font-medium text-ink-2">{title}</div>
+        <div className="max-w-[420px] text-[12px] leading-relaxed text-ink-4">{body}</div>
+      </div>
+    </Card>
+  )
+}
 
 const FUNNEL = [
   { stage: '曝光', value: 100, n: '4,820万', tone: 'neutral' as const },
@@ -31,11 +44,28 @@ const FUNNEL = [
 ]
 
 export default function Analytics() {
-  const { brands, agents, attributionConfig } = useStore()
+  const { brands, agents, merchants, attributionConfig } = useStore()
   const expert = useViewMode() === 'expert'
   const [view, setView] = useState<'agent' | 'brand' | 'channel'>('agent')
   const toast = useToast()
   const [cfg, setCfg] = useState(false)
+
+  // 真实模式下的护栏派生值（null = 无法计算 → 渲染为「—」）
+  // renewalRate：在投品牌按 gmvMtd 加权续费率；complaintRate：商户号按 txCount 加权投诉率。
+  // 其余护栏（净 LTV / CAC / LTV÷CAC）无 store 来源也无聚合端点 → 真实模式恒为 null。
+  const liveBrands = brands.filter((b) => b.status === 'live')
+  const renewalRateReal = (() => {
+    const w = liveBrands.reduce((s, b) => s + b.gmvMtd, 0)
+    if (w <= 0) return null
+    return liveBrands.reduce((s, b) => s + b.renewalRate * b.gmvMtd, 0) / w
+  })()
+  const complaintRateReal = (() => {
+    const w = merchants.reduce((s, m) => s + m.txCount, 0)
+    if (w <= 0) return null
+    return merchants.reduce((s, m) => s + m.complaintRate * m.txCount, 0) / w
+  })()
+  const renewalRateShown = isRealApi ? renewalRateReal : kpi.renewalRate
+  const complaintRateShown = isRealApi ? complaintRateReal : kpi.complaintRate
 
   return (
     <>
@@ -48,6 +78,11 @@ export default function Analytics() {
       {cfg && <AttrModal current={attributionConfig} onClose={() => setCfg(false)} onSaved={() => toast({ tone: 'good', text: '归因模型已更新' })} />}
 
       {/* 北极星 R-NSC：仪表对目标 + 瀑布分解（口径透明，估算项诚实标注） */}
+      {/* R-NSC 当月/目标/上月基数与构成分解均为纯静态常量（kpi.rnsc* / RNSC_BREAKDOWN），从不 hydrate，
+          真实模式无 store 来源也无后端聚合端点 → 整块用空态卡，不摆假仪表与假瀑布。 */}
+      {isRealApi ? (
+        <AggPending title="R-NSC 北极星接入中" body="风险调整后净订阅贡献（仪表对目标、环比、构成分解）依赖服务端聚合端点，接入后此处展示真实北极星走势。" />
+      ) : (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardTitle title={<Term k="rnsc">R-NSC 北极星</Term>} desc="风险调整后净订阅贡献 · 对本月目标" />
@@ -84,16 +119,27 @@ export default function Analytics() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* 护栏指标条（与北极星同屏，防止只追规模） */}
+      {/* 净 LTV / CAC / LTV÷CAC 与归因覆盖率均为纯静态常量/字面量，无 store 来源也无聚合端点 → 真实模式显示「—」。
+          续费率 / 投诉率可从 useStore() 的品牌 / 商户号近似派生（renewalRateShown / complaintRateShown，null 时显「—」）。 */}
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card><Stat label={<Term k="ltvCac">净 LTV ÷ CAC</Term>} value={kpi.ltvCac.toFixed(2)} hint="护栏 · >2 可接受 · >3 健康" sub={<span>净 LTV ¥{kpi.netLtv} · CAC ¥{kpi.cac}</span>} deltaTone={kpi.ltvCac >= 3 ? 'good' : kpi.ltvCac >= 2 ? 'warn' : 'alert'} /></Card>
-        <Card><Stat label={<Term k="renew30">D30 续费率</Term>} value={pct(kpi.renewalRate, 1)} hint="护栏 · 判断是否真 LTV" sub={<span>真 LTV 核心驱动</span>} deltaTone={kpi.renewalRate >= 60 ? 'good' : 'warn'} /></Card>
-        <Card><Stat label={<Term k="complaintRate">投诉率</Term>} value={pct(kpi.complaintRate, 2)} hint="护栏 · 商户号红线" sub={<span>近 7 天累计</span>} deltaTone={kpi.complaintRate < 1 ? 'good' : 'alert'} /></Card>
-        <Card><Stat label="归因覆盖率" value="99.4%" hint="去重防劫持后" sub={<span>追踪 ID 命中</span>} deltaTone="good" /></Card>
+        <Card><Stat label={<Term k="ltvCac">净 LTV ÷ CAC</Term>} value={isRealApi ? '—' : kpi.ltvCac.toFixed(2)} hint="护栏 · >2 可接受 · >3 健康" sub={isRealApi ? <span className="text-ink-4">待接入净 LTV / CAC 聚合</span> : <span>净 LTV ¥{kpi.netLtv} · CAC ¥{kpi.cac}</span>} deltaTone={isRealApi ? 'neutral' : kpi.ltvCac >= 3 ? 'good' : kpi.ltvCac >= 2 ? 'warn' : 'alert'} /></Card>
+        <Card><Stat label={<Term k="renew30">D30 续费率</Term>} value={renewalRateShown === null ? '—' : pct(renewalRateShown, 1)} hint="护栏 · 判断是否真 LTV" sub={isRealApi ? <span>在投品牌按流水加权</span> : <span>真 LTV 核心驱动</span>} deltaTone={renewalRateShown === null ? 'neutral' : renewalRateShown >= 60 ? 'good' : 'warn'} /></Card>
+        <Card><Stat label={<Term k="complaintRate">投诉率</Term>} value={complaintRateShown === null ? '—' : pct(complaintRateShown, 2)} hint="护栏 · 商户号红线" sub={isRealApi ? <span>商户号按交易量加权</span> : <span>近 7 天累计</span>} deltaTone={complaintRateShown === null ? 'neutral' : complaintRateShown < 1 ? 'good' : 'alert'} /></Card>
+        <Card><Stat label="归因覆盖率" value={isRealApi ? '—' : '99.4%'} hint="去重防劫持后" sub={isRealApi ? <span className="text-ink-4">待接入追踪命中聚合</span> : <span>追踪 ID 命中</span>} deltaTone={isRealApi ? 'neutral' : 'good'} /></Card>
       </div>
 
       {/* 漏斗 + LTV */}
+      {/* FUNNEL 漏斗（含曝光/点击/…绝对量）与 series.ltvCurve LTV 曲线均为纯静态常量，无 store 来源也无聚合端点 →
+          真实模式两块均用空态卡，不摆假漏斗与假 LTV 预测。 */}
+      {isRealApi ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
+          <AggPending className="lg:col-span-3" title="转化归因漏斗接入中" body="曝光 → 点击 → 落地页 → 签约 → 续费 的分层转化依赖服务端埋点聚合端点，接入后此处展示真实漏斗。" />
+          <AggPending className="lg:col-span-2" title="LTV 累计曲线接入中" body="累计 LTV 与 D90 预测依赖服务端订阅留存聚合端点，接入后此处展示真实曲线与出价建议。" />
+        </div>
+      ) : (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardTitle title="转化归因漏斗" desc="曝光 → 点击 → 落地页 → 签约 → 续费" right={<GitBranch size={15} className="text-ink-3" />} />
@@ -122,12 +168,18 @@ export default function Analytics() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* 留存 cohort */}
+      {/* series.renewalCohort 为纯静态常量，无 store 来源也无聚合端点 → 真实模式用空态卡，不摆假留存曲线。 */}
+      {isRealApi ? (
+        <AggPending className="mt-4" title="连续包月留存接入中" body="同期群逐月留存衰减依赖服务端订阅 cohort 聚合端点，接入后此处展示真实留存曲线。" />
+      ) : (
       <Card className="mt-4">
         <CardTitle title="连续包月留存（同期群）" desc="开月为 100%，逐月衰减，续费率是 LTV 的核心驱动" />
         <Bars data={series.renewalCohort} labels={['开月', '1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月']} tone="brand" height={150} format={(v) => `${Math.round(v)}%`} />
       </Card>
+      )}
 
       {/* 多视角（深度切面，专家视图展开） */}
       {expert && (

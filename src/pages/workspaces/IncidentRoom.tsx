@@ -7,6 +7,7 @@ import { useToast, Confirm } from '../../components/ui/overlays'
 import { useStore, setMerchantState } from '../../lib/store'
 import { brandById, type MerchantState } from '../../lib/data'
 import { money, cx } from '../../lib/format'
+import { isRealApi } from '../../lib/http'
 
 /**
  * 风险处置舱 —— 全屏聚焦容器（路由，可分享可回退），把处置一个事件所需的
@@ -100,10 +101,13 @@ export default function IncidentRoom() {
                 </div>
               ))}
             </div>
-            <div className="mt-4">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-ink-3"><Activity size={12} /> 近 14 天投诉率走势</div>
-              <Sparkline data={trend} tone={health === 'red' ? 'alert' : 'warn'} w={520} h={44} />
-            </div>
+            {/* 14 天投诉率走势是 sin 合成的演示曲线（锚点 m.complaintRate 才是真的），真实模式无历史序列→不渲染这条 sparkline */}
+            {!isRealApi && (
+              <div className="mt-4">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] text-ink-3"><Activity size={12} /> 近 14 天投诉率走势</div>
+                <Sparkline data={trend} tone={health === 'red' ? 'alert' : 'warn'} w={520} h={44} />
+              </div>
+            )}
           </Card>
 
           {/* 关联订单 */}

@@ -21,6 +21,7 @@ import { Steps, Field, Input, Select } from '../components/ui/forms'
 import { SETTLE_PATH_LABEL, SETTLE_PATH_TONE as PATH_TONE, type SettlePath } from '../lib/data'
 import { useStore, addBrand, setBrandStatus, type NewBrandInput } from '../lib/store'
 import { money, int, pct, cx } from '../lib/format'
+import { isRealApi } from '../lib/http'
 
 const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' }> = {
   live: { label: '在投', tone: 'good' },
@@ -75,6 +76,12 @@ export default function Brands() {
   const totalSubs = brands.reduce((s, b) => s + b.activeSubs, 0)
   const list = brands.filter((b) => (f === 'all' ? true : b.status === f))
 
+  // 平均续费率：真实模式从 store 的 brands 按 gmvMtd 加权平均，无品牌（分母 0）→null 显示 '—'；演示模式保留标杆 63.8
+  const gmvSum = brands.reduce((s, b) => s + b.gmvMtd, 0)
+  const avgRenewal = isRealApi
+    ? (gmvSum > 0 ? brands.reduce((s, b) => s + b.renewalRate * b.gmvMtd, 0) / gmvSum : null)
+    : 63.8
+
   return (
     <>
       <PageHeader
@@ -92,7 +99,7 @@ export default function Brands() {
         <Card mark><Stat label="在投品牌" value={String(brands.filter((b) => b.status === 'live').length)} sub={<span>审核中 {brands.filter((b) => b.status === 'review').length} · 暂停 {brands.filter((b) => b.status === 'paused').length}</span>} /></Card>
         <Card mark><Stat label="在投品牌基础流水" value={money(liveGmv)} sub={<span>本月累计</span>} /></Card>
         <Card mark><Stat label="活跃订阅总数" value={int(totalSubs)} sub={<span>连续包月口径</span>} /></Card>
-        <Card mark><Stat label="平均续费率" value={pct(63.8)} deltaTone="good" sub={<span>北极星核心驱动</span>} /></Card>
+        <Card mark><Stat label="平均续费率" value={avgRenewal === null ? <span className="text-ink-4">—</span> : pct(avgRenewal)} deltaTone="good" sub={<span>北极星核心驱动</span>} /></Card>
       </div>
 
       <Card className="mt-4" pad={false}>

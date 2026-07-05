@@ -51,6 +51,8 @@ export default function Complaints() {
   const pending = complaints.filter((c) => c.status === 'pending').length
   const escalated = complaints.filter((c) => c.level !== 'normal' && c.status !== 'resolved').length
   const resolved = complaints.filter((c) => c.status === 'resolved').length
+  // SLA 达成率：真实模式从 store 的 complaints 近似（已解决 / 总量），无数据→null 显示 '—'；演示模式保留标杆 96.2%
+  const slaRate = isRealApi ? (complaints.length > 0 ? (resolved / complaints.length) * 100 : null) : 96.2
   const urgent = complaints.filter((c) => c.status !== 'resolved' && c.slaLeftMin >= 0).sort((a, b) => a.slaLeftMin - b.slaLeftMin)
   const list = complaints.filter((c) => (lvl === 'all' ? true : c.level === lvl))
   const active = complaints.find((c) => c.id === openId) ?? null
@@ -73,7 +75,7 @@ export default function Complaints() {
         <Card mark><Stat label="待处理工单" value={String(pending)} sub={<span className="text-alert-ink">含 SLA 临期</span>} /></Card>
         <Card mark><Stat label="升级 + 监管投诉" value={String(escalated)} hint="直接关联商户号红线" sub={<span>未解决</span>} /></Card>
         <Card mark><Stat label="今日已解决" value={String(resolved)} sub={<span className="text-good-ink">含退款联动</span>} /></Card>
-        <Card mark><Stat label="SLA 达成率" value="96.2%" deltaTone="good" sub={<span>升级前解决率 88%</span>} /></Card>
+        <Card mark><Stat label="SLA 达成率" value={slaRate === null ? <span className="text-ink-4">—</span> : pct(slaRate)} deltaTone="good" sub={<span>升级前解决率 88%</span>} /></Card>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -30,6 +30,7 @@ import { Timeline } from '../components/ui/forms'
 import { Bars } from '../components/ui/charts'
 import { series } from '../lib/data'
 import { int, pct, cx, csvCell, downloadText } from '../lib/format'
+import { isRealApi } from '../lib/http'
 
 // 完整订阅生命周期 7 态（PDF 6.4 订阅留存与退订体验）：合规退订不是损失，
 // 而是降低投诉、保护商户号、提高长期信任的成本。
@@ -70,10 +71,12 @@ export default function Orders() {
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
 
   // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
-  const cohort = series.renewalCohort
-  const d30 = cohort[1] ?? 0
-  const d60 = cohort[2] ?? 0
-  const d90 = cohort[3] ?? 0
+  // series.renewalCohort 是纯静态常量，hydrateFromServer 从不覆盖它 → 真实模式下无真实来源，
+  // store 也没有留存 cohort 的时间序列，因此真实模式一律降级为空数据 / '—' / 空图。
+  const cohort = isRealApi ? [] : series.renewalCohort
+  const d30 = isRealApi ? null : (series.renewalCohort[1] ?? 0)
+  const d60 = isRealApi ? null : (series.renewalCohort[2] ?? 0)
+  const d90 = isRealApi ? null : (series.renewalCohort[3] ?? 0)
 
   return (
     <>
@@ -92,10 +95,13 @@ export default function Orders() {
       {view === 'lifecycle' ? (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Card><Stat label="D30 续费率" value={pct(d30)} deltaTone={d30 >= 60 ? 'good' : 'warn'} sub={<span>判断是否真 LTV</span>} /></Card>
-            <Card><Stat label="D60 / D90 续费率" value={`${pct(d60)} / ${pct(d90)}`} sub={<span>中长期留存</span>} /></Card>
-            <Card><Stat label="退订路径完成率" value="96.4%" deltaTone="good" hint="发起退订并成功完成占比" sub={<span>合规体验 · 越高越好</span>} /></Card>
-            <Card><Stat label="win-back 召回" value="1,243" deltaTone="good" sub={<span>本月退订后复订</span>} /></Card>
+            {/* D30/D60/D90 续费率来自静态 cohort，真实模式无源 → '—'（且不给 deltaTone 造假色） */}
+            <Card><Stat label="D30 续费率" value={d30 === null ? '—' : pct(d30)} deltaTone={d30 === null ? undefined : d30 >= 60 ? 'good' : 'warn'} sub={<span>判断是否真 LTV</span>} /></Card>
+            <Card><Stat label="D60 / D90 续费率" value={d60 === null || d90 === null ? '—' : `${pct(d60)} / ${pct(d90)}`} sub={<span>中长期留存</span>} /></Card>
+            {/* 退订路径完成率原为写死 96.4%；store 无退订发起/完成计数 → 真实模式无源 → '—' */}
+            <Card><Stat label="退订路径完成率" value={isRealApi ? '—' : '96.4%'} deltaTone={isRealApi ? undefined : 'good'} hint="发起退订并成功完成占比" sub={<span>合规体验 · 越高越好</span>} /></Card>
+            {/* win-back 召回原为写死 1,243；store 无退订后复订计数 → 真实模式无源 → '—' */}
+            <Card><Stat label="win-back 召回" value={isRealApi ? '—' : '1,243'} deltaTone={isRealApi ? undefined : 'good'} sub={<span>本月退订后复订</span>} /></Card>
           </div>
 
           {/* 生命周期 7 态 */}
@@ -117,30 +123,41 @@ export default function Orders() {
           {/* 留存 cohort */}
           <Card className="mt-4">
             <CardTitle title="订阅留存 cohort" desc="首单后逐月仍在订阅占比（D0=100%）· 续费率是 LTV 的核心驱动" />
-            <Bars
-              data={cohort}
-              labels={cohort.map((_, i) => (i === 0 ? 'D0' : `M${i}`))}
-              tone="brand"
-              format={(v) => v + '%'}
-            />
+            {/* cohort 为静态常量，真实模式 hydrate 不覆盖 → 无源，用占位替代空图 */}
+            {cohort.length ? (
+              <Bars
+                data={cohort}
+                labels={cohort.map((_, i) => (i === 0 ? 'D0' : `M${i}`))}
+                tone="brand"
+                format={(v) => v + '%'}
+              />
+            ) : (
+              <div className="grid h-40 place-items-center text-[12.5px] text-ink-4">留存 cohort 接入中</div>
+            )}
           </Card>
 
           {/* 退订与挽留漏斗 */}
           <Card className="mt-4">
             <CardTitle title="退订与挽留" desc="退订前原因收集 → 暂停 / 换套餐 / 优惠挽留 → 退订后 win-back" />
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              {[
-                { k: '发起退订', v: '2,860', tone: 'warn' as const, d: '本月退订意向' },
-                { k: '挽留成功', v: '1,617', tone: 'good' as const, d: '暂停/降档/优惠 · 56.5%' },
-                { k: 'win-back 复订', v: '1,243', tone: 'good' as const, d: '退订后召回复订' },
-              ].map((x) => (
-                <div key={x.k} className={cx('rounded-xl border p-4', LC_BORDER[x.tone], TONE[x.tone].soft)}>
-                  <div className="text-[11.5px] text-ink-3">{x.k}</div>
-                  <div className={cx('tnum mt-1 text-[22px] font-semibold', TONE[x.tone].ink)}>{x.v}</div>
-                  <div className="mt-0.5 text-[11px] text-ink-4">{x.d}</div>
-                </div>
-              ))}
-            </div>
+            {/* 三项计数（发起退订/挽留成功/win-back 复订）均为写死字面量，
+                store 没有退订漏斗计数 → 真实模式无源，整块降级为空态占位 */}
+            {isRealApi ? (
+              <div className="grid h-24 place-items-center text-[12.5px] text-ink-4">退订时序接入中</div>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {[
+                  { k: '发起退订', v: '2,860', tone: 'warn' as const, d: '本月退订意向' },
+                  { k: '挽留成功', v: '1,617', tone: 'good' as const, d: '暂停/降档/优惠 · 56.5%' },
+                  { k: 'win-back 复订', v: '1,243', tone: 'good' as const, d: '退订后召回复订' },
+                ].map((x) => (
+                  <div key={x.k} className={cx('rounded-xl border p-4', LC_BORDER[x.tone], TONE[x.tone].soft)}>
+                    <div className="text-[11.5px] text-ink-3">{x.k}</div>
+                    <div className={cx('tnum mt-1 text-[22px] font-semibold', TONE[x.tone].ink)}>{x.v}</div>
+                    <div className="mt-0.5 text-[11px] text-ink-4">{x.d}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </>
       ) : (

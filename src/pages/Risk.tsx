@@ -28,6 +28,7 @@ import { Field, Select, Input } from '../components/ui/forms'
 import { brandById, agentById } from '../lib/data'
 import { useStore, addRule, updateRule, toggleRule, type RiskRule } from '../lib/store'
 import { cx } from '../lib/format'
+import { isRealApi } from '../lib/http'
 
 const ACTIONS = ['降权 + 复核', '限流', '拦截', '拦截 + 告警', '冻结结算']
 
@@ -56,7 +57,9 @@ const DEFENSE = [
 
 export default function Risk() {
   const toast = useToast()
-  const { rules } = useStore()
+  const { rules, agents } = useStore()
+  // 高风险代理数：从代理集合派生（真实模式经 hydrate 覆盖），不再写死"3"
+  const highRiskAgents = agents.filter((a) => a.status !== 'active').length
   const [cfg, setCfg] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -70,9 +73,11 @@ export default function Risk() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card><Stat label="今日拦截作弊单" value="461" deltaTone="good" sub={<span>挽回预估 ¥18,400</span>} /></Card>
-        <Card><Stat label="防作弊命中率" value="98.7%" sub={<span>误杀率 0.3%</span>}><Meter value={98.7} tone="good" /></Stat></Card>
-        <Card><Stat label="高风险代理" value="3" sub={<span className="text-alert-ink">已降权/冻结/拉黑</span>} /></Card>
+        {/* 真实模式无拦截事件表，无源 → 显示 '—'；演示模式保持原样 */}
+        <Card><Stat label="今日拦截作弊单" value={isRealApi ? '—' : '461'} deltaTone="good" sub={<span className={isRealApi ? 'text-ink-4' : undefined}>{isRealApi ? '挽回预估 —' : '挽回预估 ¥18,400'}</span>} /></Card>
+        {/* 真实模式无防作弊命中率/误杀率数据源 → '—'，Meter 归零不显示进度 */}
+        <Card><Stat label="防作弊命中率" value={isRealApi ? '—' : '98.7%'} sub={<span className={isRealApi ? 'text-ink-4' : undefined}>{isRealApi ? '误杀率 —' : '误杀率 0.3%'}</span>}><Meter value={isRealApi ? 0 : 98.7} tone="good" /></Stat></Card>
+        <Card><Stat label="高风险代理" value={String(highRiskAgents)} sub={<span className="text-alert-ink">已降权/冻结/拉黑</span>} /></Card>
         {/* 从规则引擎真值派生（原硬编码 64，与规则配置弹窗的实际条数自相矛盾） */}
         <Card><Stat label="实时风控规则" value={rules.length} unit="条" sub={<span>启用 {rules.filter((r) => r.on).length} 条 · 规则配置可调</span>} /></Card>
       </div>
@@ -103,17 +108,22 @@ export default function Risk() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardTitle title="防作弊信号" desc="本月命中次数" />
-          <div className="space-y-2.5">
-            {SIGNALS.map((s) => (
-              <div key={s.name} className="flex items-center gap-3">
-                <span className={cx('grid h-8 w-8 shrink-0 place-items-center rounded-lg', TONE[s.tone].soft, TONE[s.tone].ink)}>
-                  <s.icon size={15} />
-                </span>
-                <span className="flex-1 text-[12.5px] text-ink-2">{s.name}</span>
-                <span className="tnum text-[13px] font-medium text-ink">{s.hits}</span>
-              </div>
-            ))}
-          </div>
+          {/* 真实模式无防作弊信号统计源 → 空态；演示模式渲染常量数组不变 */}
+          {isRealApi ? (
+            <div className="py-8 text-center text-[12.5px] text-ink-4">暂无防作弊信号数据</div>
+          ) : (
+            <div className="space-y-2.5">
+              {SIGNALS.map((s) => (
+                <div key={s.name} className="flex items-center gap-3">
+                  <span className={cx('grid h-8 w-8 shrink-0 place-items-center rounded-lg', TONE[s.tone].soft, TONE[s.tone].ink)}>
+                    <s.icon size={15} />
+                  </span>
+                  <span className="flex-1 text-[12.5px] text-ink-2">{s.name}</span>
+                  <span className="tnum text-[13px] font-medium text-ink">{s.hits}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card className="lg:col-span-3" pad={false}>
@@ -125,19 +135,26 @@ export default function Risk() {
             className="px-2 pb-2"
             head={<><Th className="pl-3">时间</Th><Th>代理</Th><Th>品牌</Th><Th>命中信号</Th><Th right>处置</Th></>}
           >
-            {EVENTS.map((e, i) => {
-              const a = agentById(e.agentId)
-              const b = brandById(e.brandId)
-              return (
-                <Row key={i}>
-                  <Td className="pl-3 tnum text-[12px] text-ink-4">{e.time}</Td>
-                  <Td><span className="text-[12.5px] font-medium text-ink">{a?.name ?? e.agentId}</span><div className="text-[11px] text-ink-4">{e.agentId}</div></Td>
-                  <Td><div className="flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="text-[12px] text-ink-3">{b.name.slice(0, 5)}</span></div></Td>
-                  <Td><span className="text-[12px] text-ink-2">{e.sig}</span></Td>
-                  <Td right><Badge tone={e.tone}>{e.action}</Badge></Td>
-                </Row>
-              )
-            })}
+            {/* 真实模式无实时风控事件流源 → 空态行；演示模式渲染常量数组不变。Td 不支持 colSpan，用整行居中文案兜底 */}
+            {isRealApi ? (
+              <Row>
+                <Td className="py-8 text-center text-[12.5px] text-ink-4">暂无实时风控事件</Td>
+              </Row>
+            ) : (
+              EVENTS.map((e, i) => {
+                const a = agentById(e.agentId)
+                const b = brandById(e.brandId)
+                return (
+                  <Row key={i}>
+                    <Td className="pl-3 tnum text-[12px] text-ink-4">{e.time}</Td>
+                    <Td><span className="text-[12.5px] font-medium text-ink">{a?.name ?? e.agentId}</span><div className="text-[11px] text-ink-4">{e.agentId}</div></Td>
+                    <Td><div className="flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="text-[12px] text-ink-3">{b.name.slice(0, 5)}</span></div></Td>
+                    <Td><span className="text-[12px] text-ink-2">{e.sig}</span></Td>
+                    <Td right><Badge tone={e.tone}>{e.action}</Badge></Td>
+                  </Row>
+                )
+              })
+            )}
           </TableShell>
         </Card>
       </div>
@@ -149,6 +166,10 @@ export default function Risk() {
 
       <Modal open={cfg} onClose={() => setCfg(false)} width={560} title="风控规则引擎" footer={<Button variant="ghost" onClick={() => setCfg(false)}>关闭</Button>}>
         <div className="mb-3 text-[12px] text-ink-3">条件 → 阈值 → 动作。点规则可编辑阈值与处置动作。</div>
+        {/* 真实模式 rules 为空数组（无后端端点，store 置空）→ 加空态兜底，避免渲染空白 */}
+        {rules.length === 0 && (
+          <div className="py-8 text-center text-[12.5px] text-ink-4">暂无规则 · 风控规则接入中</div>
+        )}
         <div className="space-y-2">
           {rules.map((r) => (
             <div key={r.id} className="flex items-center gap-3 rounded-lg border border-line p-3">
