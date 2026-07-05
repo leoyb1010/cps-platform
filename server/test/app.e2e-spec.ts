@@ -1418,3 +1418,259 @@ describe('Health', () => {
     expect(res.body.status).toBe('ok')
   })
 })
+
+// ────────────────────────────────────────────────────────────────────────────
+// 多租户越权矩阵（回归可证）
+//
+// 目标：把「租户隔离靠 handler 手写 scope 调用」升级为「回归可证」——对每个按 scope 收窄
+// 的 GET 列表端点，逐条断言返回集合 100% 属于该租户；并证明 query 参数无法越权、高危写端点
+// 对跨租户资源被 assertOwns 拦截（403/404），平台 admin 作为「见全部」对照。
+//
+// 账户口径（见 src/rbac/permissions.ts SEED_USERS，密码均 demo）：
+//   - brand      U-006  scopeType=brand/youdao —— 只持 portal.* 权限（打内部端点必 403）
+//   - agent      U-007  scopeType=agent/A-2041 —— 只持 portal.* 权限
+//   - brandaudit U-008  audit 角色 + scopeType=brand/youdao —— 有内部读权限但 scope 收窄，
+//                       是「即使有读权限，scope 仍只见自己」的唯一内部证据账户
+//   - admin      U-001  super/platform —— 见全部
+//
+// 关键约束（决定断言策略）：
+//   1) brand/agent(U-006/U-007) 只持 portal 权限，打内部端点是 PermsGuard 403，拿不到 scoped 数据。
+//      因此「内部端点的品牌数据级隔离」必须走 brandaudit；「代理数据级隔离」内部端点无对应账户
+//      （members 端点禁止 audit 这类内部角色配 agent scope，见 members.controller L91），
+//      故代理侧的 agentId===A-2041 归属证据走 portal/agent/* 端点（agent 唯一的数据入口）。
+//   2) 高危写端点要触达 assertOwns，调用账户须先持对应写权限；brandaudit 的 audit 角色默认无
+//      settlement.clear/order.refund/merchant.write，本块 beforeAll 用 super 加性授予（不改业务代码，
+//      只改角色权限行；auth.guard 每请求从 DB 现解析权限，brandaudit 现有 token 立即生效）。
+// ────────────────────────────────────────────────────────────────────────────
+describe('多租户越权矩阵', () => {
+  // 跨租户资源 id（均不属于 youdao / A-2041），用于越权读/写的反证
+  const OTHER_BRAND = 'ximalaya'
+  const OTHER_SETTLEMENT = 'S-2405-XM' // brandId=ximalaya
+  const OTHER_MERCHANT = 'M-XM-02' // brandId=ximalaya
+  const OTHER_AGENT = 'A-1188' // 非 A-2041
+  const OTHER_ORDER = 'O-98120' // brandId=mango, agentId=A-4410（种子既有正向单）
+
+  beforeAll(async () => {
+    // 加性授予 audit 角色三项高危写权限，使 brandaudit 能触达 assertOwns（而非止步 PermsGuard 403）。
+    // 用 Set 去重、保留既有权限 → 幂等，且与本文件其它用例对 audit 角色的加权互不破坏。
+    const su = await token('admin')
+    const roles = (await request(httpServer).get('/roles').set('Authorization', `Bearer ${su}`).expect(200)).body
+    const audit = roles.find((r: any) => r.id === 'audit')
+    await request(httpServer).patch('/roles/audit').set('Authorization', `Bearer ${su}`).send({
+      permissions: [...new Set([...audit.permissions, 'settlement.clear', 'order.refund', 'merchant.write'])],
+    }).expect((r) => expect([200, 201]).toContain(r.status))
+  })
+
+  // ── A. 品牌方数据级隔离（brandaudit：有内部读权限 + scope=brand:youdao）──
+  // 逐端点断言：返回集合非空时每条都属 youdao；空集也是合法隔离（无权即空），故只断言「不含他人」。
+  describe('A · 品牌方(brandaudit) 内部列表按 scope 收窄，绝不含他牌数据', () => {
+    it('/merchants：每条 brandId===youdao', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/merchants').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((m: any) => m.brandId === 'youdao')).toBe(true)
+      expect(rows.some((m: any) => m.brandId === OTHER_BRAND)).toBe(false)
+    })
+    it('/settlements：每条 brandId===youdao', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((s: any) => s.brandId === 'youdao')).toBe(true)
+    })
+    it('/orders：每条 brandId===youdao（游标分页 items）', async () => {
+      const t = await token('brandaudit')
+      const res = await request(httpServer).get('/orders?limit=500').set('Authorization', `Bearer ${t}`).expect(200)
+      expect(Array.isArray(res.body.items)).toBe(true)
+      expect(res.body.items.every((o: any) => o.brandId === 'youdao')).toBe(true)
+    })
+    it('/tickets：每条 brandId===youdao', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/tickets').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((tk: any) => tk.brandId === 'youdao')).toBe(true)
+    })
+    it('/contracts：每条 brandId===youdao', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/contracts').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((c: any) => c.brandId === 'youdao')).toBe(true)
+    })
+    it('/reserve-releases：每条归属 youdao 的结算单', async () => {
+      const su = await token('admin')
+      const t = await token('brandaudit')
+      // youdao 的结算单集合（reserveScope 品牌侧按 settlementId in <youdao 结算单> 收窄）
+      const ydSettleIds = new Set(
+        (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`).expect(200)).body
+          .filter((s: any) => s.brandId === 'youdao').map((s: any) => s.id),
+      )
+      const rows = (await request(httpServer).get('/reserve-releases').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((r: any) => ydSettleIds.has(r.settlementId))).toBe(true)
+    })
+    it('/summary 聚合按 scope 收窄：待付分润 ≤ 全平台（不泄漏全平台口径）', async () => {
+      // brandaudit 有 dashboard.view；纵深防御下其聚合绝不等于/超过全平台
+      const su = await token('admin')
+      const t = await token('brandaudit')
+      const platform = (await request(httpServer).get('/summary').set('Authorization', `Bearer ${su}`).expect(200)).body
+      const scoped = (await request(httpServer).get('/summary').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(scoped.pendingPayout).toBeLessThanOrEqual(platform.pendingPayout)
+    })
+  })
+
+  // ── B. 代理数据级隔离（agent/U-007：portal 端点是其唯一数据入口）──
+  // 断言 portal/agent/* 返回集合每条 agentId===A-2041（或经 scope 天然只返回自己一条）。
+  describe('B · 代理(agent) portal 列表按 scope 收窄，每条归属 A-2041', () => {
+    it('/portal/agent/plans：每条 agentId 归属 A-2041（订单不含他人代理）', async () => {
+      const at = await token('agent')
+      const rows = (await request(httpServer).get('/portal/agent/plans').set('Authorization', `Bearer ${at}`).expect(200)).body
+      expect(Array.isArray(rows)).toBe(true)
+      // agentPlans 已去 agentId 明文，改由内部权威路径交叉验证：admin 看全量订单里 A-2041 的
+      // id 集合应完整覆盖代理看到的 plans（证明代理只拿到自己的订单，无他人渗入）
+      const su = await token('admin')
+      const all = (await request(httpServer).get('/orders?limit=500').set('Authorization', `Bearer ${su}`).expect(200)).body.items
+      const mineIds = new Set(all.filter((o: any) => o.agentId === 'A-2041').map((o: any) => o.id))
+      const notMineIds = new Set(all.filter((o: any) => o.agentId !== 'A-2041').map((o: any) => o.id))
+      expect(rows.every((o: any) => mineIds.has(o.id))).toBe(true) // 每条都是 A-2041 的订单
+      expect(rows.some((o: any) => notMineIds.has(o.id))).toBe(false) // 绝无他人代理订单渗入
+    })
+    it('/portal/agent/tickets：每条 agentId===A-2041', async () => {
+      const at = await token('agent')
+      const rows = (await request(httpServer).get('/portal/agent/tickets').set('Authorization', `Bearer ${at}`).expect(200)).body
+      expect(rows.every((tk: any) => tk.agentId === 'A-2041')).toBe(true)
+    })
+    it('/portal/agent/payouts：只返回自己一条（id===A-2041）', async () => {
+      const at = await token('agent')
+      const p = (await request(httpServer).get('/portal/agent/payouts').set('Authorization', `Bearer ${at}`).expect(200)).body
+      expect(p.id).toBe('A-2041')
+    })
+    it('/portal/agent/credit：只返回自己一条（id===A-2041）', async () => {
+      const at = await token('agent')
+      const c = (await request(httpServer).get('/portal/agent/credit').set('Authorization', `Bearer ${at}`).expect(200)).body
+      expect(c.id).toBe('A-2041')
+    })
+    it('/portal/agent/claims：每条 agentId===A-2041', async () => {
+      const at = await token('agent')
+      const rows = (await request(httpServer).get('/portal/agent/claims').set('Authorization', `Bearer ${at}`).expect(200)).body
+      expect(rows.every((cl: any) => cl.agentId === 'A-2041')).toBe(true)
+    })
+  })
+
+  // ── C. 品牌方 portal 列表按 scope 收窄，每条归属 youdao ──
+  describe('C · 品牌方(brand) portal 列表按 scope 收窄，每条归属 youdao', () => {
+    it('/portal/brand/orders：每条 brandId===youdao', async () => {
+      const bt = await token('brand')
+      const rows = (await request(httpServer).get('/portal/brand/orders').set('Authorization', `Bearer ${bt}`).expect(200)).body
+      expect(rows.every((o: any) => o.brandId === 'youdao')).toBe(true)
+    })
+    it('/portal/brand/settlements：每条 brandId===youdao', async () => {
+      const bt = await token('brand')
+      const rows = (await request(httpServer).get('/portal/brand/settlements').set('Authorization', `Bearer ${bt}`).expect(200)).body
+      expect(rows.every((s: any) => s.brandId === 'youdao')).toBe(true)
+    })
+    it('/portal/brand/tickets：每条 brandId===youdao', async () => {
+      const bt = await token('brand')
+      const rows = (await request(httpServer).get('/portal/brand/tickets').set('Authorization', `Bearer ${bt}`).expect(200)).body
+      expect(rows.every((tk: any) => tk.brandId === 'youdao')).toBe(true)
+    })
+    it('/portal/brand/barter：每条 youdao 为发起方或对手方', async () => {
+      const bt = await token('brand')
+      const rows = (await request(httpServer).get('/portal/brand/barter').set('Authorization', `Bearer ${bt}`).expect(200)).body
+      expect(rows.every((d: any) => d.initiatorBrandId === 'youdao' || d.counterpartyBrandId === 'youdao')).toBe(true)
+    })
+  })
+
+  // ── D. query 参数越权覆盖：scope 必须覆盖客户端传值（scope-last assign）──
+  describe('D · 传 query 越权无效，scope 覆盖客户端传值', () => {
+    it('/orders?brandId=他牌：brandaudit 仍只见 youdao', async () => {
+      const t = await token('brandaudit')
+      const res = await request(httpServer).get(`/orders?brandId=${OTHER_BRAND}&limit=500`).set('Authorization', `Bearer ${t}`).expect(200)
+      expect(res.body.items.every((o: any) => o.brandId === 'youdao')).toBe(true)
+      expect(res.body.items.some((o: any) => o.brandId === OTHER_BRAND)).toBe(false)
+    })
+    it('/settlements?brandId=他牌：brandaudit 仍只见 youdao', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get(`/settlements?brandId=${OTHER_BRAND}`).set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((s: any) => s.brandId === 'youdao')).toBe(true)
+    })
+    it('/orders?agentId=他人：brandaudit 品牌 scope 仍只见 youdao（agentId 过滤叠加不放大 scope）', async () => {
+      // 传一个不属于 youdao 的 agentId：品牌 scope 只按 brandId 收窄，叠加 agentId=A-1188 只会更空，
+      // 绝不可能因客户端传 agentId 而返回非 youdao 的订单。
+      const t = await token('brandaudit')
+      const res = await request(httpServer).get(`/orders?agentId=${OTHER_AGENT}&limit=500`).set('Authorization', `Bearer ${t}`).expect(200)
+      expect(res.body.items.every((o: any) => o.brandId === 'youdao')).toBe(true)
+    })
+    it('/portal/brand/orders?brandId=他牌：DTO 白名单直接 400（比"接受并忽略"更强）', async () => {
+      const bt = await token('brand')
+      // brandId 不在 PortalOrderQueryDto 白名单 → forbidNonWhitelisted 400
+      await request(httpServer).get(`/portal/brand/orders?brandId=${OTHER_BRAND}`).set('Authorization', `Bearer ${bt}`).expect(400)
+    })
+  })
+
+  // ── E. 高危写端点：跨租户资源被 assertOwns 拦截（403）──
+  // brandaudit=brand:youdao，对「不属于 youdao」的资源发起写 → assertOwns 抛 403。
+  // 用既存但非自己的资源 id（而非 __NOPE__），确保命中 assertOwns 而非「不存在」分支。
+  describe('E · 高危写端点跨租户被 assertOwns 拦截', () => {
+    it('settlements/:id/clear 他牌结算单 → 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post(`/settlements/${OTHER_SETTLEMENT}/clear`).set('Authorization', `Bearer ${t}`).expect(403)
+    })
+    it('orders/:id/refund 他人订单 → 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post(`/orders/${OTHER_ORDER}/refund`).set('Authorization', `Bearer ${t}`).expect(403)
+    })
+    it('agents/:id/settle 他人代理 → 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post(`/agents/${OTHER_AGENT}/settle`).set('Authorization', `Bearer ${t}`).expect(403)
+    })
+    it('merchants/:id/state 他牌号池 → 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post(`/merchants/${OTHER_MERCHANT}/state`).set('Authorization', `Bearer ${t}`).send({ state: 'fused' }).expect(403)
+    })
+    it('自家资源仍可达 assertOwns 之后（youdao 结算单 clear 不被 403 拦截）', async () => {
+      // 正向对照：证明上面的 403 来自 scope 而非「一律拒绝」——自家 youdao 结算单不会因归属被 403。
+      // S-2405-YD 已是 cleared，clear 会走到 updateMany count=0 返回 ok:false（201），关键是不 403。
+      const t = await token('brandaudit')
+      const r = await request(httpServer).post('/settlements/S-2405-YD/clear').set('Authorization', `Bearer ${t}`)
+      expect(r.status).not.toBe(403)
+    })
+  })
+
+  // ── F. portal 越权拦截：品牌打代理端点 / 代理打品牌端点 → 403 ──
+  describe('F · portal 跨角色端点越权 → 403', () => {
+    it('品牌打代理端点 403，代理打品牌端点 403', async () => {
+      const bt = await token('brand')
+      const at = await token('agent')
+      await request(httpServer).get('/portal/agent/payouts').set('Authorization', `Bearer ${bt}`).expect(403)
+      await request(httpServer).get('/portal/agent/credit').set('Authorization', `Bearer ${bt}`).expect(403)
+      await request(httpServer).get('/portal/brand/settlements').set('Authorization', `Bearer ${at}`).expect(403)
+      await request(httpServer).get('/portal/brand/orders').set('Authorization', `Bearer ${at}`).expect(403)
+    })
+  })
+
+  // ── G. 平台 admin 对照：见全部（数据量 > 单租户）──
+  describe('G · 平台 admin 见全部（跨租户，数据量严格大于单租户）', () => {
+    it('/merchants：admin 覆盖多品牌，且严格多于 brandaudit（youdao 子集）', async () => {
+      const su = await token('admin')
+      const t = await token('brandaudit')
+      const all = (await request(httpServer).get('/merchants').set('Authorization', `Bearer ${su}`).expect(200)).body
+      const scoped = (await request(httpServer).get('/merchants').set('Authorization', `Bearer ${t}`).expect(200)).body
+      const allBrands = new Set(all.map((m: any) => m.brandId))
+      expect(allBrands.size).toBeGreaterThan(1) // 平台见多品牌
+      expect(allBrands.has(OTHER_BRAND)).toBe(true) // 含他牌
+      expect(all.length).toBeGreaterThan(scoped.length) // 严格大于单租户
+    })
+    it('/settlements：admin 覆盖多品牌', async () => {
+      const su = await token('admin')
+      const rows = (await request(httpServer).get('/settlements').set('Authorization', `Bearer ${su}`).expect(200)).body
+      expect(new Set(rows.map((s: any) => s.brandId)).size).toBeGreaterThan(1)
+    })
+    it('/brands + /agents：admin 见多条', async () => {
+      const su = await token('admin')
+      const brands = (await request(httpServer).get('/brands').set('Authorization', `Bearer ${su}`).expect(200)).body
+      const agents = (await request(httpServer).get('/agents').set('Authorization', `Bearer ${su}`).expect(200)).body
+      expect(brands.length).toBeGreaterThan(1)
+      expect(agents.length).toBeGreaterThan(1)
+    })
+    it('/orders：admin items 跨多个品牌与多个代理', async () => {
+      const su = await token('admin')
+      const items = (await request(httpServer).get('/orders?limit=500').set('Authorization', `Bearer ${su}`).expect(200)).body.items
+      expect(new Set(items.map((o: any) => o.brandId)).size).toBeGreaterThan(1)
+      expect(new Set(items.map((o: any) => o.agentId)).size).toBeGreaterThan(1)
+    })
+  })
+})
