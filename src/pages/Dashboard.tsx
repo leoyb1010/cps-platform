@@ -50,15 +50,25 @@ const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s 
 type Range = 'today' | 'week' | 'month' | 'quarter'
 const RANGE_LABEL: Record<Range, string> = { today: '今日', week: '本周', month: '本月', quarter: '本季' }
 
-function exportCsv(range: Range) {
+// 导出用派生值：真实模式无来源的指标以 '—' 导出，绝不把 data.ts 静态假值写进报表文件。
+interface ExportKpis {
+  gmvBase: number
+  netMtd: number | null
+  ltvCac: number | null
+  renewal: number | null
+  complaintRate: number | null
+  rnsc: number | null
+}
+function exportCsv(range: Range, k: ExportKpis) {
+  const dash = (v: number | null, fmt: (n: number) => string) => (v === null ? '—' : fmt(v))
   const rows = [
     ['指标', '数值', '口径'],
-    ['R-NSC 风险调整后净订阅贡献', money(rnscOf(range)), '北极星 · 含估算成本项'],
-    [`${RANGE_LABEL[range]}基础流水`, money(kpi.gmvMtd * RANGE_SCALE[range]), 'R-NSC 收入首项 · 扣款成交额'],
-    ['净 LTV÷CAC', kpi.ltvCac.toFixed(2), '护栏指标'],
-    ['平台净收入（本月）', money(kpi.platformNetMtd), '可分配池−代理分润'],
-    ['续费率', pct(kpi.renewalRate), '连续包月'],
-    ['综合投诉率', pct(kpi.complaintRate), '近7天累计'],
+    ['R-NSC 风险调整后净订阅贡献', dash(k.rnsc, money), '北极星 · 含估算成本项'],
+    [`${RANGE_LABEL[range]}基础流水`, money(k.gmvBase * RANGE_SCALE[range]), 'R-NSC 收入首项 · 扣款成交额'],
+    ['净 LTV÷CAC', dash(k.ltvCac, (n) => n.toFixed(2)), '护栏指标'],
+    ['平台净收入（本月）', dash(k.netMtd, money), '可分配池−代理分润'],
+    ['续费率', dash(k.renewal, pct), '连续包月'],
+    ['综合投诉率', dash(k.complaintRate, pct), '近7天累计'],
   ]
   const csv = rows.map((r) => r.map(csvCell).join(',')).join('\n')
   downloadText(`经营总览-${RANGE_LABEL[range]}.csv`, csv) // downloadText 已带 BOM，勿再手动前置
@@ -89,7 +99,35 @@ export default function Dashboard() {
   const overall = risk.some((r) => r.health === 'red') ? 'red' : risk.some((r) => r.health === 'amber') ? 'amber' : 'green'
 
   const gmvScale = RANGE_SCALE[range]
-  const gmvShown = kpi.gmvMtd * gmvScale
+  // 基础流水：真实模式从号池/品牌派生（∑ brands.gmvMtd），不再用 data.ts 静态 kpi.gmvMtd。
+  // 派生值本身是"本月"口径，再乘区间系数与演示态保持一致。
+  const gmvMtdReal = s.brands.reduce((x, b) => x + (b.gmvMtd ?? 0), 0)
+  const gmvBase = isRealApi ? gmvMtdReal : kpi.gmvMtd
+  const gmvShown = gmvBase * gmvScale
+  // 续费率：真实模式按品牌 GMV 加权平均（brands.renewalRate 经 hydrate 覆盖）。
+  const renewalReal = (() => {
+    const w = s.brands.reduce((x, b) => x + (b.gmvMtd ?? 0), 0)
+    if (!w) return null
+    return s.brands.reduce((x, b) => x + (b.renewalRate ?? 0) * (b.gmvMtd ?? 0), 0) / w
+  })()
+  const renewalShown = isRealApi ? renewalReal : kpi.renewalRate
+  // 准备金余额：真实模式取 ∑ settlements.frozen（在账冻结额）。
+  const reserveReal = s.settlements.reduce((x, st) => x + (st.frozen ?? 0), 0)
+  const reserveShown = isRealApi ? reserveReal : kpi.reserveBalance
+  // 平台净收入 / R-NSC / 环比 delta / 12 月时序：无 store 来源也无后端聚合端点 → 真实模式显示"—"/空图。
+  const netMtdShown = isRealApi ? null : kpi.platformNetMtd
+  const ltvCacShown = isRealApi ? null : kpi.ltvCac
+  const rnscShown = isRealApi ? null : kpi.rnscMtd
+  const showDelta = !isRealApi // 无上期基数，真实模式不显示写死的环比
+  const gmv12mReal = isRealApi ? [] : series.gmv12m
+  const net12mReal = isRealApi ? [] : series.netRevenue12m
+  // 综合投诉率：真实模式从号池加权（∑ complaint*tx / ∑ tx）派生，无号池则 null。
+  const complaintRateReal = (() => {
+    const tx = s.merchants.reduce((x, m) => x + (m.txCount ?? 0), 0)
+    if (!tx) return null
+    return s.merchants.reduce((x, m) => x + (m.complaintRate ?? 0) * (m.txCount ?? 0), 0) / tx
+  })()
+  const complaintRateShown = isRealApi ? complaintRateReal : kpi.complaintRate
 
   const atRisk = s.merchants.filter((m) => m.state !== 'healthy').sort((a, b) => b.complaintRate - a.complaintRate).slice(0, 4)
   const liveBrands = s.brands.filter((b) => b.status === 'live').sort((a, b) => b.gmvMtd - a.gmvMtd).slice(0, 4)
@@ -117,7 +155,7 @@ export default function Dashboard() {
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2.5">
           <Segmented value={range} onChange={setRange} options={[{ value: 'today', label: '今日' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'quarter', label: '本季' }]} />
-          <Button variant="ghost" busyMs={420} onClick={() => { exportCsv(range); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
+          <Button variant="ghost" busyMs={420} onClick={() => { exportCsv(range, { gmvBase, netMtd: netMtdShown, ltvCac: ltvCacShown, renewal: renewalShown, complaintRate: complaintRateShown, rnsc: rnscShown }); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
           <Button variant="primary" onClick={() => nav('/settlement')}>本期结算预览 <ArrowRight size={15} /></Button>
         </div>
       </div>
@@ -218,19 +256,29 @@ export default function Dashboard() {
 
       {/* ───────── 层 2 · 北极星与经营健康 ───────── */}
       <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
-        <Kpi d={0.2} label={`${RANGE_LABEL[range]}基础流水`} value={<CountUp to={gmvShown / 1e4} decimals={1} prefix="¥" suffix="万" group={false} />} delta="+12.4%" sub={`R-NSC 收入首项 · 年累计 ${money(kpi.gmvYtd)}`}>
-          <MiniSpark data={series.gmv12m} tone="brand" delay={0.4} />
+        <Kpi d={0.2} label={`${RANGE_LABEL[range]}基础流水`} value={<CountUp to={gmvShown / 1e4} decimals={1} prefix="¥" suffix="万" group={false} />} delta={showDelta ? '+12.4%' : undefined} sub={isRealApi ? 'R-NSC 收入首项 · 扣款成交额' : `R-NSC 收入首项 · 年累计 ${money(kpi.gmvYtd)}`}>
+          <MiniSpark data={gmv12mReal} tone="brand" delay={0.4} />
         </Kpi>
-        <Kpi d={0.24} label="平台净收入（本月）" value={<CountUp to={kpi.platformNetMtd / 1e4} decimals={1} prefix="¥" suffix="万" group={false} />} delta="+9.1%" sub="占基础流水 14.5%">
-          <MiniSpark data={series.netRevenue12m} tone="neutral" delay={0.5} />
+        <Kpi d={0.24} label="平台净收入（本月）" value={netMtdShown === null ? <span className="text-ink-4">—</span> : <CountUp to={netMtdShown / 1e4} decimals={1} prefix="¥" suffix="万" group={false} />} delta={showDelta ? '+9.1%' : undefined} sub={isRealApi ? '待接入净收入聚合' : '占基础流水 14.5%'}>
+          <MiniSpark data={net12mReal} tone="neutral" delay={0.5} />
         </Kpi>
-        <Kpi d={0.28} label="续费率（连续包月）" value={<CountUp to={kpi.renewalRate} decimals={1} suffix="%" />} delta="+1.6个百分点" sub={`准备金 ${money(kpi.reserveBalance)}`}>
-          <Meter value={kpi.renewalRate} tone="brand" animate delay={0.56} />
+        <Kpi d={0.28} label="续费率（连续包月）" value={renewalShown === null ? <span className="text-ink-4">—</span> : <CountUp to={renewalShown} decimals={1} suffix="%" />} delta={showDelta ? '+1.6个百分点' : undefined} sub={`准备金 ${money(reserveShown)}`}>
+          <Meter value={renewalShown ?? 0} tone="brand" animate delay={0.56} />
         </Kpi>
       </div>
 
       {/* 趋势图 + 北极星仪表 + 层3 供需/风险详情 —— 仅专家模式（简洁模式到此为止） */}
       {expert && (<>
+      {/* 12 月时序 + R-NSC/净收入/LTV÷CAC 均依赖后端聚合端点，真实模式尚未接入 → 空态，不摆假曲线 */}
+      {isRealApi ? (
+        <Card className="mt-4" style={rev(0.32)}>
+          <CardTitle title="经营趋势与北极星（R-NSC）" desc="12 月时序、平台净收入、R-NSC 风险调整后净订阅贡献" />
+          <div className="grid place-items-center gap-1.5 py-12 text-center">
+            <div className="text-[13px] font-medium text-ink-2">聚合指标接入中</div>
+            <div className="max-w-[420px] text-[12px] leading-relaxed text-ink-4">时序趋势、平台净收入与 R-NSC 依赖服务端聚合端点，接入后此处展示真实经营走势。当前实时经营数据见下方号池 / 品牌 / 代理明细。</div>
+          </div>
+        </Card>
+      ) : (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_318px]">
         <Card style={rev(0.32)}>
           <CardTitle title="基础流水与平台净收入" desc="近 12 个月 · 实线基础流水，虚线净收入，悬停查看读数"
@@ -255,6 +303,7 @@ export default function Dashboard() {
           </div>
         </Card>
       </div>
+      )}
 
       {/* ───────── 层 3 · 供需两侧 + 风险详情 ───────── */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -358,7 +407,8 @@ export default function Dashboard() {
             desc={`号池峰值 · 红线阈值 ${MERCHANT_THRESHOLD.complaint.toFixed(1)}%`}
             right={<Badge tone={complaintTone} dot>{complaintTone === 'good' ? '全部达标' : complaintTone === 'warn' ? '逼近红线' : '触发管控'}</Badge>}
           />
-          <ComplaintChart data={series.complaint30d} />
+          {/* 30 天投诉率时序无后端来源 → 真实模式仅保留下方号池峰值（真实派生），不画假曲线 */}
+          {isRealApi ? <div className="grid h-[92px] place-items-center text-[12px] text-ink-4">投诉率时序接入中 · 下方为号池实时峰值</div> : <ComplaintChart data={series.complaint30d} />}
           <div className="mt-3 grid grid-cols-3 gap-2">
             <MiniBox v={pct(peakComplaint)} k="最高投诉率" tone={complaintTone} />
             <MiniBox v={pct(peakEsc, 2)} k="最高升级投诉" tone={toneOf(peakEsc, MERCHANT_THRESHOLD.escalated, MERCHANT_THRESHOLD.escalatedWarn)} />
@@ -404,18 +454,19 @@ function ActionRow({ a, onRefund, onOpen }: { a: ActionItem; onRefund?: () => vo
   )
 }
 
-function Kpi({ d, label, value, delta, sub, children }: { d: number; label: string; value: React.ReactNode; delta: string; sub: string; children: React.ReactNode }) {
+function Kpi({ d, label, value, delta, sub, children }: { d: number; label: string; value: React.ReactNode; delta?: string; sub: string; children: React.ReactNode }) {
   return (
     <Card mark style={rev(d)} className="!p-4">
       <div className="text-[12px] text-ink-3">{label}</div>
       <div className="tnum mt-2 text-[30px] leading-none font-semibold tracking-[-0.02em] text-ink">{value}</div>
-      <div className="mt-2 flex items-center gap-2"><span className="tnum inline-flex items-center gap-1 text-[11.5px] text-good-ink"><ChevronUp size={11} strokeWidth={2.6} />{delta}</span><span className="text-[11px] text-ink-5">{sub}</span></div>
+      <div className="mt-2 flex items-center gap-2">{delta && <span className="tnum inline-flex items-center gap-1 text-[11.5px] text-good-ink"><ChevronUp size={11} strokeWidth={2.6} />{delta}</span>}<span className="text-[11px] text-ink-5">{sub}</span></div>
       <div className="mt-3">{children}</div>
     </Card>
   )
 }
 
 function MiniSpark({ data, tone, delay }: { data: number[]; tone: 'brand' | 'neutral'; delay: number }) {
+  if (data.length < 2) return null // 真实模式无时序数据 → 不画迷你线
   const min = Math.min(...data), max = Math.max(...data), span = max - min || 1, step = 200 / (data.length - 1)
   const pts = data.map((v, i) => [i * step, 28 - ((v - min) / span) * 24 - 2])
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
