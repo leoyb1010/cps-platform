@@ -18,6 +18,12 @@ class ChangePasswordDto {
   @IsString() @MinLength(8) newPassword!: string // 最短 8 位；强度策略可后续加正则
 }
 
+// 登录/改密限流：生产严格防爆破；test 放开（e2e 单进程内高频登录会误触发，且限流由专项用例覆盖）。
+// 全局 ThrottlerModule 的 skipIf 不覆盖 @Throttle 装饰器，故此处按环境显式放大 limit。
+const IS_TEST = process.env.NODE_ENV === 'test'
+const LOGIN_LIMIT = IS_TEST ? 100000 : 10
+const CHPWD_LIMIT = IS_TEST ? 100000 : 5
+
 const REFRESH_COOKIE = 'cps_rt'
 
 @ApiTags('auth')
@@ -42,7 +48,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @Throttle({ default: { ttl: 60_000, limit: 10 } }) // 防爆破：每 IP 每分钟最多 10 次登录尝试
+  @Throttle({ default: { ttl: 60_000, limit: LOGIN_LIMIT } }) // 防爆破：每 IP 每分钟最多 10 次登录尝试（test 放开）
   @ApiOperation({ summary: '登录，返回 access token 与用户权限；refresh 走 httpOnly cookie' })
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const u = await this.auth.validate(dto.account, dto.password)
@@ -72,7 +78,7 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @Throttle({ default: { ttl: 60_000, limit: 5 } }) // 防猜旧密码：每 IP 每分钟 5 次
+  @Throttle({ default: { ttl: 60_000, limit: CHPWD_LIMIT } }) // 防猜旧密码：每 IP 每分钟 5 次（test 放开）
   @ApiOperation({ summary: '修改密码（校验旧密码；成功后吊销全部会话，需重新登录）' })
   async changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
     await this.auth.changePassword(user.id, dto.oldPassword, dto.newPassword)
