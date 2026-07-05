@@ -23,12 +23,14 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true)
   const [phase, setPhase] = useState<'browse' | 'paying' | 'done'>('browse')
   const [err, setErr] = useState('')
+  // 支付前协议勾选：未勾选禁用支付（仅演示态 gate；真实态本就被 isRealApi 禁用，不受影响）
+  const [agreed, setAgreed] = useState(false)
   const seq = useRef(0)
 
   useEffect(() => {
     // :id 变化先整体复位（避免 /land/A 支付完成态残留到 /land/B）；seq 防 A 的慢响应落到 B
     const s = ++seq.current
-    setPhase('browse'); setProducts([]); setQuote(null); setErr(''); setLoading(true)
+    setPhase('browse'); setProducts([]); setQuote(null); setErr(''); setLoading(true); setAgreed(false)
     if (!page) { setLoading(false); return }
     recordLandingView(page.id)
     marketApi.products()
@@ -186,14 +188,23 @@ export default function LandingPage() {
                   <a href="#/market/me" className="mt-3 inline-block text-[12.5px] font-medium hover:underline" style={{ color: theme }}>查看开通进度 →</a>
                 </div>
               ) : (
-                <button
-                  onClick={pay}
-                  disabled={phase === 'paying' || isRealApi}
-                  className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white shadow-lg transition-transform active:scale-[0.99] disabled:opacity-60"
-                  style={{ background: theme }}
-                >
-                  {isRealApi ? '在线支付即将开放' : phase === 'paying' ? '支付处理中…' : <><Wallet size={16} /> 立即订阅 {money(quote.finalPrice)}</>}
-                </button>
+                <>
+                  {/* 支付前协议勾选（真实态支付本就禁用，此勾选仅为演示态 gate；不改变真实态门禁） */}
+                  {!isRealApi && (
+                    <label className="mt-4 flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-ink-4">
+                      <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ accentColor: theme }} />
+                      <span>我已阅读并同意<a href="#/legal/terms" target="_blank" rel="noreferrer" className="font-medium hover:underline" style={{ color: theme }}>《用户协议》</a><a href="#/legal/privacy" target="_blank" rel="noreferrer" className="font-medium hover:underline" style={{ color: theme }}>《隐私政策》</a></span>
+                    </label>
+                  )}
+                  <button
+                    onClick={pay}
+                    disabled={phase === 'paying' || isRealApi || !agreed}
+                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white shadow-lg transition-transform active:scale-[0.99] disabled:opacity-60"
+                    style={{ background: theme }}
+                  >
+                    {isRealApi ? '在线支付即将开放' : phase === 'paying' ? '支付处理中…' : !agreed ? <><Wallet size={16} /> 请先勾选同意协议</> : <><Wallet size={16} /> 立即订阅 {money(quote.finalPrice)}</>}
+                  </button>
+                </>
               )}
               {err && <div className="mt-2 rounded-lg bg-alert-soft/50 px-2.5 py-1.5 text-center text-[12px] text-alert-ink">{err}</div>}
             </div>

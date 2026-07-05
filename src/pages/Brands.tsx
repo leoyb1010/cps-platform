@@ -169,7 +169,7 @@ export default function Brands() {
         })}
       </div>
 
-      {wizard && <OnboardWizard onClose={() => setWizard(false)} onDone={(name, biz) => { setWizard(false); const bn = BIZ_TYPES.find((t) => t.id === biz)?.name ?? ''; toast({ tone: 'good', text: `${name}（${bn}）已提交入驻，进入审核` }) }} />}
+      {wizard && <OnboardWizard onClose={() => setWizard(false)} onDone={(name, biz) => { setWizard(false); const bn = BIZ_TYPES.find((t) => t.id === biz)?.name ?? ''; toast({ tone: 'good', text: `${name}（${bn}）已提交入驻，进入审核 · 下一步：到成员页为品牌开通门户账号` }) }} />}
       <DocModal
         open={tplOpen}
         onClose={() => setTplOpen(false)}
@@ -193,6 +193,7 @@ function OnboardWizard({ onClose, onDone }: { onClose: () => void; onDone: (name
   const [biz, setBiz] = useState<BizType | null>(null)
   const [form, setForm] = useState<NewBrandInput>({ ...blankForm })
   const [modules, setModules] = useState<string[]>([]) // 已点选的可选录入模块 id
+  const [agreed, setAgreed] = useState(false) // 最后一步须勾选同意平台服务协议方可提交
   const set = <K extends keyof NewBrandInput>(k: K, v: NewBrandInput[K]) => setForm((f) => ({ ...f, [k]: v }))
   const toggleModule = (id: string) => setModules((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]))
 
@@ -219,7 +220,7 @@ function OnboardWizard({ onClose, onDone }: { onClose: () => void; onDone: (name
           {step < 2 ? (
             <button disabled={!canNext} onClick={() => setStep((s) => s + 1)} className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', canNext ? 'bg-brand hover:bg-brand-hover' : 'cursor-not-allowed bg-ink-4')}>下一步</button>
           ) : (
-            <button onClick={submit} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">提交审核</button>
+            <button disabled={!agreed} onClick={submit} className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', agreed ? 'bg-brand hover:bg-brand-hover' : 'cursor-not-allowed bg-ink-4')}>提交审核</button>
           )}
         </>
       }
@@ -330,6 +331,12 @@ function OnboardWizard({ onClose, onDone }: { onClose: () => void; onDone: (name
           <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">
             {isCps ? '风控阈值默认：投诉率<1%，升级投诉<0.1% · 72h 完结率≥95%，提交后可在详情覆盖。' : '该业务种类的资料提交后进入待审；合约/置换/素材的资金动作在对应板块完成。'}
           </div>
+
+          {/* 提交前须同意平台服务协议：未勾选不可提交 */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-line p-3 text-[12px] leading-relaxed text-ink-3">
+            <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand" />
+            <span>我已阅读并同意<a href="#/legal/terms" target="_blank" rel="noreferrer" className="font-medium text-brand hover:underline">《平台服务协议》</a>与<a href="#/legal/privacy" target="_blank" rel="noreferrer" className="font-medium text-brand hover:underline">《隐私政策》</a>，确认所填入驻资料真实有效。</span>
+          </label>
         </div>
       )}
     </Modal>

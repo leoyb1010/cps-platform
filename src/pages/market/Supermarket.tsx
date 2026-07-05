@@ -255,6 +255,8 @@ function ShelfBody(s: ShelfProps) {
   const [detailP, setDetailP] = useState<MarketProduct | null>(null)
   // 支付渠道：此前支付宝/微信按钮与「去支付」CTA 全硬编码 alipay，点微信也走支付宝——静默错付。
   const [channel, setChannel] = useState<'alipay' | 'wechat'>('alipay')
+  // 支付前协议勾选：未勾选禁用支付（仅演示态 gate；真实态本就被 isRealApi 禁用，不受影响）
+  const [agreed, setAgreed] = useState(false)
   let detailTags: string[] = []; if (detailP) { try { detailTags = JSON.parse(detailP.tags) } catch { /* */ } }
   return (
     <div className="grid grid-cols-1 gap-7 lg:grid-cols-[1fr_340px]">
@@ -415,10 +417,17 @@ function ShelfBody(s: ShelfProps) {
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#07c160] text-[9px] font-bold text-white">微</span>微信
                       </button>
                     </div>
+                    {/* 支付前协议勾选（真实态支付本就禁用，此勾选仅为演示态 gate；不改变真实态门禁） */}
+                    {!isRealApi && (
+                      <label className="mt-3 flex cursor-pointer items-start gap-2 text-[11.5px] leading-relaxed text-ink-3">
+                        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand" />
+                        <span>我已阅读并同意<a href="#/legal/terms" target="_blank" rel="noreferrer" className="text-brand hover:underline">《用户协议》</a><a href="#/legal/privacy" target="_blank" rel="noreferrer" className="text-brand hover:underline">《隐私政策》</a></span>
+                      </label>
+                    )}
                     {/* 真实模式：尚未接入真实支付渠道，禁用支付避免走"沙箱假支付"，只诚实提示即将开放 */}
-                    <button disabled={s.paying || isRealApi} onClick={() => s.pay(channel)}
+                    <button disabled={s.paying || isRealApi || !agreed} onClick={() => s.pay(channel)}
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
-                      {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
+                      {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : !agreed ? <><Wallet size={14} /> 请先勾选同意协议</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
                     </button>
                     <div className="mt-2 text-center text-[10.5px] text-ink-4">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
                     <button onClick={s.reset} className="mt-1.5 block w-full text-center text-[12px] font-medium text-brand hover:underline">重新搭配 →</button>

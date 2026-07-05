@@ -35,6 +35,8 @@ const Profile = lazy(() => import('./pages/Profile'))
 const Supermarket = lazy(() => import('./pages/market/Supermarket'))
 const LandingPage = lazy(() => import('./pages/market/LandingPage'))
 const MySubscriptions = lazy(() => import('./pages/market/MySubscriptions'))
+const Terms = lazy(() => import('./pages/legal/Terms'))
+const Privacy = lazy(() => import('./pages/legal/Privacy'))
 // 门户页：命名导出，lazy 需包成 default
 const BrandHome = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandHome })))
 const BrandOrders = lazy(() => import('./pages/portal/BrandPortal').then((m) => ({ default: m.BrandOrders })))
@@ -112,6 +114,9 @@ export default function App() {
       <Route path="/market" element={<Supermarket />} />
       <Route path="/market/me" element={<MySubscriptions />} />
       <Route path="/land/:id" element={<LandingPage />} />
+      {/* 合规文档：公开可达，供 C 端支付勾选与品牌入驻确认引用 */}
+      <Route path="/legal/terms" element={<Terms />} />
+      <Route path="/legal/privacy" element={<Privacy />} />
 
       {/* 品牌方门户 */}
       <Route

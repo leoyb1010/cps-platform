@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, AlertTriangle, ArrowRight, FileSignature, Repeat } from 'lucide-react'
+import { Download, AlertTriangle, ArrowRight, FileSignature, Repeat, CheckCircle2, Circle, KeyRound, PackagePlus, Handshake, Receipt, ClipboardCheck } from 'lucide-react'
 import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row, CountUp } from '../../components/ui/primitives'
 import { AreaLine, Sparkline } from '../../components/ui/charts'
 import { Modal, useToast } from '../../components/ui/overlays'
@@ -164,26 +164,88 @@ export function BrandSettlement() {
 }
 
 type BrandOnboardingData = { name: string; status: string; category: string; feeRate: number; period: number; reservePct: number; path: string } | null
+// 接入进度所需的启发式判断数据：开发者中心（密钥/回调）、商品、合约、订单
+type DevData = { hasPublicKey?: boolean; callbackUrl?: string } | null
+type ProductLite = { status?: string }
+type ContractLite = { id: string }
+type OrderLite = { id: string }
+
 export function BrandOnboarding() {
   const { data, state, reload } = usePortalResource<BrandOnboardingData>(() => portalApi.brandOnboarding())
+  // 各步状态的判据数据：拿不到（error/loading）就按"待办"处理，重点是始终给出下一步动作
+  const dev = usePortalResource<DevData>(() => portalApi.developer())
+  const products = usePortalResource<ProductLite[]>(() => portalApi.brandProducts())
+  const contracts = usePortalResource<ContractLite[]>(() => portalApi.contracts())
+  const orders = usePortalResource<OrderLite[]>(() => portalApi.brandOrders())
   return (
     <>
-      <PageHeader title="我的入驻" desc="你的品牌接入配置与准入状态。" />
+      <PageHeader title="我的入驻" desc="从入驻到首单的接入进度，跟着清单逐步完成即可开始经营。" />
       <PortalState state={state} data={data} reload={reload} emptyWhen={(d) => d == null} emptyTitle="暂无入驻信息">
-        {(d) => !d ? null : (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-            <Card><Stat label="入驻状态" value={d.status === 'live' ? '已上线' : d.status === 'review' ? '审核中' : d.status} sub={<Badge tone={d.status === 'live' ? 'good' : 'warn'}>{d.status === 'live' ? '正常' : '处理中'}</Badge>} /></Card>
-            <Card><Stat label="业务种类" value={d.category} /></Card>
-            <Card><Stat label="结算费率" value={pct(d.feeRate)} /></Card>
-            <Card><Stat label="账期" value={`T+${d.period}`} /></Card>
-            <Card><Stat label="风险准备金" value={`${d.reservePct}%`} /></Card>
-            <Card><Stat label="资金路径" value={d.path === 'direct' ? '直连' : d.path === 'licensed' ? '持牌分账' : '混合'} /></Card>
-          </div>
-        )}
+        {(d) => !d ? null : (() => {
+          // 启发式判断（读现有门户数据；拿不到就都标"待办"并给跳转）
+          const devDone = !!(dev.data?.hasPublicKey && dev.data?.callbackUrl)
+          const productDone = (products.data ?? []).length > 0
+          const contractDone = (contracts.data ?? []).length > 0
+          const orderDone = (orders.data ?? []).length > 0
+          const steps: OnboardStep[] = [
+            { icon: <ClipboardCheck size={16} />, title: '完成入驻资料', desc: '品牌主体与准入配置已提交', done: true },
+            { icon: <KeyRound size={16} />, title: '配置对接密钥 / 回调', desc: '生成 RSA 密钥并登记订单回调地址', done: devDone, to: '/portal/brand/developer', cta: '去配置' },
+            { icon: <PackagePlus size={16} />, title: '上架第一个订阅商品', desc: '新建并提交你的第一个订阅商品', done: productDone, to: '/portal/brand/products', cta: '去上架' },
+            { icon: <Handshake size={16} />, title: '发起 / 接第一个增长合约', desc: '与代理渠道签约放量（可选）', done: contractDone, to: '/portal/brand/contracts', cta: '去发起', optional: true },
+            { icon: <Receipt size={16} />, title: '等待首笔订单', desc: orderDone ? '已收到订单，可在「我的订单」查看流水' : '上架并投放后，第一笔订单将出现在这里', done: orderDone },
+          ]
+          const requiredDone = steps.filter((s) => !s.optional && s.done).length
+          const requiredTotal = steps.filter((s) => !s.optional).length
+          return (
+            <div className="space-y-4">
+              {/* 接入进度 checklist */}
+              <Card pad={false}>
+                <div className="flex items-center justify-between border-b border-line px-5 py-4">
+                  <CardTitle title="接入进度" desc="按顺序完成以下步骤，即可跑通「入驻 → 首单」全链路。" />
+                  <Badge tone={requiredDone >= requiredTotal ? 'good' : 'warn'}>{requiredDone}/{requiredTotal} 必做已完成</Badge>
+                </div>
+                <div className="divide-y divide-line/70">
+                  {steps.map((s, i) => (
+                    <div key={i} className="flex items-center gap-3.5 px-5 py-3.5">
+                      <span className={s.done ? 'text-good-ink' : 'text-ink-4'}>{s.done ? <CheckCircle2 size={20} /> : <Circle size={20} />}</span>
+                      <span className={s.done ? 'text-good-ink' : 'text-ink-3'}>{s.icon}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[13px] font-medium ${s.done ? 'text-ink-3 line-through decoration-ink-4/40' : 'text-ink'}`}>{s.title}</span>
+                          {s.optional && <Badge tone="neutral">可选</Badge>}
+                        </div>
+                        <div className="mt-0.5 text-[11.5px] text-ink-4">{s.desc}</div>
+                      </div>
+                      <div className="shrink-0">
+                        {s.done
+                          ? <Badge tone="good" dot>已完成</Badge>
+                          : s.to
+                            ? <a href={`#${s.to}`} className="inline-flex items-center gap-1 rounded-lg border border-brand/30 bg-brand-soft px-2.5 py-1 text-[12px] font-medium text-brand-ink transition-colors hover:bg-brand hover:text-white">{s.cta ?? '前往'} <ArrowRight size={13} /></a>
+                            : <Badge tone="warn">待办</Badge>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* 接入配置与准入状态（原只读状态卡保留） */}
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+                <Card><Stat label="入驻状态" value={d.status === 'live' ? '已上线' : d.status === 'review' ? '审核中' : d.status} sub={<Badge tone={d.status === 'live' ? 'good' : 'warn'}>{d.status === 'live' ? '正常' : '处理中'}</Badge>} /></Card>
+                <Card><Stat label="业务种类" value={d.category} /></Card>
+                <Card><Stat label="结算费率" value={pct(d.feeRate)} /></Card>
+                <Card><Stat label="账期" value={`T+${d.period}`} /></Card>
+                <Card><Stat label="风险准备金" value={`${d.reservePct}%`} /></Card>
+                <Card><Stat label="资金路径" value={d.path === 'direct' ? '直连' : d.path === 'licensed' ? '持牌分账' : '混合'} /></Card>
+              </div>
+            </div>
+          )
+        })()}
       </PortalState>
     </>
   )
 }
+
+type OnboardStep = { icon: React.ReactNode; title: string; desc: string; done: boolean; to?: string; cta?: string; optional?: boolean }
 
 type BrandTicketRow = { id: string; brandId: string; level: string; status: string; source: string; reason: string; owner: string; slaLeftMin: number; time: string; handlePlan: string; note: string; handledBy: string }
 
