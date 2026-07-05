@@ -7,6 +7,7 @@ import { useAuth, useCan, logout } from '../../lib/auth'
 import { portalApi } from '../../lib/portalApi'
 import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
+import { OfflineBanner } from './OfflineBanner'
 import { brandTheme } from '../../lib/whitelabel'
 import { useTheme, resolvedTheme } from '../../lib/prefs'
 
@@ -156,6 +157,7 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
             <div className="ml-auto flex items-center gap-2"><ThemeToggle /><PortalBell /></div>
           </header>
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
+            <OfflineBanner />
             <Outlet />
           </main>
         </div>

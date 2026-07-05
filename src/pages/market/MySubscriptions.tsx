@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Search, CheckCircle2, Clock, ShieldCheck, ArrowLeft, ShoppingBag, XCircle } from 'lucide-react'
+import { Search, CheckCircle2, Clock, ShieldCheck, ArrowLeft, ShoppingBag, XCircle, Hammer } from 'lucide-react'
 import { useToast } from '../../components/ui/overlays'
 import { money } from '../../lib/format'
+import { isRealApi } from '../../lib/http'
 
 /**
  * C 端「我的订阅」—— 支付后动线的终点，免登录（套餐号+手机尾号）查开通进度。
@@ -54,7 +55,15 @@ export default function MySubscriptions() {
         </div>
 
         <div className="px-5 py-6">
-          {!result ? (
+          {/* 真实模式：/market/me 查询与自助退订端点尚未接入，不放演示实现误导用户 */}
+          {isRealApi ? (
+            <div className="flex flex-col items-center gap-3 py-14 text-center">
+              <div className="grid h-14 w-14 place-items-center rounded-full bg-surface-sunken text-ink-4"><Hammer size={24} /></div>
+              <h1 className="text-[17px] font-semibold text-ink">订阅查询即将开放</h1>
+              <p className="max-w-[280px] text-[12.5px] leading-relaxed text-ink-3">在线支付与订阅进度查询正在接入中，上线后可用套餐号与手机尾号查询开通与续费状态。</p>
+              <a href="#/market" className="mt-1 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-hover">返回超市</a>
+            </div>
+          ) : !result ? (
             <>
               <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">查询订阅开通进度</h1>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-3">输入套餐号与手机尾号即可查看，无需登录。</p>

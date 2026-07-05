@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Search, Bell, ChevronUp, RotateCcw, Menu, X, LogOut, UserCog, Repeat, HelpCircle, Sun, Moon, MonitorSmartphone, ChevronDown, Pin, Star, Rows3 } from 'lucide-react'
 import { NAV, BOARD_ICON, NAV_BY_TO } from './nav'
 import { GuideDrawer } from './GuideDrawer'
+import { OfflineBanner } from './OfflineBanner'
 import { GUIDES } from '../../lib/guides'
 import { useViewMode, setViewMode, useTheme, setTheme, type Theme, useCollapsedGroups, toggleNavGroup, usePinned, togglePinned, useDensity, setDensity } from '../../lib/prefs'
 import { Segmented } from '../ui/primitives'
@@ -379,6 +380,7 @@ export default function AppLayout() {
         <div className="grid-bg flex min-h-screen flex-col md:pl-[236px]">
           <Topbar title={title} base={base} onReplay={replay} onMenu={() => setNavOpen(true)} onOpenGuide={() => setGuideOpen(true)} />
           <main key={`${loc.pathname}-${epoch}`} className="mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
+            <OfflineBanner />
             <Outlet />
           </main>
         </div>

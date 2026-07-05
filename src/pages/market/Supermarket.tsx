@@ -415,11 +415,12 @@ function ShelfBody(s: ShelfProps) {
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#07c160] text-[9px] font-bold text-white">微</span>微信
                       </button>
                     </div>
-                    <button disabled={s.paying} onClick={() => s.pay(channel)}
+                    {/* 真实模式：尚未接入真实支付渠道，禁用支付避免走"沙箱假支付"，只诚实提示即将开放 */}
+                    <button disabled={s.paying || isRealApi} onClick={() => s.pay(channel)}
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
-                      {s.paying ? '支付处理中…' : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
+                      {isRealApi ? <>在线支付即将开放</> : s.paying ? '支付处理中…' : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
                     </button>
-                    <div className="mt-2 text-center text-[10.5px] text-ink-4">演示模式 · 模拟支付不会真实扣款</div>
+                    <div className="mt-2 text-center text-[10.5px] text-ink-4">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
                     <button onClick={s.reset} className="mt-1.5 block w-full text-center text-[12px] font-medium text-brand hover:underline">重新搭配 →</button>
                   </div>
                 )}

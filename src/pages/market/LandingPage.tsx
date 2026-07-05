@@ -4,6 +4,7 @@ import { Check, ShieldCheck, Sparkles, Wallet, CheckCircle2, AlertCircle, Info }
 import { marketApi, type MarketProduct, type Quote } from '../../lib/marketApi'
 import { getLandingPage, recordLandingOrder, recordLandingView, brandColorOf, brandName, isContinuous, type LandingPage as LP } from '../../lib/landing'
 import { money } from '../../lib/format'
+import { isRealApi } from '../../lib/http'
 import { BrandMark } from '../../components/ui/primitives'
 
 /**
@@ -187,11 +188,11 @@ export default function LandingPage() {
               ) : (
                 <button
                   onClick={pay}
-                  disabled={phase === 'paying'}
+                  disabled={phase === 'paying' || isRealApi}
                   className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white shadow-lg transition-transform active:scale-[0.99] disabled:opacity-60"
                   style={{ background: theme }}
                 >
-                  {phase === 'paying' ? '支付处理中…' : <><Wallet size={16} /> 立即订阅 {money(quote.finalPrice)}</>}
+                  {isRealApi ? '在线支付即将开放' : phase === 'paying' ? '支付处理中…' : <><Wallet size={16} /> 立即订阅 {money(quote.finalPrice)}</>}
                 </button>
               )}
               {err && <div className="mt-2 rounded-lg bg-alert-soft/50 px-2.5 py-1.5 text-center text-[12px] text-alert-ink">{err}</div>}
@@ -213,7 +214,7 @@ export default function LandingPage() {
           <div className="mt-5 flex items-center justify-center gap-1.5 text-[11px] text-ink-4">
             <ShieldCheck size={12} className="text-good-ink" /> 平台担保结算 · 资金清结算合规 · 支持随时退订
           </div>
-          <div className="mt-2 text-center text-[10px] text-ink-5">演示模式 · 模拟支付不会真实扣款</div>
+          <div className="mt-2 text-center text-[10px] text-ink-5">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
         </div>
       </div>
     </div>

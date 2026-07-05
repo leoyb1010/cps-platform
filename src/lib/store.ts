@@ -121,23 +121,26 @@ function clock() {
 }
 
 function seed(): StoreState {
+  // 真实模式下，尚无后端 GET 端点的集合（风控规则 / 待审代理 / 增长合约）不能用演示数据兜底，
+  // 否则会在真实控制台展示"假合约、假入驻申请"，运营可能据此做真决策。置空 + 页面显示"能力未接入"。
+  const realEmpty = <T>(demo: T[]): T[] => (isRealApi ? [] : structuredClone(demo))
   return {
-    orders: structuredClone(seedOrders),
-    complaints: structuredClone(seedComplaints),
-    settlements: structuredClone(seedSettlements),
-    agents: structuredClone(seedAgents),
-    merchants: structuredClone(seedMerchants),
-    brands: structuredClone(seedBrands),
+    orders: realEmpty(seedOrders),
+    complaints: realEmpty(seedComplaints),
+    settlements: realEmpty(seedSettlements),
+    agents: realEmpty(seedAgents),
+    merchants: realEmpty(seedMerchants),
+    brands: realEmpty(seedBrands),
     activity: [],
     attributionConfig: { ...SEED_ATTRIBUTION },
     platformConfig: { ...SEED_PLATFORM_CONFIG },
     platformParams: { ...SEED_PLATFORM_PARAMS },
     slaConfig: { ...SEED_SLA },
     channelStates: { ...SEED_CHANNELS },
-    rules: structuredClone(SEED_RULES),
+    rules: realEmpty(SEED_RULES),
     claims: [],
-    pendingAgents: structuredClone(SEED_PENDING_AGENTS),
-    contracts: structuredClone(seedContracts),
+    pendingAgents: realEmpty(SEED_PENDING_AGENTS),
+    contracts: realEmpty(seedContracts),
   }
 }
 
@@ -214,6 +217,7 @@ export function clearStoreOnLogout() {
   }
   state = seed()
   __syncLiveEntities(state)
+  setHydrationStatus('idle')
   listeners.forEach((l) => l())
 }
 function subscribe(l: () => void) {
@@ -221,6 +225,24 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l)
 }
 const getSnapshot = () => state
+
+// ── 水合状态（真实模式）：用于全局离线/降级提示 ──────────────
+//   idle：未开始/演示模式  ok：成功  offline：全部失败(服务不可达)  partial：部分集合失败
+export type HydrationStatus = 'idle' | 'ok' | 'offline' | 'partial'
+let hydrationStatus: HydrationStatus = 'idle'
+const hydrationListeners = new Set<() => void>()
+function setHydrationStatus(s: HydrationStatus) {
+  if (s === hydrationStatus) return
+  hydrationStatus = s
+  hydrationListeners.forEach((l) => l())
+}
+function subscribeHydration(l: () => void) {
+  hydrationListeners.add(l)
+  return () => hydrationListeners.delete(l)
+}
+export function useHydrationStatus(): HydrationStatus {
+  return useSyncExternalStore(subscribeHydration, () => hydrationStatus, () => hydrationStatus)
+}
 
 // ── 实时事件流（演示态本地 ticker，模拟 SSE 推送）──────────────
 // 协议一套、来源两个：真实态服务端 SSE 推 applyEvent，演示态本地定时器产同格式事件。
@@ -276,8 +298,14 @@ export async function hydrateFromServer() {
   //   网络错/5xx → null（保留现值，一次瞬时错误不清屏）
   //   成功 → items
   const orders = ordersPage === null ? null : Array.isArray(ordersPage) ? [] : (ordersPage.items ?? [])
-  // 全部失败（如完全离线）：保留本地 seed，不阻断演示
-  if (!brands && !agents && !merchants && orders === null && !settlements && !tickets) return
+  // 全部失败（如完全离线）：保留现值 + 置离线态供全局 banner 提示，不阻断已有数据
+  if (!brands && !agents && !merchants && orders === null && !settlements && !tickets) {
+    setHydrationStatus('offline')
+    return
+  }
+  // 部分集合失败（网络错/5xx，非 403）→ partial：数据可能过期
+  const anyNetworkFail = brands === null || agents === null || merchants === null || orders === null || settlements === null || tickets === null || config === null
+  setHydrationStatus(anyNetworkFail ? 'partial' : 'ok')
   const seedB = new Map(seedBrands.map((b) => [b.id, b]))
   const seedA = new Map(seedAgents.map((a) => [a.id, a]))
   const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
