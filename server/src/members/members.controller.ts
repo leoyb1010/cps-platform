@@ -100,7 +100,8 @@ export class MembersController {
     const passwordHash = await argon2.hash(tempPassword)
     const id = 'U-' + randomUUID().slice(0, 8)
     await this.prisma.user.create({
-      data: { id, name: dto.name, account: dto.account, passwordHash, roleId: dto.roleId, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null },
+      // 临时密码 → 首登强制改密：受邀人拿到一次性口令后必须改，杜绝临时密码长期有效
+      data: { id, name: dto.name, account: dto.account, passwordHash, roleId: dto.roleId, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, mustChangePassword: true },
     })
     return { ok: true, detail: `已创建 ${dto.account}`, id, tempPassword }
   }

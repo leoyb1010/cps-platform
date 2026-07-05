@@ -44,19 +44,25 @@ async function bootstrap() {
   // 配合 app.close() 等待在途请求完成，避免部署时截断资金事务。
   app.enableShutdownHooks()
 
-  // OpenAPI / Swagger
-  const cfg = new DocumentBuilder()
-    .setTitle('网易有道 CPS 平台 API')
-    .setDescription('账户/鉴权 · RBAC · 审计 · 业务管理 后端契约')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build()
-  const doc = SwaggerModule.createDocument(app, cfg)
-  SwaggerModule.setup('docs', app, doc)
-  try {
-    writeFileSync('openapi.json', JSON.stringify(doc, null, 2))
-  } catch {
-    /* ignore */
+  // OpenAPI / Swagger —— 生产默认不暴露 /docs（避免对外泄露完整 API 契约），
+  // 需要时显式 EXPOSE_SWAGGER=true 放行（如内网预发）。openapi.json 仅在非生产落盘。
+  const exposeSwagger = process.env.NODE_ENV !== 'production' || process.env.EXPOSE_SWAGGER === 'true'
+  if (exposeSwagger) {
+    const cfg = new DocumentBuilder()
+      .setTitle('网易有道 CPS 平台 API')
+      .setDescription('账户/鉴权 · RBAC · 审计 · 业务管理 后端契约')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build()
+    const doc = SwaggerModule.createDocument(app, cfg)
+    SwaggerModule.setup('docs', app, doc)
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        writeFileSync('openapi.json', JSON.stringify(doc, null, 2))
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   const port = Number(process.env.PORT || 3001)

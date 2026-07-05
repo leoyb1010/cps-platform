@@ -26,6 +26,7 @@ model User {
   scopeId      String?
   status       String         @default("active") // active | disabled
   tokenVersion Int            @default(0) // bump 使已签发 access token 即时失效（登出/吊销全会话/改角色）
+  mustChangePassword Boolean  @default(false) // 首登强制改密：bootstrap 建号 / 邀请临时密码置 true
   createdAt    DateTime       @default(now())
   sessions     RefreshToken[]
   audits       AuditLog[]

@@ -1,5 +1,8 @@
-import { PageHeader, Card, CardTitle, Badge } from '../components/ui/primitives'
+import { Link } from 'react-router-dom'
+import { KeyRound } from 'lucide-react'
+import { PageHeader, Card, CardTitle, Badge, Button } from '../components/ui/primitives'
 import { useAuth, ROLES, permsOf } from '../lib/auth'
+import { isRealApi } from '../lib/http'
 
 const SCOPE_LABEL: Record<string, string> = { platform: '平台级（全部数据）', brand: '品牌级（仅自己品牌）', agent: '代理级（仅自己）' }
 
@@ -27,6 +30,11 @@ export default function Profile() {
             <Row k="数据范围" v={<span className="text-[12.5px] text-ink-2">{SCOPE_LABEL[user.scopeType ?? 'platform'] ?? user.scopeType}</span>} />
             {user.scopeId && <Row k="范围对象" v={<span className="tnum text-[12.5px] text-ink-2">{user.scopeId}</span>} />}
           </div>
+          {isRealApi && (
+            <div className="mt-4 border-t border-line pt-3.5">
+              <Link to="/settings/password"><Button variant="ghost"><KeyRound size={13} /> 修改密码</Button></Link>
+            </div>
+          )}
         </Card>
 
         <Card>

@@ -11,8 +11,9 @@ import { homeForScope } from './PortalLogin'
 export default function Login() {
   const nav = useNavigate()
   const loc = useLocation()
-  const [account, setAccount] = useState('admin')
-  const [pwd, setPwd] = useState('demo')
+  // 真实模式不预填任何凭证；演示模式预填 admin/demo 便于一键体验
+  const [account, setAccount] = useState(isRealApi ? '' : 'admin')
+  const [pwd, setPwd] = useState(isRealApi ? '' : 'demo')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   // 平台账户列表（品牌/代理演示账户在门户登录页展示，不混入内部入口）
@@ -22,7 +23,13 @@ export default function Login() {
     setErr('')
     setBusy(true)
     try {
-      const u = await login(account.trim() || 'admin', pwd || 'demo')
+      // 真实模式不做 admin/demo 兜底（那是演示便利），凭用户实际输入
+      const u = isRealApi ? await login(account.trim(), pwd) : await login(account.trim() || 'admin', pwd || 'demo')
+      // 首登/邀请建号须先改密：拦到改密页，不放进控制台
+      if (u.mustChangePassword) {
+        nav('/change-password', { replace: true })
+        return
+      }
       // 深链回跳：从受守卫页被弹到登录 → 登录后回原页（平台账户限内部路由）
       const from = (loc.state as { from?: string } | null)?.from
       const fallback = homeForScope(u)
@@ -73,24 +80,27 @@ export default function Login() {
           </Button>
         </form>
 
-        <div className="mt-4 border-t border-line pt-3.5">
-          <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-4">
-            <ShieldCheck size={13} /> 演示账户（点击一键填入，密码 demo）
+        {/* 演示账户一键填入仅演示模式展示；真实模式绝不泄露任何账号/口令提示 */}
+        {!isRealApi && (
+          <div className="mt-4 border-t border-line pt-3.5">
+            <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-4">
+              <ShieldCheck size={13} /> 演示账户（点击一键填入，密码 demo）
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {platformUsers.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setAccount(u.account)}
+                  className="rounded-md border border-line px-2 py-1 text-[11.5px] text-ink-2 transition-colors hover:border-brand hover:text-brand"
+                >
+                  {u.name}
+                  <span className="ml-1 text-ink-4">· {ROLES[u.roleId].name}</span>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {platformUsers.map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => setAccount(u.account)}
-                className="rounded-md border border-line px-2 py-1 text-[11.5px] text-ink-2 transition-colors hover:border-brand hover:text-brand"
-              >
-                {u.name}
-                <span className="ml-1 text-ink-4">· {ROLES[u.roleId].name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       <a

@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:push": "prisma db push --skip-generate",
     "seed": "ts-node prisma/seed.ts",
+    "bootstrap:admin": "ts-node prisma/bootstrap-admin.ts",
     "db:reset": "prisma migrate reset --force",
     "generate:pg": "prisma generate --schema prisma/schema.postgres.prisma",
     "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",

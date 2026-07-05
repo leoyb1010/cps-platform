@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as argon2 from 'argon2'
@@ -31,6 +31,7 @@ export class AuthService {
       permissions,
       scopeType: u.scopeType,
       scopeId: u.scopeId,
+      mustChangePassword: u.mustChangePassword,
     }
   }
 
@@ -47,6 +48,25 @@ export class AuthService {
     const ok = await argon2.verify(u.passwordHash, password).catch(() => false)
     if (!ok) throw new UnauthorizedException('账号或密码错误')
     return u
+  }
+
+  /**
+   * 改密：校验旧密码 → 写新哈希 + 清除首登强制改密标记 → 吊销全部会话（含本次）。
+   * 吊销全会话是安全动作：改密通常因怀疑泄露或首登，作废所有旧令牌可断掉潜在盗用会话。
+   * 前端改密成功后需以新密码重新登录。
+   */
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!u || u.status !== 'active') throw new UnauthorizedException('账号状态异常')
+    const ok = await argon2.verify(u.passwordHash, oldPassword).catch(() => false)
+    if (!ok) throw new BadRequestException('原密码错误')
+    if (await argon2.verify(u.passwordHash, newPassword).catch(() => false)) {
+      throw new BadRequestException('新密码不能与原密码相同')
+    }
+    const passwordHash = await argon2.hash(newPassword)
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } })
+    await this.revokeAllForUser(userId) // bump tokenVersion + 吊销 refresh 族：所有旧令牌立即失效
+    return { ok: true }
   }
 
   async signAccess(user: AuthUser) {

@@ -103,6 +103,38 @@ describe('Auth', () => {
   })
 })
 
+describe('Auth · 改密', () => {
+  // 用超管新建一个隔离的一次性账户走改密全链路，不动种子账户，避免污染其它用例。
+  it('改密：需鉴权 · 旧密码错拒 · 弱密码拒 · 成功后旧令牌失效且新密码可登录', async () => {
+    const su = await token('admin')
+    const acct = 'pwtest'
+    // 创建成员 → 拿一次性临时密码；invite 建号会置 mustChangePassword=true
+    const created = await request(httpServer).post('/members').set('Authorization', `Bearer ${su}`).send({ name: '改密测试', account: acct, roleId: 'ops', scopeType: 'platform' }).expect((r) => expect([200, 201]).toContain(r.status))
+    const tempPw = created.body.tempPassword as string
+    expect(tempPw).toBeTruthy()
+
+    // 未鉴权拒绝
+    await request(httpServer).post('/auth/change-password').send({ oldPassword: tempPw, newPassword: 'newpass123' }).expect(401)
+
+    const login = await request(httpServer).post('/auth/login').send({ account: acct, password: tempPw }).expect(201)
+    const access = login.body.access as string
+    expect(login.body.user.mustChangePassword).toBe(true) // 邀请建号首登须改密
+
+    // 旧密码错 → 400
+    await request(httpServer).post('/auth/change-password').set('Authorization', `Bearer ${access}`).send({ oldPassword: 'wrong-old', newPassword: 'newpass123' }).expect(400)
+    // 新密码过短(<8) → 400（DTO 校验）
+    await request(httpServer).post('/auth/change-password').set('Authorization', `Bearer ${access}`).send({ oldPassword: tempPw, newPassword: 'short' }).expect(400)
+
+    // 成功改密 → 清除 mustChangePassword + 吊销全会话
+    await request(httpServer).post('/auth/change-password').set('Authorization', `Bearer ${access}`).send({ oldPassword: tempPw, newPassword: 'newpass123' }).expect((r) => expect([200, 201]).toContain(r.status))
+    // 旧 access token 因 tokenVersion bump 立即失效
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${access}`).expect(401)
+    // 新密码可登录，且 mustChangePassword 已清除
+    const relogin = await request(httpServer).post('/auth/login').send({ account: acct, password: 'newpass123' }).expect(201)
+    expect(relogin.body.user.mustChangePassword).toBe(false)
+  })
+})
+
 describe('Auth · token 即时失效（tokenVersion）', () => {
   it('登出后旧 access token 立即失效（不等 TTL）', async () => {
     // 登录拿 access + refresh cookie

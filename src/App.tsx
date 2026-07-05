@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import ClientLayout from './components/layout/ClientLayout'
 import { BRAND_NAV_GROUPS, AGENT_NAV_GROUPS } from './components/layout/portalNav'
 import PortalLogin, { homeForScope } from './pages/PortalLogin'
+import ChangePassword from './pages/ChangePassword'
 
 // 路由级代码分割：控制台高频页(总览/登录/门户壳)首屏直载；其余按需 lazy 拆包，
 // 缩小首包。Suspense 兜底一个轻量加载态。（v9 §5.2 性能预算）
@@ -105,6 +106,9 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/portal/login" element={<PortalLogin />} />
+      {/* 改密页：登录后（含首登强制改密）可达，不受 scope 守卫，避免强制改密时被弹回登录死循环 */}
+      <Route path="/change-password" element={<ChangePassword />} />
+      <Route path="/settings/password" element={<ChangePassword />} />
       <Route path="/market" element={<Supermarket />} />
       <Route path="/market/me" element={<MySubscriptions />} />
       <Route path="/land/:id" element={<LandingPage />} />

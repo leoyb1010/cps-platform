@@ -97,6 +97,7 @@ export interface User {
   permissions?: string[] // 真实后端模式下由服务端下发，优先于本地角色映射
   scopeType?: string
   scopeId?: string | null
+  mustChangePassword?: boolean // 真实模式：首登/邀请建号须先改密，前端据此拦截到改密页
 }
 // 演示账户（真实环境由后端校验密码哈希）。含品牌/代理门户账户：
 // 演示模式三类入口（控制台 / 品牌门户 / 代理门户）都可完整体验，与 seed 的服务端账户对齐。
@@ -163,6 +164,19 @@ export async function logout() {
     setAccessToken(null)
   }
   // 清业务数据缓存（真实模式）：共享机器上不给下一位登录者看上一账号的水合数据
+  void import('./store').then((m) => m.clearStoreOnLogout()).catch(() => {})
+  setUser(null)
+}
+
+/**
+ * 改密（真实模式）。服务端成功后会吊销全部会话（含本次），故本地一并登出，
+ * 让调用方引导用户以新密码重新登录。演示模式无真实鉴权，直接抛出提示。
+ */
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  if (!isRealApi) throw new Error('演示模式无需改密（账户由前端 mock）')
+  await http.post('/auth/change-password', { oldPassword, newPassword })
+  // 服务端已吊销全会话，本地清 token/用户，调用方跳登录页
+  setAccessToken(null)
   void import('./store').then((m) => m.clearStoreOnLogout()).catch(() => {})
   setUser(null)
 }

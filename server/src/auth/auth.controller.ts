@@ -13,6 +13,11 @@ class LoginDto {
   @IsString() @MinLength(1) password!: string
 }
 
+class ChangePasswordDto {
+  @IsString() @MinLength(1) oldPassword!: string
+  @IsString() @MinLength(8) newPassword!: string // 最短 8 位；强度策略可后续加正则
+}
+
 const REFRESH_COOKIE = 'cps_rt'
 
 @ApiTags('auth')
@@ -64,6 +69,16 @@ export class AuthController {
   @ApiOperation({ summary: '当前登录用户 + 角色 + 权限点 + 数据范围' })
   me(@CurrentUser() user: AuthUser) {
     return { user }
+  }
+
+  @Post('change-password')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } }) // 防猜旧密码：每 IP 每分钟 5 次
+  @ApiOperation({ summary: '修改密码（校验旧密码；成功后吊销全部会话，需重新登录）' })
+  async changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
+    await this.auth.changePassword(user.id, dto.oldPassword, dto.newPassword)
+    // 全会话已吊销，清掉本地 refresh cookie，前端应引导以新密码重新登录
+    res.clearCookie(REFRESH_COOKIE, { path: this.cfg.get<string>('REFRESH_COOKIE_PATH') || '/' })
+    return { ok: true }
   }
 
   @Public()

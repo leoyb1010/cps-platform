@@ -172,6 +172,13 @@ const NOTIFICATIONS = [
 ]
 
 async function main() {
+  // 安全闸：生产环境禁止灌入演示数据（含口令为 "demo" 的一批账号）。
+  // 生产建首个管理员请用 `npm run bootstrap:admin`（密码从 env 注入 / 随机打印一次）。
+  // 需要在生产刻意灌演示数据（如预发/沙箱）时，显式设置 SEED_DEMO=true 放行。
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO !== 'true') {
+    console.error('[seed] 生产环境已拒绝灌演示数据（口令均为 "demo"）。如确需演示数据请设 SEED_DEMO=true；建管理员用 npm run bootstrap:admin。')
+    process.exit(1)
+  }
   console.log('Seeding…')
   // roles
   for (const r of ROLE_PRESETS) {

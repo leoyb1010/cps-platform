@@ -34,6 +34,11 @@ export default function PortalLogin() {
     setBusy(true)
     try {
       const u = await login(account.trim(), pwd)
+      // 首登/邀请建号须先改密
+      if (u.mustChangePassword) {
+        nav('/change-password', { replace: true })
+        return
+      }
       const from = (loc.state as { from?: string } | null)?.from
       const home = homeForScope(u)
       // 深链回跳：仅回落到自己门户区内的路径，避免跨区跳转又被守卫弹回

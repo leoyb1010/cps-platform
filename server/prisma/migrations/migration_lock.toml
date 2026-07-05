@@ -1,0 +1,2 @@
+# 迁移基线锁：SQLite（本地/默认）。生产 PG 迁移见 prisma/migrations-pg/。
+provider = "sqlite"

@@ -13,6 +13,7 @@ export interface AuthUser {
   permissions: string[]
   scopeType: string
   scopeId?: string | null
+  mustChangePassword?: boolean // 首登强制改密标记，前端据此拦截到改密页
 }
 
 /** 取当前登录用户（由 AuthGuard 注入到 request.user）。 */
