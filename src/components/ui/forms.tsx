@@ -96,7 +96,7 @@ export function Steps({ steps, current }: { steps: string[]; current: number }) 
 
 /* ── EmptyState ────────────────────────────────── */
 // art：可选插画（public/img 细线条空态图），优先于 icon 小图标——空列表更有温度。
-export function EmptyState({ icon, art, title, desc }: { icon?: ReactNode; art?: 'no-data' | 'all-clear' | 'growth'; title: string; desc?: string }) {
+export function EmptyState({ icon, art, title, desc, action }: { icon?: ReactNode; art?: 'no-data' | 'all-clear' | 'growth'; title: string; desc?: string; action?: ReactNode }) {
   return (
     <div className="grid place-items-center gap-2 px-6 py-12 text-center">
       {art ? (
@@ -106,6 +106,7 @@ export function EmptyState({ icon, art, title, desc }: { icon?: ReactNode; art?:
       ) : null}
       <div className="text-[13px] font-medium text-ink-2">{title}</div>
       {desc && <div className="max-w-xs text-[12px] text-ink-4">{desc}</div>}
+      {action && <div className="mt-2">{action}</div>}
     </div>
   )
 }

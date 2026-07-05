@@ -10,7 +10,7 @@ import { useViewMode, setViewMode, useTheme, setTheme, type Theme, useCollapsedG
 import { Segmented } from '../ui/primitives'
 import { cx } from '../../lib/format'
 import { ReplayContext } from '../ui/primitives'
-import { useStore, markAllRead, on, startLiveFeed, stopLiveFeed } from '../../lib/store'
+import { useStore, markAllRead, on, startLiveFeed, stopLiveFeed, hydrateFromServer } from '../../lib/store'
 import { useAuth, useCan, logout, switchRole, ROLES, type RoleId } from '../../lib/auth'
 import { isRealApi } from '../../lib/http'
 import { useToast } from '../ui/overlays'
@@ -361,6 +361,14 @@ export default function AppLayout() {
   }, [loc.pathname])
   // 实时事件流：进控制台开启本地 ticker（模拟 SSE），离开清理
   useEffect(() => { startLiveFeed(); return () => stopLiveFeed() }, [])
+  // 真实模式轻量轮询：每 60s 重新水合，让跨端改动（如商品上架、结算）在控制台自动可见，
+  // 而不必手动刷新。仅在页面可见时轮询（切走的 tab 不空跑）。SSE 后续可替换本轮询。
+  useEffect(() => {
+    if (!isRealApi) return
+    const tick = () => { if (document.visibilityState === 'visible') void hydrateFromServer() }
+    const id = window.setInterval(tick, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
   // 真实模式：镜像写被服务端拒绝时提示用户（已自动回收服务端真值）
   useEffect(
     () =>

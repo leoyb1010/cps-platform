@@ -226,6 +226,23 @@ function subscribe(l: () => void) {
 }
 const getSnapshot = () => state
 
+// 跨标签页同步（演示态）：localStorage 是演示态权威源，别的标签页写入后回灌本页内存副本，
+// 避免多 tab last-write-wins 互相覆盖（控制台改价/上架在另一 tab 立即可见）。
+// 真实态数据来自后端水合，localStorage 仅缓存展示信息，不做跨 tab 回灌以免与服务端真值打架。
+if (typeof window !== 'undefined' && !isRealApi) {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY && e.newValue) {
+      try {
+        state = load()
+        __syncLiveEntities(state)
+        listeners.forEach((l) => l())
+      } catch {
+        /* 忽略损坏的跨 tab 值 */
+      }
+    }
+  })
+}
+
 // ── 水合状态（真实模式）：用于全局离线/降级提示 ──────────────
 //   idle：未开始/演示模式  ok：成功  offline：全部失败(服务不可达)  partial：部分集合失败
 export type HydrationStatus = 'idle' | 'ok' | 'offline' | 'partial'

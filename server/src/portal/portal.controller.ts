@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { presetToRange, presetToMonthKeys, type PeriodValue } from '../common/period'
+import { sendMail } from '../common/mailer'
 import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign, pubHint } from '../youdao/rsa-signature'
 import { buildStringToSign } from '../cps/signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
@@ -624,6 +625,11 @@ export class PortalController {
   private async notify(scopeType: string, scopeId: string | null, category: string, title: string, body: string, link: string) {
     try {
       await this.prisma.notification.create({ data: { id: 'NT-' + randomUUID().slice(0, 8), scopeType, scopeId, category, title, body, link } })
+      // 资金类事件（结算出账/提现等）额外触发邮件必达（未配 SMTP 时 no-op）。
+      // 收件人后续可从 scope 关联的账户邮箱解析；当前接入点先按 category 分流。
+      if (category === 'fund' && scopeId) {
+        await sendMail(`${scopeId}@notify.local`, title, body).catch(() => {})
+      }
     } catch { /* 通知失败不影响主流程 */ }
   }
 }

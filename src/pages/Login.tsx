@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowRight, ShieldCheck, AlertCircle, KeyRound } from 'lucide-react'
+import { ArrowRight, ShieldCheck, AlertCircle, KeyRound, Clock } from 'lucide-react'
 import { Button } from '../components/ui/primitives'
 import { Field, Input } from '../components/ui/forms'
 import { AuthShell } from '../components/layout/AuthShell'
-import { login, DEMO_USERS, ROLES } from '../lib/auth'
+import { login, DEMO_USERS, ROLES, consumeSessionExpired } from '../lib/auth'
 import { isRealApi } from '../lib/http'
 import { homeForScope } from './PortalLogin'
 
@@ -16,6 +16,7 @@ export default function Login() {
   const [pwd, setPwd] = useState(isRealApi ? '' : 'demo')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [expired] = useState(consumeSessionExpired) // 会话过期弹回：一次性提示"登录已过期"
   // 平台账户列表（品牌/代理演示账户在门户登录页展示，不混入内部入口）
   const platformUsers = DEMO_USERS.filter((u) => (u.scopeType ?? 'platform') === 'platform')
   const submit = async () => {
@@ -57,6 +58,11 @@ export default function Login() {
       </div>
 
       <div className="rounded-xl border border-line bg-surface p-6 shadow-[var(--shadow-card)]">
+        {expired && (
+          <div className="mb-3.5 flex items-center gap-1.5 rounded-md bg-warn-soft px-2.5 py-1.5 text-[12px] text-warn-ink" role="status">
+            <Clock size={13} /> 登录已过期，请重新登录
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault()

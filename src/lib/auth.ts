@@ -220,10 +220,22 @@ export function bootstrapAuth(): Promise<boolean> {
   return bootPromise
 }
 
+// 会话过期标记：会话中途失效时置 true，登录页据此提示"登录已过期"（区别于首次访问）。
+// 一次性消费：登录页读后清除。
+let sessionExpired = false
+export function consumeSessionExpired(): boolean {
+  const v = sessionExpired
+  sessionExpired = false
+  return v
+}
+
 // 会话中刷新彻底失败（refresh cookie 过期/被吊销）→ 清登录态，守卫自然弹回登录页；
 // 否则用户守着一个每个动作都报错的"僵尸控制台"，只能手动刷新才发现要重新登录。
 onAuthLost(() => {
-  if (current) setUser(null)
+  if (current) {
+    sessionExpired = true // 曾登录 → 属过期，非首次访问
+    setUser(null)
+  }
 })
 
 export function useAuth() {
