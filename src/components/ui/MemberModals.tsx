@@ -53,10 +53,10 @@ export function InviteMemberModal({ scopeOptions, onClose, onDone }: { scopeOpti
       <div className="space-y-3.5">
         <Field label="登录账号（邮箱 / 手机）" required><Input value={form.account} onChange={(e) => set('account', e.target.value)} placeholder="name@company.com" /></Field>
         <Field label="显示名" required><Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="如：王运营" /></Field>
-        <Field label="分配角色"><Select value={form.roleId} onChange={(e) => set('roleId', e.target.value as RoleId)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+        <Field label="分配角色"><Select aria-label="分配角色" value={form.roleId} onChange={(e) => set('roleId', e.target.value as RoleId)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
         {needScope && (
           <Field label={scopeType === 'brand' ? '归属品牌' : '归属代理'} required hint="客户角色必须绑定具体主体（数据级隔离）">
-            <Select value={form.scopeId} onChange={(e) => set('scopeId', e.target.value)}>
+            <Select aria-label={scopeType === 'brand' ? '归属品牌' : '归属代理'} value={form.scopeId} onChange={(e) => set('scopeId', e.target.value)}>
               <option value="">选择{scopeType === 'brand' ? '品牌' : '代理'}…</option>
               {scopeList.map((s) => <option key={s.id} value={s.id}>{s.name}（{s.id}）</option>)}
             </Select>
@@ -86,7 +86,7 @@ export function ManageMemberModal({ member, onClose, onDone }: { member: { id: s
   return (
     <Modal open onClose={onClose} title={`管理成员 · ${member.name}`} footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={save} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
       <div className="space-y-3.5">
-        <Field label="角色"><Select value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+        <Field label="角色"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
         <label className="flex items-center justify-between rounded-lg border border-line p-3">
           <div><div className="text-[12.5px] font-medium text-ink">停用账户</div><div className="text-[11px] text-ink-4">停用后无法登录，可恢复</div></div>
           <input type="checkbox" checked={disabled} onChange={(e) => setDisabled(e.target.checked)} className="h-4 w-4 accent-brand" />

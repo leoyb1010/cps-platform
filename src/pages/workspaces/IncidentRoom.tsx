@@ -27,7 +27,7 @@ export default function IncidentRoom() {
   if (!m) {
     return (
       <>
-        <div className="mb-4 flex items-center gap-2"><button onClick={() => nav('/risk')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button><PageHeader title="处置舱" desc="未找到该商户号" /></div>
+        <div className="mb-4 flex items-center gap-2"><button aria-label="返回风控工作台" title="返回风控工作台" onClick={() => nav('/risk')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button><PageHeader title="处置舱" desc="未找到该商户号" /></div>
         <Card><div className="py-10 text-center text-[13px] text-ink-4">商户号 {mid} 不存在或已下线。</div></Card>
       </>
     )
@@ -64,7 +64,7 @@ export default function IncidentRoom() {
   return (
     <>
       <div className="mb-4 flex items-center gap-2">
-        <button onClick={() => nav('/risk')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button>
+        <button aria-label="返回风控工作台" title="返回风控工作台" onClick={() => nav('/risk')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button>
         <PageHeader title={`处置舱 · ${m.id}`} desc="事件上下文 · 处置动作(带影响预演) · 留痕，一屏完成" />
       </div>
 

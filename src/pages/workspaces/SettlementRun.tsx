@@ -69,7 +69,7 @@ export default function SettlementRun() {
   return (
     <>
       <div className="mb-4 flex items-center gap-2">
-        <button onClick={() => nav('/settlement')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button>
+        <button aria-label="返回清结算" title="返回清结算" onClick={() => nav('/settlement')} className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></button>
         <PageHeader title="结算工作台" desc="月结日一屏走完：对账 → 差异 → 结算 → 释放准备金 → 提现。中断可续跑，完成生成结算报告。" />
       </div>
 

@@ -76,7 +76,11 @@ export default function LandingPage() {
         <div>
           <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-surface-sunken text-ink-4"><AlertCircle size={22} /></div>
           <div className="text-[15px] font-semibold text-ink">落地页不存在或已下线</div>
-          <p className="mt-1.5 text-[12.5px] text-ink-4">请向分享者确认最新链接。</p>
+          <p className="mt-1.5 text-[12.5px] text-ink-4">请向分享者确认最新链接，或回到订阅超市重新选择。</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <a href="#/market" className="rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-hover">返回订阅超市</a>
+            <a href="#/market/me" className="rounded-xl border border-line bg-surface px-4 py-2.5 text-[13px] font-medium text-ink-2 hover:bg-surface-muted">查看我的订阅</a>
+          </div>
         </div>
       </div>
     )
@@ -192,7 +196,7 @@ export default function LandingPage() {
                   {/* 支付前协议勾选（真实态支付本就禁用，此勾选仅为演示态 gate；不改变真实态门禁） */}
                   {!isRealApi && (
                     <label className="mt-4 flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-ink-4">
-                      <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ accentColor: theme }} />
+                      <input aria-label="同意用户协议和隐私政策" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ accentColor: theme }} />
                       <span>我已阅读并同意<a href="#/legal/terms" target="_blank" rel="noreferrer" className="font-medium hover:underline" style={{ color: theme }}>《用户协议》</a><a href="#/legal/privacy" target="_blank" rel="noreferrer" className="font-medium hover:underline" style={{ color: theme }}>《隐私政策》</a></span>
                     </label>
                   )}

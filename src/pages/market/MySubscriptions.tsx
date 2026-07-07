@@ -50,7 +50,7 @@ export default function MySubscriptions() {
     <div className="min-h-screen bg-canvas">
       <div className="mx-auto min-h-screen max-w-[440px] bg-surface shadow-[var(--shadow-pop)]">
         <div className="flex items-center gap-2.5 border-b border-line px-5 py-3.5">
-          <a href="#/market" className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></a>
+          <a href="#/market" aria-label="返回订阅超市" title="返回订阅超市" className="grid h-8 w-8 place-items-center rounded-lg text-ink-4 hover:bg-surface-muted"><ArrowLeft size={16} /></a>
           <div className="flex items-center gap-2"><ShoppingBag size={16} className="text-brand" /><span className="text-[14px] font-semibold text-ink">我的订阅</span></div>
         </div>
 
