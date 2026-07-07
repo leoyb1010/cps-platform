@@ -9,7 +9,6 @@ import {
   TrendingUp,
   ShieldCheck,
   GlassWater,
-  Activity,
   ShieldHalf,
   Sparkles,
 } from 'lucide-react'

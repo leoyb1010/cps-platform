@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ShieldAlert, Activity, Zap, Ban, Gauge, RotateCcw, TriangleAlert, CheckCircle2 } from 'lucide-react'
-import { PageHeader, Card, CardTitle, Badge, Button, BrandMark, TONE } from '../../components/ui/primitives'
+import { PageHeader, Card, CardTitle, Badge, BrandMark, TONE } from '../../components/ui/primitives'
 import { Sparkline } from '../../components/ui/charts'
 import { useToast, Confirm } from '../../components/ui/overlays'
 import { useStore, setMerchantState } from '../../lib/store'

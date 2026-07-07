@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { Copy, Check, KeyRound, Webhook, Code2, Activity, ShieldCheck, Upload, Play } from 'lucide-react'
+import { Copy, Check, KeyRound, Activity, ShieldCheck, Upload, Play } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button, TableShell, Th, Td, Row, Segmented } from '../../components/ui/primitives'
 import { Modal, useToast, Confirm } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'
-import { LANGS, stringToSign, TS_SENTINEL, type CodeGenInput } from '../../lib/codeGen'
+import { LANGS, TS_SENTINEL, type CodeGenInput } from '../../lib/codeGen'
 import { copyText } from '../../lib/format'
 
 interface DevConfig {
@@ -33,7 +33,6 @@ const ENDPOINTS = [
 ]
 
 export function BrandDeveloper() {
-  const toast = useToast()
   const { data, state, reload } = usePortalResource<DevConfig>(() => portalApi.developer<DevConfig>())
   const [tab, setTab] = useState<Tab>('cred')
   const [copied, setCopied] = useState('')

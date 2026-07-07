@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Check, ShieldCheck, Sparkles, Wallet, CheckCircle2, AlertCircle, Info } from 'lucide-react'
+import { Check, ShieldCheck, Sparkles, Wallet, AlertCircle, Info } from 'lucide-react'
 import { marketApi, type MarketProduct, type Quote } from '../../lib/marketApi'
 import { getLandingPage, recordLandingOrder, recordLandingView, brandColorOf, brandName, isContinuous, type LandingPage as LP } from '../../lib/landing'
 import { money } from '../../lib/format'

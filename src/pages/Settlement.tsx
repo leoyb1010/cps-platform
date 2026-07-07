@@ -33,7 +33,7 @@ import {
 import { FundSankey } from '../components/ui/charts'
 import { useStore, clearSettlement, reconcileSettlement, settleAgent } from '../lib/store'
 import { useViewMode } from '../lib/prefs'
-import { Confirm, useToast } from '../components/ui/overlays'
+import { useToast } from '../components/ui/overlays'
 import { DetailPopover, useAnchoredPopover, type AnchorRect } from '../components/ui/popover'
 import { Term } from '../components/ui/Term'
 import { type Settlement as SettlementT } from '../lib/data'
