@@ -21,12 +21,12 @@ export interface ClientBranding {
 
 function PortalLogo({ branding }: { branding: ClientBranding }) {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5">
       <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-[22px] w-auto" />
       <span className="h-[18px] w-px shrink-0 bg-line" />
-      <div className="leading-[1.12] whitespace-nowrap">
+      <div className="min-w-0 leading-[1.12]">
         <div className="text-[11.5px] font-semibold text-ink">{branding.name}</div>
-        <div className="text-[9px] tracking-[0.12em] text-ink-4">{branding.sub}</div>
+        <div className="max-w-[112px] text-[9px] leading-tight tracking-[0.02em] text-ink-4">{branding.sub}</div>
       </div>
     </div>
   )
@@ -151,8 +151,8 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
         <div className="md:pl-[236px]">
           <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-5 backdrop-blur-md">
             <button aria-label="打开菜单" onClick={() => setOpen(true)} className="grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
-            <div className="flex items-center gap-2 text-[12.5px] text-ink-4">
-              <span>{branding.name}</span>
+            <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-ink-4">
+              <span className="truncate">{branding.name}</span>
               <span className="rounded-md bg-good-soft px-1.5 py-0.5 text-[11px] font-medium text-good-ink">客户门户</span>
             </div>
             <div className="ml-auto flex items-center gap-2"><ThemeToggle /><PortalBell /></div>

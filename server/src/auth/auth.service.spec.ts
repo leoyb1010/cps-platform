@@ -1,31 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma.service'
 import { AuthService } from './auth.service'
+import { resetPrismaTestDb } from '../test-utils/prisma-test-db'
 
 let prisma: PrismaService
 let auth: AuthService
 
 beforeAll(() => {
-  process.env.DATABASE_URL = 'file:./auth-test.db'
-  for (const f of ['auth-test.db', 'auth-test.db-journal']) {
-    try {
-      rmSync(`${__dirname}/../../${f}`)
-    } catch {
-      /* ignore */
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: 'file:./auth-test.db' }, stdio: 'ignore' })
+  resetPrismaTestDb('auth-test')
   prisma = new PrismaService()
   const cfg = { get: (k: string) => ({ JWT_ACCESS_SECRET: 'test-secret-xxxxxxxxxxxxxxxxxxxxx', ACCESS_TTL: '900s', REFRESH_TTL_DAYS: '14' })[k] } as unknown as ConfigService
   auth = new AuthService(prisma, new JwtService({}), cfg)
 })
 
 afterAll(async () => {
-  await prisma.$disconnect()
+  await prisma?.$disconnect()
 })
 
 beforeEach(async () => {

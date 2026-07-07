@@ -341,7 +341,7 @@ export function Segmented<T extends string>({
   onChange: (v: T) => void
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-line bg-surface p-0.5">
+    <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-line bg-surface p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -367,16 +367,18 @@ export function TableShell({
   children,
   className,
   empty = '暂无符合条件的数据',
+  minWidth,
 }: {
   head: ReactNode
   children: ReactNode
   className?: string
   empty?: ReactNode
+  minWidth?: number | string
 }) {
   const isEmpty = Children.count(children) === 0
   return (
     <div className={cx('overflow-x-auto', className)}>
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full border-collapse text-[13px]" style={minWidth ? { minWidth } : undefined}>
         <thead>
           <tr className="border-b border-line text-left text-[11.5px] font-medium tracking-wide text-ink-3 uppercase">
             {head}

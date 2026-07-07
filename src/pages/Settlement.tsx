@@ -161,6 +161,7 @@ export default function Settlement() {
         {tab === 'brand' ? (
           <TableShell
             className="px-2 pb-2"
+            minWidth={760}
             head={
               <>
                 <Th className="pl-3">结算单 / 品牌</Th>
@@ -223,6 +224,7 @@ export default function Settlement() {
         ) : (
           <TableShell
             className="px-2 pb-2"
+            minWidth={720}
             head={
               <>
                 <Th className="pl-3">代理</Th>

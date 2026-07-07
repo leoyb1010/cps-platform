@@ -46,12 +46,12 @@ export function ThemeToggle() {
 
 function LogoMark() {
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5">
       <img src="./youdao-logo.png" alt="网易有道" className="logo-mark h-[22px] w-auto" />
       <span className="h-[18px] w-px shrink-0 bg-line" />
-      <div className="leading-[1.12] whitespace-nowrap">
+      <div className="min-w-0 leading-[1.12]">
         <div className="text-[11.5px] font-semibold text-ink">订阅增长交易</div>
-        <div className="text-[9px] tracking-[0.12em] text-ink-4">风险清结算平台</div>
+        <div className="max-w-[120px] text-[9px] leading-tight tracking-[0.02em] text-ink-4">风险清结算平台</div>
       </div>
     </div>
   )

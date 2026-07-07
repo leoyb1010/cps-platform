@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import {
   Sliders,
   ShieldAlert,
@@ -26,11 +26,14 @@ const CHANNEL_META: { name: string; note: string }[] = [
   { name: '银行二类户 · 存管', note: '接入评估中' },
 ]
 
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
     <button
+      aria-checked={on}
+      aria-label={label}
       onClick={onClick}
-      className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-line-strong')}
+      role="switch"
+      className={cx('relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand/35', on ? 'bg-brand' : 'bg-line-strong')}
     >
       <span className={cx('absolute top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-all', on ? 'left-[18px]' : 'left-[2px]')} />
     </button>
@@ -40,15 +43,16 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 // 可编辑数值字段：失焦/回车保存（持久化 + 回读）
 function NumField({ label, note, value, suffix, onSave, step = 1, min = 0, max = 1000 }: { label: string; note?: string; value: number; suffix?: string; onSave: (v: number) => void; step?: number; min?: number; max?: number }) {
   const [v, setV] = useState(String(value))
+  const id = useId()
   const commit = () => { const n = Math.min(max, Math.max(min, +v || 0)); onSave(n); setV(String(n)) }
   return (
     <div className="flex items-center justify-between gap-4 border-b border-line/70 py-3 last:border-0">
       <div>
-        <div className="text-[12.5px] font-medium text-ink">{label}</div>
+        <label htmlFor={id} className="text-[12.5px] font-medium text-ink">{label}</label>
         {note && <div className="text-[11.5px] text-ink-4">{note}</div>}
       </div>
       <div className="flex items-center gap-1">
-        <input type="number" step={step} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+        <input id={id} aria-label={label} type="number" step={step} value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
           className="tnum w-[68px] rounded-lg border border-line bg-surface px-2 py-1.5 text-right text-[12.5px] font-medium text-ink outline-none focus:border-brand" />
         {suffix && <span className="text-[12px] text-ink-4">{suffix}</span>}
       </div>
@@ -57,10 +61,10 @@ function NumField({ label, note, value, suffix, onSave, step = 1, min = 0, max =
 }
 
 // 紧凑内联数字输入（费率区间用）
-function NumFieldInline({ value, onSave }: { value: number; onSave: (v: number) => void }) {
+function NumFieldInline({ label, value, onSave }: { label: string; value: number; onSave: (v: number) => void }) {
   const [v, setV] = useState(String(value))
   return (
-    <input type="number" value={v} onChange={(e) => setV(e.target.value)} onBlur={() => { const n = Math.min(100, Math.max(0, +v || 0)); onSave(n); setV(String(n)) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+    <input aria-label={label} type="number" value={v} onChange={(e) => setV(e.target.value)} onBlur={() => { const n = Math.min(100, Math.max(0, +v || 0)); onSave(n); setV(String(n)) }} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
       className="tnum w-[52px] rounded-lg border border-line bg-surface px-2 py-1.5 text-right text-[12.5px] font-medium text-ink outline-none focus:border-brand" />
   )
 }
@@ -72,7 +76,7 @@ function SwitchRow({ label, note, on, set }: { label: string; note: string; on: 
         <div className="text-[12.5px] font-medium text-ink">{label}</div>
         <div className="text-[11.5px] text-ink-4">{note}</div>
       </div>
-      <Toggle on={on} onClick={() => set(!on)} />
+      <Toggle label={label} on={on} onClick={() => set(!on)} />
     </div>
   )
 }
@@ -100,9 +104,9 @@ export default function Settings() {
           <div className="flex items-center justify-between gap-4 border-b border-line/70 py-3">
             <div><div className="text-[12.5px] font-medium text-ink">品牌费率区间</div><div className="text-[11.5px] text-ink-4">给「平台+代理」总分润</div></div>
             <div className="flex items-center gap-1.5">
-              <NumFieldInline value={pp.feeRangeLow} onSave={(v) => setPlatformParams({ feeRangeLow: v })} />
+              <NumFieldInline label="最低服务费率" value={pp.feeRangeLow} onSave={(v) => setPlatformParams({ feeRangeLow: v })} />
               <span className="text-ink-4">–</span>
-              <NumFieldInline value={pp.feeRangeHigh} onSave={(v) => setPlatformParams({ feeRangeHigh: v })} />
+              <NumFieldInline label="最高服务费率" value={pp.feeRangeHigh} onSave={(v) => setPlatformParams({ feeRangeHigh: v })} />
               <span className="text-[12px] text-ink-4">%</span>
             </div>
           </div>

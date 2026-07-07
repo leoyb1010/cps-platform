@@ -147,16 +147,16 @@ export default function Dashboard() {
   return (
     <>
       {/* header */}
-      <div style={rev(0.04)} className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <div style={rev(0.04)} className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2.5"><span className="h-[7px] w-[7px] bg-brand" /><span className="text-[11px] font-semibold tracking-[0.14em] text-brand">北极星指标</span></div>
           <h1 className="t-h1 mt-2 text-ink">经营总览</h1>
           <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">北极星看 R-NSC 风险调整后净订阅贡献，不被 GMV 诱导 · 先看风险与待办，号池健康联动投放</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2.5">
+        <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:shrink-0">
           <Segmented value={range} onChange={setRange} options={[{ value: 'today', label: '今日' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'quarter', label: '本季' }]} />
-          <Button variant="ghost" busyMs={420} onClick={() => { exportCsv(range, { gmvBase, netMtd: netMtdShown, ltvCac: ltvCacShown, renewal: renewalShown, complaintRate: complaintRateShown, rnsc: rnscShown }); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
-          <Button variant="primary" onClick={() => nav('/settlement')}>本期结算预览 <ArrowRight size={15} /></Button>
+          <Button className="max-sm:flex-1" variant="ghost" busyMs={420} onClick={() => { exportCsv(range, { gmvBase, netMtd: netMtdShown, ltvCac: ltvCacShown, renewal: renewalShown, complaintRate: complaintRateShown, rnsc: rnscShown }); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
+          <Button className="max-sm:flex-1" variant="primary" onClick={() => nav('/settlement')}>本期结算预览 <ArrowRight size={15} /></Button>
         </div>
       </div>
 

@@ -109,6 +109,7 @@ export default function Brands() {
         </div>
         <TableShell
           className="px-2 pb-2"
+          minWidth={760}
           head={<><Th className="pl-3">品牌</Th><Th>品类</Th><Th>资金路径</Th><Th right>费率</Th><Th right>账期</Th><Th>投诉率 / 阈值</Th><Th right>本月基础流水</Th><Th right>续费率</Th><Th right>状态</Th><Th right>操作</Th></>}
         >
           {list.map((b) => {

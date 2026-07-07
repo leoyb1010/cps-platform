@@ -140,12 +140,12 @@ export function LandingWorkshop({
               <Card>
                 <CardTitle title="② 编辑落地页" desc={scope === 'agent' ? '价格与合规模块由平台锁定，你可编辑标题与卖点' : '标题、卖点与主题色可定制'} />
                 <div className="space-y-3">
-                  <Labeled label="标题"><input value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} placeholder="如：学习 + 娱乐 一站开通，组合更省" className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-brand" /></Labeled>
-                  <Labeled label="副标题（选填）"><input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="一句话说明套餐价值" className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-brand" /></Labeled>
+                  <Labeled label="标题"><input aria-label="标题" value={pageTitle} onChange={(e) => setPageTitle(e.target.value)} placeholder="如：学习 + 娱乐 一站开通，组合更省" className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-brand" /></Labeled>
+                  <Labeled label="副标题（选填）"><input aria-label="副标题" value={subtitle} onChange={(e) => setSubtitle(e.target.value)} placeholder="一句话说明套餐价值" className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-brand" /></Labeled>
                   <Labeled label="卖点三条">
                     <div className="space-y-2">
                       {points.map((pt, i) => (
-                        <input key={i} value={pt} onChange={(e) => { pointsDirty.current = true; setPoints((ps) => ps.map((x, k) => (k === i ? e.target.value : x))) }} placeholder={`卖点 ${i + 1}`} className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" />
+                        <input key={i} aria-label={`卖点 ${i + 1}`} value={pt} onChange={(e) => { pointsDirty.current = true; setPoints((ps) => ps.map((x, k) => (k === i ? e.target.value : x))) }} placeholder={`卖点 ${i + 1}`} className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" />
                       ))}
                     </div>
                   </Labeled>
@@ -153,12 +153,12 @@ export function LandingWorkshop({
                     {scope === 'brand' && (
                       <Labeled label="主题色">
                         <div className="flex items-center gap-2">
-                          <input type="color" value={theme} onChange={(e) => setTheme(e.target.value)} className="h-8 w-10 cursor-pointer rounded border border-line bg-surface" />
+                          <input aria-label="主题色" type="color" value={theme} onChange={(e) => setTheme(e.target.value)} className="h-8 w-10 cursor-pointer rounded border border-line bg-surface" />
                           <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-4"><Palette size={12} /> {theme}</span>
                         </div>
                       </Labeled>
                     )}
-                    <Labeled label="渠道标记（选填）"><input value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="信息流 / 公众号 / 私域" className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" /></Labeled>
+                    <Labeled label="渠道标记（选填）"><input aria-label="渠道标记" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="信息流 / 公众号 / 私域" className="w-full rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] outline-none focus:border-brand" /></Labeled>
                   </div>
                 </div>
               </Card>
@@ -215,7 +215,7 @@ export function LandingWorkshop({
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[12px] font-medium text-ink-2">{label}</label>
+      <div className="mb-1 block text-[12px] font-medium text-ink-2">{label}</div>
       {children}
     </div>
   )

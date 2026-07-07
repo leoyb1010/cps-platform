@@ -1,28 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
 import { PrismaService } from '../prisma.service'
 import { IdempotencyService } from './idempotency.service'
+import { resetPrismaTestDb } from '../test-utils/prisma-test-db'
 
 let prisma: PrismaService
 let idem: IdempotencyService
 
 beforeAll(() => {
-  process.env.DATABASE_URL = 'file:./idem-test.db'
-  for (const f of ['idem-test.db', 'idem-test.db-journal']) {
-    try {
-      rmSync(`${__dirname}/../../${f}`)
-    } catch {
-      /* ignore */
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: 'file:./idem-test.db' }, stdio: 'ignore' })
+  resetPrismaTestDb('idem-test')
   prisma = new PrismaService()
   idem = new IdempotencyService(prisma)
 })
 
 afterAll(async () => {
-  await prisma.$disconnect()
+  await prisma?.$disconnect()
 })
 
 beforeEach(async () => {

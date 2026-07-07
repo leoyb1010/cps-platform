@@ -1,11 +1,11 @@
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
+import { execFileSync } from 'node:child_process'
 import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createSign } from 'crypto'
 import { DEMO_RSA_PRIVATE, DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
+import { resetPrismaTestDb } from '../src/test-utils/prisma-test-db'
 import cookieParser = require('cookie-parser')
 
 // 有道对接演示凭证（与 seed 一致），RSA 签名对外接口测试
@@ -26,9 +26,9 @@ function ydSign(params: Record<string, unknown>): Record<string, unknown> {
   return { ...p, sign: signer.sign(DEMO_RSA_PRIVATE, 'base64') }
 }
 
-// 独立测试库 + 每次重建/灌种子 → 测试与开发库隔离、顺序无关、可重复
-process.env.DATABASE_URL = 'file:./test.db'
 process.env.NODE_ENV = 'test'
+process.env.JWT_ACCESS_SECRET ||= 'test-access-secret-not-for-prod-xxxxxxxx'
+process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret-not-for-prod-xxxxxxxx'
 
 let app: INestApplication
 let httpServer: any
@@ -48,22 +48,10 @@ async function mkPaidBundle(productIds: string[]): Promise<{ bundleId: string; f
 
 beforeAll(async () => {
   // 在导入 AppModule(及其 PrismaClient)前：删旧 test.db → 建表 → 灌种子。
-  // 删文件而非 --force-reset，保证干净态的同时避开危险操作确认；软删除/幂等键等有状态用例顺序无关、可重复。
-  const env = { ...process.env, DATABASE_URL: 'file:./test.db' }
-  // SQLite 相对路径按 schema.prisma 所在目录解析 → 实际库在 server/prisma/test.db。
-  // 旧版本删的是 server/test.db（删了个寂寞），跨 run 残留数据长期污染测试库——
-  // 直到 refundedOrderId 加唯一约束时 db push 失败才显形。两处都删，兼清历史残留。
-  for (const f of ['test.db', 'test.db-journal', 'test.db-wal', 'test.db-shm']) {
-    for (const dir of ['..', '../prisma']) {
-      try {
-        rmSync(`${__dirname}/${dir}/${f}`)
-      } catch {
-        /* 不存在则忽略 */
-      }
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env, stdio: 'ignore' })
-  execSync('npx ts-node prisma/seed.ts', { env, stdio: 'ignore' })
+  // 绝对路径临时库避免 schema 相对路径残留；seed 子进程沿用同一个 DATABASE_URL。
+  const databaseUrl = resetPrismaTestDb('e2e-test')
+  const env = { ...process.env, DATABASE_URL: databaseUrl }
+  execFileSync('npx', ['ts-node', 'prisma/seed.ts'], { env, encoding: 'utf8', stdio: 'pipe' })
   const { AppModule } = await import('../src/app.module')
   const { AllExceptionsFilter } = await import('../src/common/all-exceptions.filter')
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile()

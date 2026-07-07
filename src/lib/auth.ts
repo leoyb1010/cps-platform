@@ -6,6 +6,7 @@
 // ════════════════════════════════════════════════════════════════
 import { useSyncExternalStore } from 'react'
 import { http, isRealApi, setAccessToken, onAuthLost } from './http'
+import { clearStoreOnLogout, hydrateFromServer } from './store'
 
 /* ── 权限点字典（与 v4 §4 一致，按业务域分组） ── */
 export interface PermDef {
@@ -147,7 +148,7 @@ export async function login(account: string, password = 'demo'): Promise<User> {
     setAccessToken(r.access)
     setUser(r.user)
     // 登录即水合：换账号/门户误入都以新账号的服务端真值起步，而非上个会话残留
-    void import('./store').then((m) => m.hydrateFromServer()).catch(() => {})
+    void hydrateFromServer().catch(() => {})
     return r.user
   }
   // 演示模式：未知账号必须报错——静默回退成超管（旧行为）意味着任何乱输的账号密码都以最高权限进入
@@ -164,7 +165,7 @@ export async function logout() {
     setAccessToken(null)
   }
   // 清业务数据缓存（真实模式）：共享机器上不给下一位登录者看上一账号的水合数据
-  void import('./store').then((m) => m.clearStoreOnLogout()).catch(() => {})
+  clearStoreOnLogout()
   setUser(null)
 }
 
@@ -177,7 +178,7 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   await http.post('/auth/change-password', { oldPassword, newPassword })
   // 服务端已吊销全会话，本地清 token/用户，调用方跳登录页
   setAccessToken(null)
-  void import('./store').then((m) => m.clearStoreOnLogout()).catch(() => {})
+  clearStoreOnLogout()
   setUser(null)
 }
 

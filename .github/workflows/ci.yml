@@ -44,6 +44,8 @@ jobs:
         run: npx prisma generate && npx prisma db push --skip-generate
         env:
           DATABASE_URL: file:./dev.db
+          PRISMA_HIDE_UPDATE_MESSAGE: "1"
+          RUST_LOG: info
       - name: 构建
         run: npm run build
       - name: e2e (独立 test.db, 自建+灌种子)
@@ -104,9 +106,7 @@ jobs:
       # 前端无 high 漏洞 → 阻断
       - name: 前端依赖审计（high 阻断）
         run: npm audit --audit-level=high
-      # 后端现存 high 均为传递依赖且本项目不触发(multer DoS 无上传路由 / esbuild 仅 dev-server)，
-      # 不阻断但报告(见 server/SECURITY-AUDIT.md 的逐条研判); 引入新可利用漏洞时人工处理。
-      - name: 后端依赖审计（报告，不阻断）
+      # 后端已清零已知漏洞，新增 moderate+ 一律阻断，避免资金/权限链路带病进入 main。
+      - name: 后端依赖审计（moderate 阻断）
         working-directory: server
-        run: npm audit --audit-level=critical || true
-        continue-on-error: true
+        run: npm audit --audit-level=moderate

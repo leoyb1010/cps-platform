@@ -420,7 +420,7 @@ function ShelfBody(s: ShelfProps) {
                     {/* 支付前协议勾选（真实态支付本就禁用，此勾选仅为演示态 gate；不改变真实态门禁） */}
                     {!isRealApi && (
                       <label className="mt-3 flex cursor-pointer items-start gap-2 text-[11.5px] leading-relaxed text-ink-3">
-                        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand" />
+                        <input aria-label="同意用户协议和隐私政策" type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand" />
                         <span>我已阅读并同意<a href="#/legal/terms" target="_blank" rel="noreferrer" className="text-brand hover:underline">《用户协议》</a><a href="#/legal/privacy" target="_blank" rel="noreferrer" className="text-brand hover:underline">《隐私政策》</a></span>
                       </label>
                     )}

@@ -1,29 +1,20 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from './audit.service'
 import { MetricsService } from '../common/metrics.service'
+import { resetPrismaTestDb } from '../test-utils/prisma-test-db'
 
 let prisma: PrismaService
 let audit: AuditService
 
 beforeAll(() => {
-  process.env.DATABASE_URL = 'file:./audit-test.db'
-  for (const f of ['audit-test.db', 'audit-test.db-journal']) {
-    try {
-      rmSync(`${__dirname}/../../${f}`)
-    } catch {
-      /* ignore */
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: 'file:./audit-test.db' }, stdio: 'ignore' })
+  resetPrismaTestDb('audit-test')
   prisma = new PrismaService()
   audit = new AuditService(prisma, new MetricsService())
 })
 
 afterAll(async () => {
-  await prisma.$disconnect()
+  await prisma?.$disconnect()
 })
 
 describe('AuditService · fail-closed（同事务）', () => {
