@@ -9,6 +9,7 @@ import { YD_CODE, ydErr, ydOk } from './youdao-codes'
 import { toOrderStatus } from './youdao-status'
 
 // 验签结果：成功带归属，失败带有道错误码（由 handler 直接 return，HTTP 200 + body code，符合有道规范）
+type AuthnInput = { merchantId?: string; custId?: string }
 type AuthnResult = { ok: true; brandId: string; merchantId: string; custId: string } | { ok: false; err: { code: number; msg: string } }
 
 // ── 有道续费对接 DTO（form-data / urlencoded；forbidNonWhitelisted 要求穷举字段）──
@@ -50,10 +51,11 @@ export class YoudaoController {
 
   // RSA 验签：按 merchantId 取凭证公钥 → verifyRsaSign。失败返有道错误码（HTTP 200 + body code，符合规范），
   //   不抛 UnauthorizedException（那会被全局过滤器改成 401 + 通用体）。
-  private async authn(body: { merchantId?: string }): Promise<AuthnResult> {
+  private async authn(body: AuthnInput): Promise<AuthnResult> {
     const merchantId = body.merchantId
-    if (!merchantId || typeof merchantId !== 'string') return { ok: false, err: ydErr(YD_CODE.CUST_NOT_FOUND) }
-    const cred = await this.prisma.apiCredential.findFirst({ where: { merchantId, status: 'active' } })
+    const custId = body.custId
+    if (!merchantId || typeof merchantId !== 'string' || !custId || typeof custId !== 'string') return { ok: false, err: ydErr(YD_CODE.CUST_NOT_FOUND) }
+    const cred = await this.prisma.apiCredential.findFirst({ where: { merchantId, custId, status: 'active' } })
     if (!cred || !cred.publicKey) return { ok: false, err: ydErr(YD_CODE.CUST_NOT_FOUND) }
     const r = verifyRsaSign(body as Record<string, unknown>, cred.publicKey)
     if (!r.ok) return { ok: false, err: ydErr(YD_CODE.SIGN_ERROR) }
@@ -115,8 +117,8 @@ export class YoudaoController {
 
   // ── 订单状态查询（RSA 验签，GET）：返回 orderStatus（对账）──
   @Public() @Get('order/outside/orderQuery') @ApiOperation({ summary: '有道续费·订单查询（RSA 验签，GET）：orderStatus 状态' })
-  async orderQuery(@Query() q: { merchantId?: string; orderId?: string; sign?: string; timestamp?: string }) {
-    const a = await this.authn(q as { merchantId?: string })
+  async orderQuery(@Query() q: { custId?: string; merchantId?: string; orderId?: string; sign?: string; timestamp?: string }) {
+    const a = await this.authn(q as AuthnInput)
     if (!a.ok) return a.err
     const { brandId } = a
     const orderId = q.orderId ?? ''

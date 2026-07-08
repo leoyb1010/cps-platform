@@ -264,7 +264,7 @@ export function BrandTickets() {
     setBusy(true)
     try {
       const r = await portalApi.replyTicket(active.id, { handlePlan: plan, note, status })
-      if (r.ok) { toast({ tone: 'good', text: status === 'resolved' ? '工单已标记解决' : '处理办法已保存' }); setActive(null); reload() }
+      if (r.ok) { toast({ tone: 'good', text: status === 'processing' ? '协作处理已提交' : '处理办法已保存' }); setActive(null); reload() }
       else toast({ tone: 'alert', text: r.detail || '保存失败' })
     } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(false) }
   }
@@ -310,7 +310,7 @@ export function BrandTickets() {
         footer={active && active.status !== 'resolved' ? (
           <><Button variant="ghost" onClick={() => setActive(null)}>关闭</Button>
             <Button variant="ghost" onClick={() => save()} disabled={busy}>保存处理办法</Button>
-            <Button variant="primary" onClick={() => save('resolved')} disabled={busy}>标记已解决</Button></>
+            <Button variant="primary" onClick={() => save('processing')} disabled={busy}>提交协作处理</Button></>
         ) : <Button variant="ghost" onClick={() => setActive(null)}>关闭</Button>}>
         {active && (
           <div className="space-y-3.5">

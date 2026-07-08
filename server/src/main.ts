@@ -45,7 +45,7 @@ async function bootstrap() {
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }))
   app.setGlobalPrefix('', { exclude: [] })
   app.enableCors({
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5273').split(','),
+    origin: (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || 'http://localhost:5273').split(','),
     credentials: true,
   })
   // whitelist 剥离未知字段；forbidNonWhitelisted 直接 400（防意外/恶意多余字段）；transform 启用类型转换

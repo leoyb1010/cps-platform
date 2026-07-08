@@ -57,7 +57,7 @@ export class SignWebhookService {
       await this.persist(logId, so.id, so.brandId, status, payload, '', { httpStatus: 0, ok: false, error: '未配置回调地址', deliveryStatus: 'dead', nextRetryAt: null })
       return
     }
-    const safeCallback = validatePublicCallbackUrl(callbackUrl)
+    const safeCallback = await validatePublicCallbackUrl(callbackUrl)
     if (!safeCallback.ok) {
       await this.persist(logId, so.id, so.brandId, status, payload, callbackUrl, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', nextRetryAt: null })
       return
@@ -76,7 +76,7 @@ export class SignWebhookService {
   private async attempt(id: string, callbackUrl: string, payload: Record<string, unknown>): Promise<void> {
     const row = await this.prisma.signCallbackLog.findUnique({ where: { id } }).catch(() => null)
     const attemptNo = (row?.attempts ?? 0) + 1
-    const safeCallback = validatePublicCallbackUrl(callbackUrl)
+    const safeCallback = await validatePublicCallbackUrl(callbackUrl)
     if (!safeCallback.ok) {
       await this.update(id, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', attempts: attemptNo, nextRetryAt: null })
       return

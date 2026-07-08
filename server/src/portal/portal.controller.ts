@@ -248,11 +248,11 @@ export class PortalController {
   private async replyTicketAs(actor: 'brand' | 'agent', scopeId: string, id: string, user: AuthUser, dto: TicketReplyDto) {
     const t = await this.prisma.ticket.findFirst({ where: { id, [actor === 'brand' ? 'brandId' : 'agentId']: scopeId } })
     if (!t) return { ok: false, detail: '工单不存在或不属于你' }
+    if (dto.status === 'resolved') return { ok: false, detail: '工单关闭需由平台风控确认，品牌/代理只能提交协作处理说明' }
     const data: Record<string, unknown> = { handledBy: `${actor}:${scopeId}` }
     if (dto.handlePlan !== undefined) data.handlePlan = dto.handlePlan
     if (dto.note !== undefined) data.note = dto.note
     if (dto.status) data.status = dto.status
-    if (dto.status === 'resolved') data.slaLeftMin = 0 // 解决即冻结 SLA 倒计时（与退款解决路径一致）
     await this.prisma.ticket.update({ where: { id }, data })
     const who = actor === 'brand' ? `品牌 ${scopeId} 处理` : `代理 ${scopeId} 协助处理`
     await this.audit.record({ user, action: 'ticket.reply', resource: 'Ticket', resourceId: id, detail: `${who}工单 ${id}${dto.status ? ` → ${dto.status}` : ''}`, after: data })
@@ -445,7 +445,7 @@ export class PortalController {
   @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
   async setCallbackUrl(@Body() dto: CallbackUrlDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
-    const checked = validatePublicCallbackUrl(dto.callbackUrl)
+    const checked = await validatePublicCallbackUrl(dto.callbackUrl)
     if (!checked.ok) return { ok: false, detail: checked.detail }
     await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: checked.url } })
     await this.audit.record({ user, action: 'cps.callback.set', resource: 'Brand', resourceId: brandId, detail: `品牌 ${brandId} 配置回调地址` })
@@ -491,7 +491,7 @@ export class PortalController {
     let cbOk = false
     const cbUrl = brand?.apiCallbackUrl || ''
     if (cbUrl) {
-      const checked = validatePublicCallbackUrl(cbUrl)
+      const checked = await validatePublicCallbackUrl(cbUrl)
       if (checked.ok) {
         try {
           const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)

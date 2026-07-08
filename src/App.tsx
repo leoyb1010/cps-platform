@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useAuth, useCan, bootstrapAuth } from './lib/auth'
+import { useAuth, useCan, bootstrapAuth, getCurrentUser, shouldHydratePlatformStore } from './lib/auth'
 import { isRealApi } from './lib/http'
 import { hydrateFromServer } from './lib/store'
 import AppLayout from './components/layout/AppLayout'
@@ -84,15 +84,32 @@ function RequirePerm({ perm, anyPerm, children }: { perm?: string; anyPerm?: str
   return <>{children}</>
 }
 
+function currentEntryPath(): string {
+  const hashPath = window.location.hash.replace(/^#/, '')
+  return hashPath || window.location.pathname || '/'
+}
+
+function shouldBootstrapAuth(path: string): boolean {
+  return !(
+    path === '/login' ||
+    path === '/portal/login' ||
+    path === '/market' ||
+    path === '/market/me' ||
+    path.startsWith('/land/') ||
+    path.startsWith('/legal/')
+  )
+}
+
 export default function App() {
   // 真实模式：启动时用 refresh cookie 静默恢复登录态，避免已登录用户被闪到登录页
-  const [ready, setReady] = useState(!isRealApi)
+  const [needsBootstrap] = useState(() => isRealApi && shouldBootstrapAuth(currentEntryPath()))
+  const [ready, setReady] = useState(!needsBootstrap)
   useEffect(() => {
-    if (isRealApi)
+    if (needsBootstrap)
       bootstrapAuth()
-        .then((ok) => (ok ? hydrateFromServer() : undefined))
+        .then((ok) => (ok && shouldHydratePlatformStore(getCurrentUser()) ? hydrateFromServer() : undefined))
         .finally(() => setReady(true))
-  }, [])
+  }, [needsBootstrap])
   if (!ready) {
     return (
       <div className="grid min-h-screen place-items-center bg-canvas">

@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger'
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsISO8601, IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
 import { CpsService } from './cps.service'
 
@@ -14,6 +14,7 @@ class SimFailDto {
 }
 class RetrySweepDto {
   @IsOptional() @IsIn(['success', 'fail']) outcome?: 'success' | 'fail'
+  @IsOptional() @IsISO8601() now?: string
 }
 
 // 内部模拟驱动（JWT + 平台 scope）：驱动签约单生命周期，供有道对接 + 演示/联调 + e2e 共用。
@@ -44,7 +45,8 @@ export class CpsController {
   @Post('retry/sweep') @RequirePerms('settlement.clear') @ApiOperation({ summary: '【内部】补扣 sweep：扫待补扣单按规则补扣/终止（cron 同逻辑）' })
   async retrySweep(@Body() dto: RetrySweepDto, @CurrentUser() user: AuthUser) {
     this.assertPlatform(user)
-    return this.cps.runRetrySweep(new Date(), dto.outcome ?? 'success')
+    const now = dto.now && process.env.NODE_ENV !== 'production' ? new Date(dto.now) : new Date()
+    return this.cps.runRetrySweep(now, dto.outcome ?? 'success')
   }
 
   private assertPlatform(user: AuthUser) {

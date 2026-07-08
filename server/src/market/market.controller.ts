@@ -23,7 +23,7 @@ class PayDto {
 }
 
 function marketSimPayEnabled(): boolean {
-  return process.env.ENABLE_MARKET_SIM_PAY === 'true'
+  return process.env.NODE_ENV !== 'production' && process.env.ENABLE_MARKET_SIM_PAY === 'true'
 }
 
 @ApiTags('market')

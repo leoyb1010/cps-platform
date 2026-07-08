@@ -21,7 +21,7 @@ function ydStringToSign(params: Record<string, unknown>): string {
 }
 // 用演示私钥 RSA SHA256 签名（合作方一侧）
 function ydSign(params: Record<string, unknown>): Record<string, unknown> {
-  const p = { ...params, custId: YD_CUST, merchantId: YD_MCH, timestamp: Math.floor(Date.now() / 1000) }
+  const p = { custId: YD_CUST, merchantId: YD_MCH, timestamp: Math.floor(Date.now() / 1000), ...params }
   const signer = createSign('sha256'); signer.update(ydStringToSign(p), 'utf8')
   return { ...p, sign: signer.sign(DEMO_RSA_PRIVATE, 'base64') }
 }
@@ -30,6 +30,7 @@ process.env.NODE_ENV = 'test'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret-not-for-prod-xxxxxxxx'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret-not-for-prod-xxxxxxxx'
 process.env.ENABLE_MARKET_SIM_PAY = 'true'
+process.env.ALLOW_FAKE_DNS_CALLBACK_RESOLUTION = 'true'
 
 let app: INestApplication
 let httpServer: any
@@ -547,6 +548,15 @@ describe('数据级 RBAC (scope)', () => {
     await request(httpServer).get('/portal/agent/tickets').set('Authorization', `Bearer ${bt}`).expect(403)
     // 金额类字段不在 reply DTO 白名单（forbidNonWhitelisted）
     await request(httpServer).post('/portal/agent/tickets/any/reply').set('Authorization', `Bearer ${at}`).send({ handlePlan: 'x', amount: 1 }).expect(400)
+    if (list.body.length > 0) {
+      const ticketId = list.body[0].id
+      const blockedClose = await request(httpServer).post(`/portal/agent/tickets/${ticketId}/reply`).set('Authorization', `Bearer ${at}`).send({ handlePlan: '代理协作处理', status: 'resolved' })
+      expect(blockedClose.body.ok).toBe(false)
+      const processing = await request(httpServer).post(`/portal/agent/tickets/${ticketId}/reply`).set('Authorization', `Bearer ${at}`).send({ handlePlan: '代理协作处理', status: 'processing' })
+      expect(processing.body.ok).toBe(true)
+      const after = await request(httpServer).get('/portal/agent/tickets').set('Authorization', `Bearer ${at}`).expect(200)
+      expect(after.body.find((t: any) => t.id === ticketId)?.status).toBe('processing')
+    }
   })
   it('邀请制建号：客户角色↔scope 强校验（brand 角色却 platform scope 被拒）', async () => {
     const su = await token('admin')
@@ -668,6 +678,22 @@ describe('订阅超市（公开层 + 算价权威）', () => {
     } finally {
       if (prev === undefined) delete process.env.ENABLE_MARKET_SIM_PAY
       else process.env.ENABLE_MARKET_SIM_PAY = prev
+    }
+  })
+  it('生产环境即便误配 ENABLE_MARKET_SIM_PAY=true 也不能模拟支付', async () => {
+    const prevPay = process.env.ENABLE_MARKET_SIM_PAY
+    const prevNode = process.env.NODE_ENV
+    process.env.ENABLE_MARKET_SIM_PAY = 'true'
+    process.env.NODE_ENV = 'production'
+    try {
+      const mk = await request(httpServer).post('/market/bundle').send({ productIds: ['PRD-XM-01', 'PRD-WP-01'] }).expect(201)
+      const pay = await request(httpServer).post(`/market/bundle/${mk.body.bundleId}/pay`).send({ channel: 'alipay' }).expect(201)
+      expect(pay.body.ok).toBe(false)
+      expect(pay.body.paid).toBeUndefined()
+    } finally {
+      if (prevPay === undefined) delete process.env.ENABLE_MARKET_SIM_PAY
+      else process.env.ENABLE_MARKET_SIM_PAY = prevPay
+      process.env.NODE_ENV = prevNode
     }
   })
   it('模拟支付：quoted→paid（读 finalPrice，不收金额，幂等，不碰结算）', async () => {
@@ -1325,7 +1351,7 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(r1.body.mismatches.length).toBe(0)
   })
 
-  it('RSA 错签 → 403；时间戳过期 → 403；未注册 merchantId → 123', async () => {
+  it('RSA 错签 → 403；时间戳过期 → 403；未注册 merchantId / custId 错配 → 123', async () => {
     const pid = await liveProductId()
     // 错签
     const bad = await request(httpServer).post('/pay/outside/order').type('form')
@@ -1339,6 +1365,14 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     // 未注册 merchantId → 123 合作方不存在（有道码表）
     const nope = await request(httpServer).get('/order/outside/orderQuery').query({ merchantId: 'nope', orderId: 'X', sign: 'x', timestamp: String(Math.floor(Date.now() / 1000)) })
     expect(nope.body.code).toBe(123)
+    const wrongCust = ydSign({ custId: 'cust_attacker', goodsId: pid, custOrderId: 'CO-wrong-cust-' + Math.random().toString(36).slice(2, 8), phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>
+    const wrongCustRes = await request(httpServer).post('/pay/outside/order').type('form').send(wrongCust)
+    expect(wrongCustRes.body.code).toBe(123)
+    const ok = await request(httpServer).post('/pay/outside/order').type('form')
+      .send(ydSign({ goodsId: pid, custOrderId: 'CO-query-cust-' + Math.random().toString(36).slice(2, 8), phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
+    expect(ok.body.code).toBe(0)
+    const wrongCustQuery = await request(httpServer).get('/order/outside/orderQuery').query(ydSign({ custId: 'cust_attacker', orderId: ok.body.data.payInfo.orderId }))
+    expect(wrongCustQuery.body.code).toBe(123)
   })
 
   it('合作方订单号重复 → 125', async () => {
@@ -1380,7 +1414,9 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     const fail = await request(httpServer).post('/cps/sim/fail').set('Authorization', `Bearer ${su}`).send({ signOrderNo: so, reason: '余额不足' })
     expect(fail.body.ok).toBe(true)
     // sweep 成功
-    const sweep = await request(httpServer).post('/cps/retry/sweep').set('Authorization', `Bearer ${su}`).send({ outcome: 'success' })
+    const sweepNow = new Date(Date.now() + 86400000)
+    sweepNow.setHours(10, 0, 0, 0)
+    const sweep = await request(httpServer).post('/cps/retry/sweep').set('Authorization', `Bearer ${su}`).send({ outcome: 'success', now: sweepNow.toISOString() })
     expect(sweep.body.succeeded).toBeGreaterThanOrEqual(1)
     // 对账仍 ok（补扣走 ingestOrder，恒等式不破）
     const r = await request(httpServer).post('/reconciliation/run').set('Authorization', `Bearer ${su}`)
@@ -1427,7 +1463,9 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(local.body.ok).toBe(false)
     const privateIp = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://192.168.1.10/cb' }).expect(200)
     expect(privateIp.body.ok).toBe(false)
-    const publicHttps = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://callbacks.example.com/youdao/cb' }).expect(200)
+    const dnsLoopback = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://127.0.0.1.nip.io/cb' }).expect(200)
+    expect(dnsLoopback.body.ok).toBe(false)
+    const publicHttps = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://example.com/youdao/cb' }).expect(200)
     expect(publicHttps.body.ok).toBe(true)
     await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: '' }).expect(200)
   })

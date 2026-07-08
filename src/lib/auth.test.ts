@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { login, permsOf, ROLES, PERMISSIONS, DEMO_USERS, type User } from './auth'
+import { login, permsOf, ROLES, PERMISSIONS, DEMO_USERS, shouldHydratePlatformStore, type User } from './auth'
 
 const userWith = (roleId: User['roleId']): User => ({ id: 'x', name: 'x', account: 'x', roleId })
 
@@ -26,6 +26,12 @@ describe('RBAC · permsOf', () => {
 
   it('null 用户 → 空权限集', () => {
     expect(permsOf(null).size).toBe(0)
+  })
+
+  it('仅平台账号水合内部控制台 store，门户账号不拉后台接口', () => {
+    expect(shouldHydratePlatformStore(userWith('super'))).toBe(true)
+    expect(shouldHydratePlatformStore({ ...userWith('brand'), scopeType: 'brand' })).toBe(false)
+    expect(shouldHydratePlatformStore({ ...userWith('agent'), scopeType: 'agent' })).toBe(false)
   })
 
   it('服务端下发的 permissions 优先于本地角色映射', () => {

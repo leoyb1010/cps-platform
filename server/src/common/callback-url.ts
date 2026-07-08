@@ -1,4 +1,5 @@
 import { isIP } from 'node:net'
+import { lookup } from 'node:dns/promises'
 
 type CallbackUrlCheck = { ok: true; url: string } | { ok: false; detail: string }
 
@@ -26,9 +27,17 @@ function blockedIpv4(host: string): boolean {
     inRange(host, '127.0.0.0', 8) ||
     inRange(host, '169.254.0.0', 16) ||
     inRange(host, '172.16.0.0', 12) ||
+    inRange(host, '192.0.0.0', 24) ||
     inRange(host, '192.168.0.0', 16) ||
+    inRange(host, '198.18.0.0', 15) ||
+    inRange(host, '198.51.100.0', 24) ||
+    inRange(host, '203.0.113.0', 24) ||
     inRange(host, '224.0.0.0', 4)
   )
+}
+
+function benchmarkIpv4(host: string): boolean {
+  return inRange(host, '198.18.0.0', 15)
 }
 
 function blockedIpv6(host: string): boolean {
@@ -38,7 +47,21 @@ function blockedIpv6(host: string): boolean {
   return h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')
 }
 
-export function validatePublicCallbackUrl(raw: string): CallbackUrlCheck {
+function blockedIp(host: string): boolean {
+  const ipVersion = isIP(host)
+  if (ipVersion === 4) return blockedIpv4(host)
+  if (ipVersion === 6) return blockedIpv6(host)
+  return false
+}
+
+function hostEmbedsBlockedIpv4(host: string): boolean {
+  const dotted = host.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(?:\.|$)/)?.[1]
+  const dashed = host.match(/^(\d{1,3})-(\d{1,3})-(\d{1,3})-(\d{1,3})(?:\.|$)/)
+  const ip = dotted ?? (dashed ? `${dashed[1]}.${dashed[2]}.${dashed[3]}.${dashed[4]}` : '')
+  return isIP(ip) === 4 && blockedIpv4(ip)
+}
+
+export async function validatePublicCallbackUrl(raw: string): Promise<CallbackUrlCheck> {
   const value = raw.trim()
   if (!value) return { ok: true, url: '' }
 
@@ -57,10 +80,25 @@ export function validatePublicCallbackUrl(raw: string): CallbackUrlCheck {
   if (BLOCKED_HOSTS.has(host) || host.endsWith('.localhost') || host.endsWith('.local')) {
     return { ok: false, detail: '回调地址不能指向本机或内网主机' }
   }
+  if (hostEmbedsBlockedIpv4(host)) return { ok: false, detail: '回调地址不能包含本机或内网 IP' }
 
   const ipVersion = isIP(host)
-  if (ipVersion === 4 && blockedIpv4(host)) return { ok: false, detail: '回调地址不能指向本机或内网 IP' }
-  if (ipVersion === 6 && blockedIpv6(host)) return { ok: false, detail: '回调地址不能指向本机或内网 IP' }
+  if (ipVersion && blockedIp(host)) return { ok: false, detail: '回调地址不能指向本机或内网 IP' }
+
+  if (!ipVersion) {
+    let records: { address: string }[]
+    try {
+      records = await lookup(host, { all: true, verbatim: true })
+    } catch {
+      return { ok: false, detail: '回调地址域名无法解析' }
+    }
+    if (records.length === 0) return { ok: false, detail: '回调地址域名无法解析' }
+    const blockedRecords = records.filter((r) => blockedIp(r.address))
+    const fakeDnsOnly = blockedRecords.length === records.length && records.every((r) => benchmarkIpv4(r.address)) && process.env.ALLOW_FAKE_DNS_CALLBACK_RESOLUTION === 'true'
+    if (blockedRecords.length > 0 && !fakeDnsOnly) {
+      return { ok: false, detail: '回调地址不能解析到本机或内网 IP' }
+    }
+  }
 
   return { ok: true, url: url.toString().slice(0, 300) }
 }

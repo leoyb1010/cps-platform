@@ -141,14 +141,27 @@ function setUser(u: User | null) {
   emit()
 }
 
+export function getCurrentUser(): User | null {
+  return current
+}
+
+export function shouldHydratePlatformStore(u: User | null): boolean {
+  return (u?.scopeType ?? 'platform') === 'platform'
+}
+
 /** 真实模式：调用 /auth/login，存 access token + 服务端用户/权限。失败抛出可读错误。 */
 export async function login(account: string, password = 'demo'): Promise<User> {
   if (isRealApi) {
     const r = await http.post<{ access: string; user: User }>('/auth/login', { account, password })
     setAccessToken(r.access)
     setUser(r.user)
-    // 登录即水合：换账号/门户误入都以新账号的服务端真值起步，而非上个会话残留
-    void hydrateFromServer().catch(() => {})
+    if (shouldHydratePlatformStore(r.user)) {
+      // 平台控制台登录即水合：换账号后以新账号的服务端真值起步，而非上个会话残留
+      void hydrateFromServer().catch(() => {})
+    } else {
+      // 门户账号不拉内部控制台接口；同时清掉共享机器上可能残留的后台缓存。
+      clearStoreOnLogout()
+    }
     return r.user
   }
   // 演示模式：未知账号必须报错——静默回退成超管（旧行为）意味着任何乱输的账号密码都以最高权限进入
