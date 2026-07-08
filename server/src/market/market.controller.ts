@@ -22,6 +22,10 @@ class PayDto {
   @IsOptional() @IsIn(['alipay', 'wechat']) channel?: string
 }
 
+function marketSimPayEnabled(): boolean {
+  return process.env.ENABLE_MARKET_SIM_PAY === 'true'
+}
+
 @ApiTags('market')
 @Controller('market')
 export class MarketController {
@@ -94,6 +98,7 @@ export class MarketController {
   @Post('bundle/:id/pay')
   @ApiOperation({ summary: '订阅超市：模拟支付套餐（quoted→paid，不收金额，不碰结算）' })
   async payBundle(@Param('id') id: string, @Body() dto: PayDto) {
+    if (!marketSimPayEnabled()) return { ok: false, detail: '模拟支付已关闭，请接入真实支付平台回调确认支付' }
     const bundle = await this.prisma.bundle.findUnique({ where: { id } })
     if (!bundle) return { ok: false, detail: '套餐不存在' }
     if (bundle.paymentStatus === 'paid') return { ok: true, detail: '套餐已支付', bundleId: id, finalPrice: bundle.finalPrice, paid: true, replayed: true }

@@ -36,6 +36,21 @@ import {
 import { useStore, resolveTicketWithRefund, updateTicket } from '../lib/store'
 import { pct, cx } from '../lib/format'
 
+const UNKNOWN_LEVEL = { label: '未知等级', tone: 'neutral' as const }
+const UNKNOWN_STATUS = { label: '未知状态', tone: 'neutral' as const }
+
+function complaintLevelMeta(level: string) {
+  return COMPLAINT_LEVEL[level as keyof typeof COMPLAINT_LEVEL] ?? UNKNOWN_LEVEL
+}
+
+function complaintStatusMeta(status: string) {
+  return COMPLAINT_STATUS[status as keyof typeof COMPLAINT_STATUS] ?? UNKNOWN_STATUS
+}
+
+function complaintSourceLabel(source: string) {
+  return COMPLAINT_SOURCE[source as keyof typeof COMPLAINT_SOURCE] ?? source
+}
+
 export default function Complaints() {
   const s = useStore()
   const toast = useToast()
@@ -87,13 +102,13 @@ export default function Complaints() {
             <div className="space-y-2">
               {urgent.slice(0, 5).map((c) => {
                 const b = brandById(c.brandId)
-                const lv = COMPLAINT_LEVEL[c.level]
+                const lv = complaintLevelMeta(c.level)
                 const tone = c.slaLeftMin <= 30 ? 'alert' : c.slaLeftMin <= 90 ? 'warn' : 'good'
                 return (
                   <button key={c.id} onClick={(e) => { setOpenId(c.id); pop.openAt(e) }} className="flex w-full items-center gap-3 rounded-xl border border-line p-3 text-left hover:border-line-strong hover:bg-surface-muted">
                     <div className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-lg', TONE[tone].soft)}><Clock size={16} className={TONE[tone].ink} /></div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2"><span className="tnum text-[12.5px] font-medium text-ink">{c.id}</span><Badge tone={lv.tone}>{lv.label}</Badge><span className="text-[11px] text-ink-4">{COMPLAINT_SOURCE[c.source]}</span></div>
+                      <div className="flex items-center gap-2"><span className="tnum text-[12.5px] font-medium text-ink">{c.id}</span><Badge tone={lv.tone}>{lv.label}</Badge><span className="text-[11px] text-ink-4">{complaintSourceLabel(c.source)}</span></div>
                       <div className="mt-0.5 truncate text-[11.5px] text-ink-3">{c.reason} · {b.name}</div>
                     </div>
                     <div className="text-right"><div className={cx('tnum text-[14px] font-semibold', TONE[tone].ink)}>{c.slaLeftMin}min</div><div className="text-[10.5px] text-ink-4">{c.owner === '未分配' ? '待分配' : c.owner}</div></div>
@@ -137,12 +152,12 @@ export default function Complaints() {
         <TableShell className="px-2 pb-2" head={<><Th className="pl-3">工单 / 时间</Th><Th>来源</Th><Th>等级</Th><Th>品牌 / 代理</Th><Th>投诉事由</Th><Th>处理人</Th><Th right>SLA</Th><Th right>状态</Th></>}>
           {list.map((c) => {
             const b = brandById(c.brandId)
-            const lv = COMPLAINT_LEVEL[c.level]
-            const st = COMPLAINT_STATUS[c.status]
+            const lv = complaintLevelMeta(c.level)
+            const st = complaintStatusMeta(c.status)
             return (
               <Row key={c.id} onClick={(e) => { setOpenId(c.id); pop.openAt(e) }}>
                 <Td className="pl-3"><div className="tnum text-[12.5px] font-medium text-ink">{c.id}</div><div className="text-[11px] text-ink-4">{c.time}</div></Td>
-                <Td>{COMPLAINT_SOURCE[c.source]}</Td>
+                <Td>{complaintSourceLabel(c.source)}</Td>
                 <Td><Badge tone={lv.tone} dot={c.level !== 'normal'}>{lv.label}</Badge></Td>
                 <Td><div className="flex items-center gap-2"><BrandMark brand={b.id} mark={b.mark} size={22} /><span className="tnum text-[12px] text-ink-2">{c.agentId}</span></div></Td>
                 <Td className="max-w-[200px]"><span className="text-ink-2">{c.reason}</span></Td>
@@ -250,8 +265,8 @@ function TicketDrawer({
   if (!ticket) return null
   const b = brandById(ticket.brandId)
   const a = agentById(ticket.agentId)
-  const lv = COMPLAINT_LEVEL[ticket.level]
-  const st = COMPLAINT_STATUS[ticket.status]
+  const lv = complaintLevelMeta(ticket.level)
+  const st = complaintStatusMeta(ticket.status)
   const done = ticket.status === 'resolved'
   return (
     <DetailPopover
@@ -259,7 +274,7 @@ function TicketDrawer({
       onClose={onClose}
       width={400}
       title={<span className="tnum">{ticket.id}</span>}
-      desc={<span>{COMPLAINT_SOURCE[ticket.source]} · {ticket.time}</span>}
+      desc={<span>{complaintSourceLabel(ticket.source)} · {ticket.time}</span>}
       footer={
         done ? (
           <Button variant="ghost" onClick={onClose}>关闭</Button>
@@ -295,7 +310,7 @@ function TicketDrawer({
         <div className="mb-2.5 flex items-center gap-2"><span className="h-[7px] w-[7px] bg-brand" /><span className="text-[13px] font-semibold">处理时间线</span></div>
         <Timeline
           items={[
-            { title: '投诉接入', time: ticket.time, desc: `来源 ${COMPLAINT_SOURCE[ticket.source]}`, done: true },
+            { title: '投诉接入', time: ticket.time, desc: `来源 ${complaintSourceLabel(ticket.source)}`, done: true },
             { title: '自动分级', desc: `判定为「${lv.label}」`, done: true },
             { title: 'SLA 计时', desc: done ? '已在时效内完结' : `剩余 ${ticket.slaLeftMin} 分钟`, tone: done ? 'good' : 'warn', done },
             done

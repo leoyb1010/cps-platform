@@ -10,6 +10,7 @@ import { sendMail } from '../common/mailer'
 import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign, pubHint } from '../youdao/rsa-signature'
 import { buildStringToSign } from '../cps/signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
+import { validatePublicCallbackUrl } from '../common/callback-url'
 
 class CallbackUrlDto {
   @IsString() @MaxLength(300) callbackUrl!: string
@@ -444,7 +445,9 @@ export class PortalController {
   @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
   async setCallbackUrl(@Body() dto: CallbackUrlDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
-    await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: dto.callbackUrl.slice(0, 300) } })
+    const checked = validatePublicCallbackUrl(dto.callbackUrl)
+    if (!checked.ok) return { ok: false, detail: checked.detail }
+    await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: checked.url } })
     await this.audit.record({ user, action: 'cps.callback.set', resource: 'Brand', resourceId: brandId, detail: `品牌 ${brandId} 配置回调地址` })
     return { ok: true, detail: '回调地址已保存' }
   }
@@ -488,11 +491,14 @@ export class PortalController {
     let cbOk = false
     const cbUrl = brand?.apiCallbackUrl || ''
     if (cbUrl) {
-      try {
-        const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
-        const res = await fetch(cbUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
-        cbOk = res.ok
-      } catch { cbOk = false }
+      const checked = validatePublicCallbackUrl(cbUrl)
+      if (checked.ok) {
+        try {
+          const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
+          const res = await fetch(checked.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
+          cbOk = res.ok
+        } catch { cbOk = false }
+      }
     }
     checks.push({ item: '回调地址可达', pass: cbOk, detail: cbUrl ? (cbOk ? '探测 200' : '探测失败/超时') : '未配置回调地址' })
     // ④ 最近回调投递成功率

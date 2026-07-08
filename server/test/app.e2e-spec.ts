@@ -29,6 +29,7 @@ function ydSign(params: Record<string, unknown>): Record<string, unknown> {
 process.env.NODE_ENV = 'test'
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret-not-for-prod-xxxxxxxx'
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret-not-for-prod-xxxxxxxx'
+process.env.ENABLE_MARKET_SIM_PAY = 'true'
 
 let app: INestApplication
 let httpServer: any
@@ -270,6 +271,12 @@ describe('输入校验 + 错误映射（F1/F3/F5）', () => {
     await request(httpServer).post('/merchants/M-YD-01/state').set('Authorization', `Bearer ${su}`).send({ state: 'garbage_xyz' }).expect(400)
     const ok = await request(httpServer).post('/merchants/M-YD-01/state').set('Authorization', `Bearer ${su}`).send({ state: 'fused', label: '熔断' })
     expect([200, 201]).toContain(ok.status)
+  })
+  it('号池新增拒绝不存在品牌，避免孤儿商户号进入路由', async () => {
+    const su = await token('admin')
+    const r = await request(httpServer).post('/merchants').set('Authorization', `Bearer ${su}`).send({ brandId: 'ghost-brand', channel: 'wechat', weight: 20 })
+    expect(r.body.ok).toBe(false)
+    expect(r.body.detail).toContain('品牌不存在')
   })
   it('forbidNonWhitelisted: 多余字段被拒 400', async () => {
     const su = await token('admin')
@@ -646,6 +653,23 @@ describe('订阅超市（公开层 + 算价权威）', () => {
     const huge = Array.from({ length: 100 }, (_, i) => `PRD-X-${i}`)
     await request(httpServer).post('/market/quote').send({ productIds: huge }).expect(400) // ArrayMaxSize(20)
   })
+  it('模拟支付默认关闭：未显式开启时不能把 Bundle 置 paid', async () => {
+    const prev = process.env.ENABLE_MARKET_SIM_PAY
+    delete process.env.ENABLE_MARKET_SIM_PAY
+    try {
+      const mk = await request(httpServer).post('/market/bundle').send({ productIds: ['PRD-XM-01', 'PRD-WP-01'] }).expect(201)
+      const bid = mk.body.bundleId
+      const pay = await request(httpServer).post(`/market/bundle/${bid}/pay`).send({ channel: 'alipay' }).expect(201)
+      expect(pay.body.ok).toBe(false)
+      expect(pay.body.paid).toBeUndefined()
+      const su = await token('admin')
+      const rows = await request(httpServer).get('/bundles').set('Authorization', `Bearer ${su}`).expect(200)
+      expect(rows.body.find((b: any) => b.id === bid)?.paymentStatus).toBe('unpaid')
+    } finally {
+      if (prev === undefined) delete process.env.ENABLE_MARKET_SIM_PAY
+      else process.env.ENABLE_MARKET_SIM_PAY = prev
+    }
+  })
   it('模拟支付：quoted→paid（读 finalPrice，不收金额，幂等，不碰结算）', async () => {
     // 生成 → 支付 → 幂等重放 → 拒金额入参 → 对账仍 ok
     const mk = await request(httpServer).post('/market/bundle').send({ productIds: ['PRD-XM-01', 'PRD-WP-01'] }).expect(201)
@@ -979,10 +1003,18 @@ describe('履约引擎（债2，红线：不破恒等式 I）', () => {
     expect(viaOrder.body.agentId).toBe('A-2041')
     // 3) 工单流入运营 Complaints（全量工单可见）
     const tickets = await request(httpServer).get('/tickets').set('Authorization', `Bearer ${su}`).expect(200)
-    expect(tickets.body.some((t: any) => t.id === direct.body.ticketId && t.source === '12315')).toBe(true)
+    const directTicket = tickets.body.find((t: any) => t.id === direct.body.ticketId && t.source === '12315')
+    expect(directTicket).toBeTruthy()
+    expect(directTicket.status).toBe('pending')
     // 4) 防护：无 orderId 无 brandId 拒绝
     const noScope = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: 'heimao', reason: 'x' })
     expect(noScope.body.ok).toBe(false)
+    const ghostBrand = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: 'manual', reason: 'ghost', brandId: 'ghost-brand' })
+    expect(ghostBrand.body.ok).toBe(false)
+    expect(ghostBrand.body.detail).toContain('品牌 ghost-brand 不存在')
+    const ghostAgent = await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: 'manual', reason: 'ghost agent', brandId: 'youdao', agentId: 'A-NOPE' })
+    expect(ghostAgent.body.ok).toBe(false)
+    expect(ghostAgent.body.detail).toContain('代理 A-NOPE 不存在')
     // 5) 防篡改：金额类字段不在白名单 → 400
     await request(httpServer).post('/complaints/ingest').set('Authorization', `Bearer ${su}`).send({ source: 'alipay', reason: 'x', brandId: 'youdao', amount: 100 }).expect(400)
     // 6) 鉴权：客户角色无 ticket.handle → 403
@@ -1388,6 +1420,16 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(hc.body.ok).toBe(true)
     expect(hc.body.score).toBeGreaterThanOrEqual(0)
     expect(Array.isArray(hc.body.checks)).toBe(true)
+  })
+  it('回调地址拒绝 localhost/内网，仅允许 HTTPS 公网 URL', async () => {
+    const bt = await token('brand')
+    const local = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'http://127.0.0.1:9999/cb' }).expect(200)
+    expect(local.body.ok).toBe(false)
+    const privateIp = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://192.168.1.10/cb' }).expect(200)
+    expect(privateIp.body.ok).toBe(false)
+    const publicHttps = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://callbacks.example.com/youdao/cb' }).expect(200)
+    expect(publicHttps.body.ok).toBe(true)
+    await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: '' }).expect(200)
   })
 })
 

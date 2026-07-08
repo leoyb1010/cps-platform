@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { buildRsaSign } from '../youdao/rsa-signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
+import { validatePublicCallbackUrl } from '../common/callback-url'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 
@@ -56,10 +57,15 @@ export class SignWebhookService {
       await this.persist(logId, so.id, so.brandId, status, payload, '', { httpStatus: 0, ok: false, error: '未配置回调地址', deliveryStatus: 'dead', nextRetryAt: null })
       return
     }
+    const safeCallback = validatePublicCallbackUrl(callbackUrl)
+    if (!safeCallback.ok) {
+      await this.persist(logId, so.id, so.brandId, status, payload, callbackUrl, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', nextRetryAt: null })
+      return
+    }
 
     // 先落 outbox 行（pending），再首次投递；失败则转 retrying + 排下次退避重投。
-    await this.persist(logId, so.id, so.brandId, status, payload, callbackUrl, { deliveryStatus: 'pending' })
-    await this.attempt(logId, callbackUrl, payload)
+    await this.persist(logId, so.id, so.brandId, status, payload, safeCallback.url, { deliveryStatus: 'pending' })
+    await this.attempt(logId, safeCallback.url, payload)
   }
 
   private static readonly MAX_ATTEMPTS = 5
@@ -70,10 +76,15 @@ export class SignWebhookService {
   private async attempt(id: string, callbackUrl: string, payload: Record<string, unknown>): Promise<void> {
     const row = await this.prisma.signCallbackLog.findUnique({ where: { id } }).catch(() => null)
     const attemptNo = (row?.attempts ?? 0) + 1
+    const safeCallback = validatePublicCallbackUrl(callbackUrl)
+    if (!safeCallback.ok) {
+      await this.update(id, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', attempts: attemptNo, nextRetryAt: null })
+      return
+    }
     try {
       const ctrl = new AbortController()
       const t = setTimeout(() => ctrl.abort(), 5000)
-      const res = await fetch(callbackUrl, {
+      const res = await fetch(safeCallback.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),

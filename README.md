@@ -18,7 +18,7 @@
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
 ![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
 ![API](https://img.shields.io/badge/API-106_端点-FF6B35?style=flat-square)
-![测试](https://img.shields.io/badge/测试-190_自动化用例-4CAF50?style=flat-square)
+![测试](https://img.shields.io/badge/测试-224_自动化用例-4CAF50?style=flat-square)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions_×5-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
@@ -116,6 +116,8 @@ npm install
 npx prisma db push          # 建表（SQLite，零依赖）
 npm run seed                # 灌演示数据（9 账户/角色/品牌/代理/号池/商品/凭证…）
 npm run start:dev           # http://localhost:3001 · Swagger 文档 /docs
+# 可选：仅测试/沙箱需要模拟支付闭环时显式开启
+# ENABLE_MARKET_SIM_PAY=true npm run start:dev
 
 # 2) 前端（终端 2）
 npm run dev:real            # 真实后端模式 → http://localhost:5273
@@ -146,6 +148,15 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 ## 🔐 安全与质量（Review）
 
 经过**五轮对抗式安全自审**（含独立子代理三路并行审计），累计定位并修复 **60+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+
+**第六轮（v9）多角色对抗审计**（详见 [`docs/多角色对抗审计报告-2026-07-08.md`](docs/多角色对抗审计报告-2026-07-08.md)）：
+
+| 严重度 | 缺陷 | 修复 |
+|---|---|---|
+| 🔴 严重 | 公开模拟支付端点默认可把套餐置为 `paid`，缺少真实支付平台确认 | 默认关闭，仅 `ENABLE_MARKET_SIM_PAY=true` 的测试/沙箱可用 |
+| 🔴 严重 | 外部投诉接入允许脏归属且新工单状态为前端未知枚举，客服台可被打崩 | 校验品牌/代理存在，新工单状态统一 `pending`，客服台未知枚举兜底 |
+| 🟠 高 | 品牌 callback URL 可指向 localhost/内网，health-check 由服务端发起请求 | 保存、健康检查、webhook 投递三处强制 HTTPS 公网 URL |
+| 🟠 高 | 号池新增可录入不存在品牌的商户号 | 新增商户号前校验品牌存在且未删除 |
 
 **第五轮（v8）**：
 
@@ -184,7 +195,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏（手机号/商户号）· 审计旁路落盘。
 
-**测试矩阵**：后端 146（e2e + 单测）· 前端 35（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 190 自动化用例**。CI 五作业：前端构建 / 后端 e2e / PG schema 校验 / Playwright / 依赖扫描。
+**测试矩阵**：后端 180（e2e + 单测）· 前端 35（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 224 自动化用例**。CI 五作业：前端构建 / 后端 e2e / PG schema 校验 / Playwright / 依赖扫描。
 
 ---
 
@@ -213,7 +224,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 | 业务读 | `GET /brands /agents /merchants /orders(游标分页) /settlements /tickets /summary /config /reserve-releases /subscriptions` |
 | 资金写 | `POST /settlements/:id/clear /reconcile` · `/tickets/:id/refund` · `/orders/:id/refund` · `/agents/:id/settle` · `/reserve/:id/release /freeze` · `/reserve/release-due`（全部幂等 + 审计 fail-closed） |
 | 业务写 | `/merchants/:id/state` · `/agents/:id/status` · `/brands`(创建/配置/软删) · `/contracts`(发单/接单/推进) · `/barter`(发起/响应) · `/products/:id/review` · `/bundles/:id/fulfill`(拆单履约) · `/complaints/ingest` `/fulfillment/ingest`(可信中继) |
-| C 端超市 | `GET /market/products /rules` · `POST /market/quote /bundle /bundle/:id/pay`（服务端权威算价） |
+| C 端超市 | `GET /market/products /rules` · `POST /market/quote /bundle /bundle/:id/pay`（服务端权威算价；模拟支付默认关闭，需 `ENABLE_MARKET_SIM_PAY=true`） |
 | 客户门户 | `/portal/summary` + 品牌 15 端点（订单/结算/工单/商品/合约/置换/开发者中心）+ 代理 12 端点（投放/分润/信用分/接单/提现）+ 通知 |
 | 有道 CPS 对接 | `POST /pay/outside/order` · `/order/outside/refund /unsign` · `GET /order/outside/orderQuery`（RSA 验签 + 幂等）+ 内部 sim 触发 |
 | 对账/可观测 | `POST /reconciliation/run` · `GET /health /ready /metrics` |

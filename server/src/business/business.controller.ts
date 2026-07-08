@@ -521,6 +521,8 @@ export class BusinessController {
   @Post('merchants') @RequirePerms('merchant.write') @ApiOperation({ summary: '品牌专属号池新增商户号' })
   async addMerchant(@Body() dto: NewMerchantDto, @CurrentUser() user: AuthUser) {
     this.assertOwns(user, dto.brandId)
+    const brand = await this.prisma.brand.findFirst({ where: { id: dto.brandId, deletedAt: null }, select: { id: true } })
+    if (!brand) return { ok: false, detail: '品牌不存在或已删除' }
     const pref = dto.channel === 'wechat' ? 'WX' : dto.channel === 'alipay' ? 'AL' : 'BK'
     const id = `M-${pref}-${shortId().slice(0, 6)}`
     const mid = `${pref}${shortId()}`
@@ -791,13 +793,19 @@ export class BusinessController {
       agentId = order.agentId
     }
     if (!brandId) return { ok: false, detail: '需提供 orderId 或 brandId 以归属投诉' }
+    const brand = await this.prisma.brand.findFirst({ where: { id: brandId, deletedAt: null }, select: { id: true } })
+    if (!brand) return { ok: false, detail: `品牌 ${brandId} 不存在，无法归属投诉` }
+    if (agentId) {
+      const agent = await this.prisma.agent.findFirst({ where: { id: agentId, deletedAt: null }, select: { id: true } })
+      if (!agent) return { ok: false, detail: `代理 ${agentId} 不存在，无法归属投诉` }
+    }
     const level = dto.level ?? 'normal'
     // SLA 时限按级别：监管 24h、升级 48h、普通 72h（分钟）
     const slaLeftMin = level === 'regulatory' ? 1440 : level === 'escalated' ? 2880 : 4320
     const id = 'TK-' + randomUUID().slice(0, 6)
     await this.prisma.ticket.create({
       data: {
-        id, time: '实时', source: dto.source, level, status: 'open', slaLeftMin,
+        id, time: '实时', source: dto.source, level, status: 'pending', slaLeftMin,
         brandId, agentId: agentId || '未知', orderId, reason: dto.reason,
         owner: '未分配', note: dto.externalRef ? `外部单号 ${dto.externalRef}` : '',
       },
