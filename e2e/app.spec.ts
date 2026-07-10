@@ -79,7 +79,7 @@ test('权限路由守卫：审计角色直链配置中心 → 弹回总览', asy
   await login(page, 'audit')
   await page.goto('/#/settings')
   await expect(page).toHaveURL(/#\/$/) // RequirePerm：audit 无 config.write → 回总览
-  await expect(page.getByRole('heading', { name: '经营总览' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '审计工作台' })).toBeVisible()
 })
 
 test('订阅超市（免登录 C 端）：演示模式货架可选购、组合算价出折扣', async ({ page }) => {
