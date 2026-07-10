@@ -16,6 +16,7 @@ import { isRealApi } from '../../lib/http'
 import { useToast } from '../ui/overlays'
 import { CommandPalette } from './CommandPalette'
 import { CoachMarks } from './CoachMarks'
+import { ROLE_EXPERIENCE } from '../../lib/roleExperience'
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
@@ -104,12 +105,14 @@ function NavRow({ item, onClose, pinnable = true }: { item: (typeof NAV)[number]
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const can = useCan()
+  const user = useAuth()
   const loc = useLocation()
   const collapsed = useCollapsedGroups()
   const pinned = usePinned()
+  const homeLabel = ROLE_EXPERIENCE[user?.roleId ?? 'super'].navLabel
   // 按权限过滤，空组剔除。anyPerm: 任一命中即显示（合并工作台用）。
   const visible = (it: (typeof NAV)[number]['items'][number]) => (it.anyPerm ? it.anyPerm.some((p) => can(p)) : can(it.perm))
-  const groups = NAV.map((g) => ({ ...g, items: g.items.filter(visible) })).filter((g) => g.items.length > 0)
+  const groups = NAV.map((g) => ({ ...g, items: g.items.filter(visible).map((it) => it.to === '/' ? { ...it, label: homeLabel } : it) })).filter((g) => g.items.length > 0)
   const firstPlatformIdx = groups.findIndex((g, i) => i > 0 && g.kind === 'platform')
   // 常用置顶：按 pin 顺序取有权限的项（最多 5 条，越权/失效项自动跳过）
   const pinnedItems = pinned.map((to) => NAV_BY_TO[to]).filter((it) => it && visible(it)).slice(0, 5)
@@ -188,10 +191,16 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string; base: string; onReplay: () => void; onMenu: () => void; onOpenGuide: () => void }) {
   const { activity } = useStore()
+  const user = useAuth()
   const [bellOpen, setBellOpen] = useState(false)
   const mode = useViewMode()
   const hasGuide = !!GUIDES[base]
   const unread = activity.filter((a) => !a.read).length
+  const canSwitchView = user?.roleId === 'super' || user?.roleId === 'audit'
+  const canSearch = user?.roleId !== 'teamadmin'
+  const environment = isRealApi
+    ? import.meta.env.PROD ? { label: '生产环境', tone: 'good' } : { label: '真实接口', tone: 'info' }
+    : { label: '演示数据', tone: 'neutral' }
   return (
     <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md md:gap-3.5 md:px-6">
       <button aria-label="打开菜单" onClick={onMenu} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
@@ -200,27 +209,27 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
         <span className="text-hairtick">/</span>
         <span className="font-semibold text-ink">{title}</span>
       </div>
-      <span className="hidden items-center gap-1.5 rounded-md border border-good/30 bg-good/[0.06] px-2 py-1 text-[11px] text-good-ink md:inline-flex">
-        <span className="h-1.5 w-1.5 rounded-full bg-good" />
-        生产环境
+      <span className={cx('hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] md:inline-flex', environment.tone === 'good' ? 'border-good/30 bg-good/[0.06] text-good-ink' : environment.tone === 'info' ? 'border-info/30 bg-info-soft/50 text-info-ink' : 'border-line bg-surface-muted text-ink-3')}>
+        <span className={cx('h-1.5 w-1.5 rounded-full', environment.tone === 'good' ? 'bg-good' : environment.tone === 'info' ? 'bg-info' : 'bg-ink-4')} />
+        {environment.label}
       </span>
       <div className="ml-auto flex items-center gap-2.5">
-        <div className="hidden md:block" data-coach="viewmode"><Segmented value={mode} onChange={setViewMode} options={[{ value: 'simple', label: '简洁' }, { value: 'expert', label: '专家' }]} /></div>
+        {canSwitchView && <div className="hidden md:block" data-coach="viewmode"><Segmented value={mode} onChange={setViewMode} options={[{ value: 'simple', label: '简洁' }, { value: 'expert', label: '专家' }]} /></div>}
         {hasGuide && (
           <button aria-label="使用指引" onClick={onOpenGuide} title="使用指引" className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
             <HelpCircle size={16} strokeWidth={1.8} />
           </button>
         )}
-        <button data-coach="search" onClick={openPalette} className="hidden items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] text-ink-3 transition-colors hover:border-line-strong lg:flex">
+        {canSearch && <button data-coach="search" onClick={openPalette} className="hidden items-center gap-2.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-[12.5px] text-ink-3 transition-colors hover:border-line-strong lg:flex">
           <Search size={15} strokeWidth={1.8} />
-          <span>搜索品牌 / 代理 / 订单</span>
+          <span>搜索已授权的数据 / 操作</span>
           <kbd className="tnum rounded-[3px] border border-line px-1.5 text-[10px] text-ink-5">⌘K</kbd>
-        </button>
-        <button aria-label="搜索" onClick={openPalette} className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand lg:hidden"><Search size={15} /></button>
+        </button>}
+        {canSearch && <button aria-label="搜索" onClick={openPalette} className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand lg:hidden"><Search size={15} /></button>}
         <ThemeToggle />
-        <button aria-label="重播动效" onClick={onReplay} title="重播动效" className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
+        {!isRealApi && <button aria-label="重播动效" onClick={onReplay} title="重播动效" className="grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 transition-colors hover:border-brand hover:text-brand">
           <RotateCcw size={15} strokeWidth={2} />
-        </button>
+        </button>}
         <div className="relative">
           <button aria-label="通知" onClick={() => { setBellOpen((v) => !v); if (!bellOpen) markAllRead() }} className="relative grid h-[34px] w-[34px] place-items-center rounded-lg border border-line bg-surface text-ink-2 hover:border-brand hover:text-brand">
             <Bell size={15} strokeWidth={1.8} />
@@ -350,6 +359,7 @@ const TITLES: Record<string, string> = {
 
 export default function AppLayout() {
   const loc = useLocation()
+  const user = useAuth()
   const toast = useToast()
   const [epoch, setEpoch] = useState(0)
   const [navOpen, setNavOpen] = useState(false)
@@ -379,7 +389,8 @@ export default function AppLayout() {
     [toast],
   )
   const base = '/' + (loc.pathname.split('/')[1] || '')
-  const title = TITLES[base] ?? '经营总览'
+  const experience = ROLE_EXPERIENCE[user?.roleId ?? 'super']
+  const title = base === '/' ? experience.navLabel : (TITLES[base] ?? experience.navLabel)
   const replay = () => setEpoch((e) => e + 1)
 
   return (
@@ -396,11 +407,11 @@ export default function AppLayout() {
             </Suspense>
           </main>
         </div>
-        <CommandPalette />
+        {user?.roleId !== 'teamadmin' && <CommandPalette />}
         {/* 指引抽屉渲染在根级（顶栏有 backdrop-blur 会成为 fixed 的包含块，故必须放外面，否则被裁成 58px） */}
         {guideOpen && <GuideDrawer routeKey={base} onClose={() => setGuideOpen(false)} />}
         {/* 首次进入 3 步引导：仅在总览页触发（新人第一站），严格 3 步 */}
-        {base === '/' && (
+        {base === '/' && user?.roleId === 'super' && (
           <CoachMarks
             id="console"
             steps={[

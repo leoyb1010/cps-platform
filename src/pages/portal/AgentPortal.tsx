@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Download, Search, ArrowRight, TrendingUp } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Download, Search, ArrowRight, TrendingUp, Store } from 'lucide-react'
 import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, BrandMark, TableShell, Th, Td, Row, CountUp } from '../../components/ui/primitives'
 import { AreaLine, Gauge, Sparkline } from '../../components/ui/charts'
 import { Modal, useToast } from '../../components/ui/overlays'
@@ -12,11 +13,17 @@ import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE, SETTLE_MODEL_LAB
 import { money, pct, cx, copyText } from '../../lib/format'
 
 export function AgentHome() {
+  const nav = useNavigate()
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
   const { data, state, reload } = usePortalResource<AgentSummary>(() => portalApi.summary<AgentSummary>(period), [period.preset, period.from, period.to])
   return (
     <>
-      <PortalBanner src="./img/banner-agent-home.webp" title="我的投放" desc="你作为推广渠道的核心数据：消耗、首单、待结分润、信用分。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
+      <PortalBanner
+        src="./img/banner-agent-home.webp"
+        title="我的投放"
+        desc="你作为推广渠道的核心数据：消耗、首单、待结分润、信用分。"
+        actions={<><PeriodFilter value={period} onChange={setPeriod} /><Button variant="primary" onClick={() => nav('/portal/agent/market')}><Store size={14} /> 去选品投放</Button></>}
+      />
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>

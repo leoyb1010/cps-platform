@@ -171,6 +171,10 @@ describe('RBAC 提权防护（member.manage ≠ super）', () => {
     const t = await token('teamadmin')
     await request(httpServer).patch('/members/U-004').set('Authorization', `Bearer ${t}`).send({ roleId: 'super' }).expect(403)
   })
+  it('团队管理员不能停用超级管理员账号（受保护账号 403）', async () => {
+    const t = await token('teamadmin')
+    await request(httpServer).patch('/members/U-001').set('Authorization', `Bearer ${t}`).send({ status: 'disabled' }).expect(403)
+  })
   it('团队管理员不能改任意角色的权限点（仅超管 403）', async () => {
     const t = await token('teamadmin')
     await request(httpServer).patch('/roles/teamadmin').set('Authorization', `Bearer ${t}`).send({ permissions: ['dashboard.view', 'settlement.clear', 'config.write'] }).expect(403)

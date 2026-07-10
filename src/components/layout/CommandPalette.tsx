@@ -29,6 +29,12 @@ export function CommandPalette() {
   const s = useStore()
   const can = useCan()
   const toast = useToast()
+  const examples = [
+    can('order.refund') ? '退款 订单号' : null,
+    can('merchant.write') ? '熔断 商户号' : null,
+    can('settlement.clear') ? '开始结算' : null,
+  ].filter((x): x is string => !!x)
+  const inputHint = examples.length ? `搜索或执行：${examples.join(' · ')}` : '搜索当前角色有权查看的数据'
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -139,7 +145,7 @@ export function CommandPalette() {
               else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((i) => Math.max(0, i - 1)) }
               else if (e.key === 'Enter' && hits[sel]) go(hits[sel])
             }}
-            placeholder="搜索或执行动作：退款 O-99812 · 熔断 M-BL-01 · 开始结算…"
+            placeholder={inputHint}
             className="flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-4"
           />
           <kbd className="tnum rounded-[3px] border border-line px-1.5 text-[10px] text-ink-5">ESC</kbd>
@@ -166,7 +172,7 @@ export function CommandPalette() {
         <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-ink-4">
           <span><kbd className="tnum rounded border border-line px-1">↑↓</kbd> 选择</span>
           <span><kbd className="tnum rounded border border-line px-1">↵</kbd> 执行</span>
-          <span className="text-ink-5">试试输入：退款 · 熔断 · 开始结算</span>
+          <span className="text-ink-5">{examples.length ? `可执行：${examples.join(' · ')}` : '仅显示当前角色有权查看的结果'}</span>
           <span className="ml-auto">⌘K 唤起</span>
         </div>
       </div>

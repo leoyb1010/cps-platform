@@ -6,6 +6,7 @@ import { ROLES, type RoleId } from '../../lib/auth'
 import { isRealApi } from '../../lib/http'
 import { adminApi } from '../../lib/adminApi'
 import { cx, copyText } from '../../lib/format'
+import { buildMemberUpdatePayload } from '../../lib/memberAccess'
 
 const ROLE_OPTS = (Object.keys(ROLES) as RoleId[]).map((r) => ({ id: r, name: ROLES[r].name }))
 // 角色 → scopeType（内部角色 platform；客户角色 brand/agent，需指定 scopeId）
@@ -69,13 +70,23 @@ export function InviteMemberModal({ scopeOptions, onClose, onDone }: { scopeOpti
 }
 
 // 管理成员（改角色 / 停用）。real 调 adminApi.updateMember（端点已存在）。
-export function ManageMemberModal({ member, onClose, onDone }: { member: { id: string; name: string; roleId: string }; onClose: () => void; onDone?: () => void }) {
+export function ManageMemberModal({ member, canChangeRole, onClose, onDone }: { member: { id: string; name: string; roleId: string; status: string }; canChangeRole: boolean; onClose: () => void; onDone?: () => void }) {
   const toast = useToast()
   const [roleId, setRoleId] = useState(member.roleId)
-  const [disabled, setDisabled] = useState(false)
+  const [disabled, setDisabled] = useState(member.status === 'disabled')
   const save = async () => {
+    const body = buildMemberUpdatePayload(
+      { roleId: member.roleId, status: member.status },
+      { roleId, status: disabled ? 'disabled' : 'active' },
+      canChangeRole,
+    )
+    if (Object.keys(body).length === 0) {
+      toast({ tone: 'info', text: '没有需要保存的修改' })
+      onClose()
+      return
+    }
     if (isRealApi) {
-      const r = await adminApi.updateMember(member.id, { roleId, status: disabled ? 'disabled' : 'active' }).catch(() => ({ ok: false, detail: '请求失败' }))
+      const r = await adminApi.updateMember(member.id, body).catch(() => ({ ok: false, detail: '请求失败' }))
       if (r.ok) { toast({ tone: 'good', text: `${member.name} 已更新` }); onClose(); onDone?.() }
       else toast({ tone: 'alert', text: r.detail || '更新被拒绝' })
       return
@@ -86,12 +97,14 @@ export function ManageMemberModal({ member, onClose, onDone }: { member: { id: s
   return (
     <Modal open onClose={onClose} title={`管理成员 · ${member.name}`} footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={save} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
       <div className="space-y-3.5">
-        <Field label="角色"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+        {canChangeRole
+          ? <Field label="角色"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+          : <Field label="角色"><div className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-[13px] text-ink-2">{ROLES[member.roleId as RoleId]?.name ?? member.roleId}<span className="ml-2 text-[11px] text-ink-4">仅超级管理员可变更</span></div></Field>}
         <label className="flex items-center justify-between rounded-lg border border-line p-3">
           <div><div className="text-[12.5px] font-medium text-ink">停用账户</div><div className="text-[11px] text-ink-4">停用后无法登录，可恢复</div></div>
           <input type="checkbox" checked={disabled} onChange={(e) => setDisabled(e.target.checked)} className="h-4 w-4 accent-brand" />
         </label>
-        <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">改角色后该成员已签发的令牌即时失效（tokenVersion bump），需重新登录。</div>
+        <div className="rounded-lg bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">账户状态变更后，该成员已签发的令牌即时失效，需重新登录。</div>
       </div>
     </Modal>
   )

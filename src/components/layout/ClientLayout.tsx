@@ -1,6 +1,6 @@
 import { useEffect, useState, Suspense } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Menu, X, LogOut, Bell } from 'lucide-react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Menu, X, LogOut, Bell, ChevronDown, ShieldAlert } from 'lucide-react'
 import type { PortalNavGroup } from './portalNav'
 import { cx } from '../../lib/format'
 import { useAuth, useCan, logout } from '../../lib/auth'
@@ -33,10 +33,13 @@ function PortalLogo({ branding }: { branding: ClientBranding }) {
 }
 
 function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavGroup[]; branding: ClientBranding; open: boolean; onClose: () => void }) {
-  const can = useCan()
   const user = useAuth()
-  // 按权限过滤，空组剔除。分组是心智地图，不折叠（门户导航项少，全展开最清晰）。
-  const visibleGroups = groups.map((g) => ({ ...g, items: g.items.filter((it) => can(it.perm)) })).filter((g) => g.items.length > 0)
+  const loc = useLocation()
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => Object.fromEntries(groups.map((g) => [g.title, g.defaultOpen === true])))
+  useEffect(() => {
+    const current = groups.find((g) => g.items.some((item) => item.to === loc.pathname))
+    if (current) setExpanded((state) => state[current.title] ? state : { ...state, [current.title]: true })
+  }, [groups, loc.pathname])
   return (
     <>
       {open && <div className="fixed inset-0 z-30 bg-ink/40 md:hidden" onClick={onClose} />}
@@ -51,11 +54,21 @@ function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavG
           <button aria-label="关闭菜单" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 pb-5 pt-2">
-          {visibleGroups.map((group, gi) => (
+          {groups.map((group, gi) => {
+            const isExpanded = expanded[group.title] === true
+            return (
             <div key={group.title} className="mb-0.5">
               {gi > 0 && <div className="mx-2 mb-1 mt-2.5 border-t border-line" />}
-              <div className="px-2 pt-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-5">{group.title}</div>
-              <div className="space-y-0.5">
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                onClick={() => setExpanded((state) => ({ ...state, [group.title]: !isExpanded }))}
+                className="flex w-full items-center gap-2 px-2 pt-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-5 transition-colors hover:text-ink-2"
+              >
+                <span className="flex-1 text-left">{group.title}</span>
+                <ChevronDown size={13} className={cx('transition-transform', !isExpanded && '-rotate-90')} />
+              </button>
+              {isExpanded && <div className="space-y-0.5">
                 {group.items.map((item) => (
                   <NavLink
                     key={item.to}
@@ -80,9 +93,10 @@ function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavG
                     )}
                   </NavLink>
                 ))}
-              </div>
+              </div>}
             </div>
-          ))}
+            )
+          })}
         </nav>
         <div className="border-t border-line p-3">
           <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
@@ -137,7 +151,11 @@ function PortalBell() {
 export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[]; branding: ClientBranding }) {
   const [open, setOpen] = useState(false)
   const loc = useLocation()
+  const navigate = useNavigate()
   const user = useAuth()
+  const can = useCan()
+  const visibleGroups = nav.map((group) => ({ ...group, items: group.items.filter((item) => can(item.perm)) })).filter((group) => group.items.length > 0)
+  const hasPortalAccess = visibleGroups.length > 0
   // 品牌白标：品牌门户按该品牌主色换肤（令牌第三层覆盖，组件零改动）。代理门户保持平台色。
   // 订阅主题（useTheme）保证明暗切换时白标重算——暗底下 ink/hover 要提亮而非加深。
   useTheme()
@@ -147,7 +165,7 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
   return (
     <ReplayContext.Provider value={{ epoch, replay: () => {} }}>
       <div className="min-h-screen bg-canvas" style={wl}>
-        <ClientSidebar groups={nav} branding={branding} open={open} onClose={() => setOpen(false)} />
+        <ClientSidebar groups={visibleGroups} branding={branding} open={open} onClose={() => setOpen(false)} />
         <div className="md:pl-[236px]">
           <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-5 backdrop-blur-md">
             <button aria-label="打开菜单" onClick={() => setOpen(true)} className="grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
@@ -160,7 +178,14 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
             <OfflineBanner />
             <Suspense fallback={<PageSkeleton />}>
-              <Outlet />
+              {hasPortalAccess ? <Outlet /> : (
+                <div className="mx-auto mt-[10vh] max-w-[560px] rounded-lg border border-line bg-surface p-6 text-center shadow-[var(--shadow-card)]">
+                  <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-warn-soft text-warn-ink"><ShieldAlert size={20} /></span>
+                  <h1 className="mt-4 text-[18px] font-semibold text-ink">当前角色未配置客户门户权限</h1>
+                  <p className="mt-2 text-[13px] leading-relaxed text-ink-3">账号范围与角色权限不匹配。请联系超级管理员修正角色，或退出后使用正确的门户账号。</p>
+                  <button onClick={() => { void logout().finally(() => navigate('/portal/login', { replace: true })) }} className="mt-5 rounded-lg bg-brand px-4 py-2 text-[13px] font-medium text-white hover:bg-brand-hover">退出登录</button>
+                </div>
+              )}
             </Suspense>
           </main>
         </div>

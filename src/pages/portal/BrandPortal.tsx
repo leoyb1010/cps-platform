@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Download, AlertTriangle, ArrowRight, FileSignature, Repeat, CheckCircle2, Circle, KeyRound, PackagePlus, Handshake, Receipt, ClipboardCheck } from 'lucide-react'
 import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row, CountUp } from '../../components/ui/primitives'
 import { AreaLine, Sparkline } from '../../components/ui/charts'
@@ -14,11 +15,17 @@ import { usePortalResource, PortalState, TableSkeleton, exportCsv, PortalBanner 
 import { money, pct } from '../../lib/format'
 
 export function BrandHome() {
+  const nav = useNavigate()
   const [period, setPeriod] = useState<PeriodValue>({ preset: 'month' })
   const { data, state, reload } = usePortalResource<BrandSummary>(() => portalApi.summary<BrandSummary>(period), [period.preset, period.from, period.to])
   return (
     <>
-      <PortalBanner src="./img/banner-brand-home.webp" title="我的经营" desc="你的品牌在网易有道订阅增长平台的核心经营数据。" actions={<PeriodFilter value={period} onChange={setPeriod} />} />
+      <PortalBanner
+        src="./img/banner-brand-home.webp"
+        title="我的经营"
+        desc="你的品牌在网易有道订阅增长平台的核心经营数据。"
+        actions={<><PeriodFilter value={period} onChange={setPeriod} /><Button variant="primary" onClick={() => nav('/portal/brand/products')}><PackagePlus size={14} /> 管理商品</Button></>}
+      />
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>

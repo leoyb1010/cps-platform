@@ -11,15 +11,18 @@ import {
   GlassWater,
   ShieldHalf,
   Sparkles,
+  UsersRound,
+  ScrollText,
 } from 'lucide-react'
-import { Card, CardTitle, Badge, Button, Segmented, CountUp, BrandMark, TONE } from '../components/ui/primitives'
+import { Card, CardTitle, Badge, Button, Segmented, CountUp, BrandMark, PageHeader, Stat, TONE } from '../components/ui/primitives'
 import { CrosshairChart, Meter } from '../components/ui/charts'
 import { Confirm, useToast } from '../components/ui/overlays'
 import { EmptyState } from '../components/ui/forms'
 import { Term } from '../components/ui/Term'
 import { useViewMode } from '../lib/prefs'
-import { useCan } from '../lib/auth'
+import { useAuth, useCan } from '../lib/auth'
 import { isRealApi } from '../lib/http'
+import { ROLE_EXPERIENCE, resolveDashboardTarget } from '../lib/roleExperience'
 import {
   useStore,
   selectRisk,
@@ -83,6 +86,7 @@ function rnscOf(range: Range): number {
 export default function Dashboard() {
   const s = useStore()
   const nav = useNavigate()
+  const user = useAuth()
   const toast = useToast()
   const [range, setRange] = useState<Range>('month')
   const [confirmTicket, setConfirmTicket] = useState<string | null>(null)
@@ -92,10 +96,22 @@ export default function Dashboard() {
   const mode = useViewMode()
   const can = useCan()
   const expert = mode === 'expert'
+  const roleId = user?.roleId ?? 'super'
+  const experience = ROLE_EXPERIENCE[roleId]
+  const fullOverview = experience.fullOverview === true
+  const readOnly = experience.readOnly === true
+  const visibleActions = actions.flatMap((action) => {
+    const to = resolveDashboardTarget(action.to, can)
+    return to ? [{ ...action, to }] : []
+  })
+  const visibleRisk = risk.flatMap((signal) => {
+    const to = resolveDashboardTarget(signal.to, can)
+    return to ? [{ ...signal, to }] : []
+  })
   // 资金动作权限门控：立即退款走 resolveTicketWithRefund（工单退款）→ 需 ticket.handle。
   // 总览无 RequirePerm（人人可看），但资金按钮不能对 audit/finance 等无权角色渲染。
   const canRefund = can('ticket.handle')
-  const overall = risk.some((r) => r.health === 'red') ? 'red' : risk.some((r) => r.health === 'amber') ? 'amber' : 'green'
+  const overall = visibleRisk.some((r) => r.health === 'red') ? 'red' : visibleRisk.some((r) => r.health === 'amber') ? 'amber' : 'green'
 
   const gmvScale = RANGE_SCALE[range]
   // 基础流水：真实模式从号池/品牌派生（∑ brands.gmvMtd），不再用 data.ts 静态 kpi.gmvMtd。
@@ -142,20 +158,28 @@ export default function Dashboard() {
   const activeAgents = s.agents.filter((a) => a.status === 'active').length
   const liveBrandCount = s.brands.filter((b) => b.status === 'live').length
   const agentPending = s.agents.reduce((x, a) => x + a.payoutPending, 0)
+  const pendingSettlements = s.settlements.filter((x) => x.status === 'pending' || x.status === 'reconciling')
+  const reconcileDiffTotal = s.settlements.reduce((sum, x) => sum + x.reconcileDiff, 0)
+  const unresolvedTickets = s.complaints.filter((x) => x.status !== 'resolved')
+  const urgentTickets = unresolvedTickets.filter((x) => x.slaLeftMin > 0 && x.slaLeftMin <= 30)
+  const controlledMerchants = s.merchants.filter((x) => x.state !== 'healthy')
+  const orderGross = s.orders.reduce((sum, x) => sum + x.amount, 0)
+
+  if (roleId === 'teamadmin') return <TeamAdminHome onOpen={nav} />
 
   return (
     <>
       {/* header */}
       <div style={rev(0.04)} className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <div className="flex items-center gap-2.5"><span className="h-[7px] w-[7px] bg-brand" /><span className="text-[11px] font-semibold tracking-[0.14em] text-brand">北极星指标</span></div>
-          <h1 className="t-h1 mt-2 text-ink">经营总览</h1>
-          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">北极星看 R-NSC 风险调整后净订阅贡献，不被 GMV 诱导 · 先看风险与待办，号池健康联动投放</p>
+          <div className="flex items-center gap-2.5"><span className="h-[7px] w-[7px] bg-brand" /><span className="text-[11px] font-semibold tracking-[0.14em] text-brand">{experience.eyebrow}</span></div>
+          <h1 className="t-h1 mt-2 text-ink">{experience.title}</h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">{experience.description}</p>
         </div>
         <div className="flex w-full flex-wrap items-center gap-2.5 sm:w-auto sm:shrink-0">
-          <Segmented value={range} onChange={setRange} options={[{ value: 'today', label: '今日' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'quarter', label: '本季' }]} />
-          <Button className="max-sm:flex-1" variant="ghost" busyMs={420} onClick={() => { exportCsv(range, { gmvBase, netMtd: netMtdShown, ltvCac: ltvCacShown, renewal: renewalShown, complaintRate: complaintRateShown, rnsc: rnscShown }); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>
-          <Button className="max-sm:flex-1" variant="primary" onClick={() => nav('/settlement')}>本期结算预览 <ArrowRight size={15} /></Button>
+          {fullOverview && <Segmented value={range} onChange={setRange} options={[{ value: 'today', label: '今日' }, { value: 'week', label: '本周' }, { value: 'month', label: '本月' }, { value: 'quarter', label: '本季' }]} />}
+          {fullOverview && <Button className="max-sm:flex-1" variant="ghost" busyMs={420} onClick={() => { exportCsv(range, { gmvBase, netMtd: netMtdShown, ltvCac: ltvCacShown, renewal: renewalShown, complaintRate: complaintRateShown, rnsc: rnscShown }); toast({ tone: 'good', text: '报表已导出 CSV' }) }}><Download size={15} /> 导出报表</Button>}
+          <Button className="max-sm:flex-1" variant="primary" onClick={() => nav(experience.primaryTo)}>{experience.primaryLabel} <ArrowRight size={15} /></Button>
         </div>
       </div>
 
@@ -163,16 +187,16 @@ export default function Dashboard() {
       {!expert && (
         <Card data-coach="todo" style={rev(0.06)} className="mb-4 border-brand/20 bg-brand-soft/30">
           <CardTitle
-            title="今天要处理的事"
-            desc="需人工处理的升级投诉 / 熔断 / 对账差异，点右侧按钮直达"
-            right={<Badge tone={actions.length ? 'alert' : 'good'} dot>{actions.length ? `${actions.length} 件待办` : '已清空'}</Badge>}
+            title={readOnly ? '需要核查的事项' : '今天要处理的事'}
+            desc={readOnly ? '仅显示你有权查看的异常，点击进入只读明细' : '仅显示当前角色可处理的事项，点击直达对应工作台'}
+            right={<Badge tone={visibleActions.length ? 'alert' : 'good'} dot>{visibleActions.length ? `${visibleActions.length} 件${readOnly ? '待核查' : '待办'}` : '已清空'}</Badge>}
           />
-          {actions.length === 0 ? (
-            <EmptyState art="all-clear" title="今日待办已清空 🎉" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
+          {visibleActions.length === 0 ? (
+            <EmptyState art="all-clear" title={readOnly ? '暂无需要核查的异常' : '当前角色暂无待办'} desc="新的相关事项会自动出现在这里" />
           ) : (
             <div className="flex flex-col gap-2">
-              {actions.slice(0, 3).map((a) => (
-                <ActionRow key={a.id} a={a} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
+              {visibleActions.slice(0, 3).map((a) => (
+                <ActionRow key={a.id} a={a} actionLabel={readOnly ? '查看' : '处理'} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
               ))}
             </div>
           )}
@@ -180,7 +204,7 @@ export default function Dashboard() {
       )}
 
       {/* 演示剧本（一键触发联动）· 仅专家模式 + 演示数据（真实模式隐藏：重置会覆盖服务端真值，退款剧本会触发真实冲账） */}
-      {expert && !isRealApi && (
+      {expert && fullOverview && !isRealApi && (
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-line bg-surface-muted px-3 py-2 text-[12px]">
         <span className="font-medium text-ink-2">演示剧本</span>
         <button onClick={() => { runScenario('crisis'); toast({ tone: 'alert', text: '保号危机：M-XM-02 暂停新签' }) }} className="rounded-md bg-surface px-2.5 py-1 font-medium text-ink-2 ring-1 ring-line hover:ring-brand hover:text-brand">保号危机</button>
@@ -192,36 +216,36 @@ export default function Dashboard() {
       )}
 
       {/* 异动播报：规则模板生成的 3 句话晨报，每句可下钻。数字来自规则引擎（防幻觉）。 */}
-      <DailyBrief nav={nav} />
+      <DailyBrief nav={nav} can={can} showAllClear={fullOverview} />
 
       {/* ───────── 层 1 · 风险与行动 ───────── */}
-      <Card style={rev(0.08)}>
+      {visibleRisk.length > 0 && <Card style={rev(0.08)}>
         <CardTitle
-          title="平台健康"
-          desc="商户号 / 资金 / 合规 风险总览 · 逼近阈值时变色提示"
+          title={fullOverview ? '平台健康' : '职责范围健康'}
+          desc="仅展示当前角色有权查看的风险信号"
           right={<Badge tone={HEALTH_TONE[overall]} dot>{overall === 'red' ? '有告警' : overall === 'amber' ? '需关注' : '全部正常'}</Badge>}
         />
         <div className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-4 lg:grid-cols-7">
-          {risk.map((r) => (
+          {visibleRisk.map((r) => (
             <Link key={r.key} to={r.to} className="group rounded-lg border border-line px-3 py-2.5 transition-[background-color,border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:border-line-strong hover:bg-surface-muted hover:shadow-[var(--shadow-card)]">
               <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3"><span className="h-1.5 w-1.5 rounded-full" style={{ background: `var(--color-${HEALTH_TONE[r.health]})` }} />{r.label}</div>
               <div className={cx('tnum mt-1 text-[16px] font-semibold', TONE[HEALTH_TONE[r.health]].ink)}>{r.value}</div>
             </Link>
           ))}
         </div>
-      </Card>
+      </Card>}
 
-      {expert && (
+      {expert && fullOverview && (
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* 行动中心 —— 专家模式完整展示；简洁模式已在顶部「今天要处理的事」呈现，此处不重复 */}
         <Card style={rev(0.12)} className="lg:col-span-2">
-          <CardTitle title="今日待办" desc="需人工处理事项 · 支持一键操作" right={<Badge tone={actions.length ? 'alert' : 'good'}>{actions.length ? `${actions.length} 项待办` : '已清空'}</Badge>} />
-          {actions.length === 0 ? (
-            <EmptyState art="all-clear" title="今日待办已清空" desc="新的升级投诉 / 暂停新签 / 对账差异会自动出现在这里" />
+          <CardTitle title={readOnly ? '待核查事项' : '今日待办'} desc={readOnly ? '只读查看异常明细' : '需人工处理事项 · 支持一键操作'} right={<Badge tone={visibleActions.length ? 'alert' : 'good'}>{visibleActions.length ? `${visibleActions.length} 项${readOnly ? '待核查' : '待办'}` : '已清空'}</Badge>} />
+          {visibleActions.length === 0 ? (
+            <EmptyState art="all-clear" title={readOnly ? '暂无需要核查的异常' : '当前角色暂无待办'} desc="新的相关事项会自动出现在这里" />
           ) : (
             <div className="flex flex-col gap-2">
-              {actions.map((a) => (
-                <ActionRow key={a.id} a={a} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
+              {visibleActions.map((a) => (
+                <ActionRow key={a.id} a={a} actionLabel={readOnly ? '查看' : '处理'} onRefund={canRefund && a.ticketId ? () => setConfirmTicket(a.ticketId!) : undefined} onOpen={() => nav(a.to)} />
               ))}
             </div>
           )}
@@ -254,7 +278,25 @@ export default function Dashboard() {
       )}
 
       {/* ───────── 层 2 · 北极星与经营健康 ───────── */}
-      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
+      {roleId === 'finance' ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card mark><Stat label="待结算 / 对账中" value={`${pendingSettlements.length} 单`} sub={<span>涉及流水 {money(pendingSettlements.reduce((sum, x) => sum + x.gross, 0))}</span>} /></Card>
+          <Card mark><Stat label="待核销差异" value={money(reconcileDiffTotal)} sub={<span className={reconcileDiffTotal > 0 ? 'text-warn-ink' : 'text-good-ink'}>{reconcileDiffTotal > 0 ? '需逐笔核对' : '当前无差异'}</span>} /></Card>
+          <Card mark><Stat label="在账冻结准备金" value={money(reserveShown)} sub={<span>按风险窗口释放</span>} /></Card>
+        </div>
+      ) : roleId === 'risk' ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card mark><Stat label="未完结工单" value={`${unresolvedTickets.length} 起`} sub={<span className={urgentTickets.length ? 'text-alert-ink' : 'text-good-ink'}>{urgentTickets.length ? `${urgentTickets.length} 起 SLA 临期` : '暂无 SLA 临期'}</span>} /></Card>
+          <Card mark><Stat label="受控商户号" value={`${controlledMerchants.length} 个`} sub={<span>限流 / 暂停 / 熔断</span>} /></Card>
+          <Card mark><Stat label="最高投诉率" value={pct(peakComplaint)} sub={<span className={complaintTone === 'alert' ? 'text-alert-ink' : complaintTone === 'warn' ? 'text-warn-ink' : 'text-good-ink'}>{complaintTone === 'alert' ? '已越红线' : complaintTone === 'warn' ? '逼近红线' : '当前正常'}</span>} /></Card>
+        </div>
+      ) : roleId === 'ops' ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <Card mark><Stat label="在营品牌" value={`${liveBrandCount} 个`} sub={<span>当前可投品牌</span>} /></Card>
+          <Card mark><Stat label="活跃代理" value={`${activeAgents} 个`} sub={<span>{agentRisk.length} 个需复核</span>} /></Card>
+          <Card mark><Stat label="已加载订单" value={`${int(s.orders.length)} 笔`} sub={<span>净流水 {money(orderGross)}</span>} /></Card>
+        </div>
+      ) : <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
         <Kpi d={0.2} label={`${RANGE_LABEL[range]}基础流水`} value={<CountUp to={gmvShown / 1e4} decimals={1} prefix="¥" suffix="万" group={false} />} delta={showDelta ? '+12.4%' : undefined} sub={isRealApi ? 'R-NSC 收入首项 · 扣款成交额' : `R-NSC 收入首项 · 年累计 ${money(kpi.gmvYtd)}`}>
           <MiniSpark data={gmv12mReal} tone="brand" delay={0.4} />
         </Kpi>
@@ -264,10 +306,10 @@ export default function Dashboard() {
         <Kpi d={0.28} label="续费率（连续包月）" value={renewalShown === null ? <span className="text-ink-4">—</span> : <CountUp to={renewalShown} decimals={1} suffix="%" />} delta={showDelta ? '+1.6个百分点' : undefined} sub={`准备金 ${money(reserveShown)}`}>
           <Meter value={renewalShown ?? 0} tone="brand" animate delay={0.56} />
         </Kpi>
-      </div>
+      </div>}
 
       {/* 趋势图 + 北极星仪表 + 层3 供需/风险详情 —— 仅专家模式（简洁模式到此为止） */}
-      {expert && (<>
+      {expert && fullOverview && (<>
       {/* 12 月时序 + R-NSC/净收入/LTV÷CAC 均依赖后端聚合端点，真实模式尚未接入 → 空态，不摆假曲线 */}
       {isRealApi ? (
         <Card className="mt-4" style={rev(0.32)}>
@@ -435,7 +477,30 @@ export default function Dashboard() {
 }
 
 /* ── local pieces ──────────────────────────────── */
-function ActionRow({ a, onRefund, onOpen }: { a: ActionItem; onRefund?: () => void; onOpen: () => void }) {
+function TeamAdminHome({ onOpen }: { onOpen: (to: string) => void }) {
+  const experience = ROLE_EXPERIENCE.teamadmin
+  return (
+    <>
+      <PageHeader
+        title={experience.title}
+        desc={experience.description}
+        actions={<Button variant="primary" onClick={() => onOpen('/members')}><UsersRound size={15} /> {experience.primaryLabel}</Button>}
+      />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <button onClick={() => onOpen('/members')} className="flex min-h-[112px] items-start gap-3 rounded-lg border border-line bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-colors hover:border-brand/40 hover:bg-surface-muted">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-ink"><UsersRound size={18} /></span>
+          <span><span className="block text-[14px] font-semibold text-ink">成员状态管理</span><span className="mt-1 block text-[12.5px] leading-relaxed text-ink-3">查看成员，停用或恢复团队账号。</span></span>
+        </button>
+        <button onClick={() => onOpen('/audit')} className="flex min-h-[112px] items-start gap-3 rounded-lg border border-line bg-surface p-5 text-left shadow-[var(--shadow-card)] transition-colors hover:border-brand/40 hover:bg-surface-muted">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-sunken text-ink-2"><ScrollText size={18} /></span>
+          <span><span className="block text-[14px] font-semibold text-ink">操作审计</span><span className="mt-1 block text-[12.5px] leading-relaxed text-ink-3">查看资金、风控和配置等关键操作记录。</span></span>
+        </button>
+      </div>
+    </>
+  )
+}
+
+function ActionRow({ a, onRefund, onOpen, actionLabel = '处理' }: { a: ActionItem; onRefund?: () => void; onOpen: () => void; actionLabel?: string }) {
   const ICON: Record<string, React.ReactNode> = { reg: <AlertTriangle size={15} />, pool: <TrendingUp size={15} />, fraud: <ShieldCheck size={15} />, recon: <GlassWater size={15} /> }
   return (
     <div className={cx('flex items-start gap-3 rounded-lg p-2.5 transition-colors', a.tone === 'alert' ? 'border border-alert/20 bg-alert/[0.04]' : 'hover:bg-surface-muted')}>
@@ -447,7 +512,7 @@ function ActionRow({ a, onRefund, onOpen }: { a: ActionItem; onRefund?: () => vo
       {onRefund ? (
         <button onClick={onRefund} className="shrink-0 rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-hover">立即退款</button>
       ) : (
-        <button onClick={onOpen} className="shrink-0 rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-sunken hover:text-ink">处理 <ArrowUpRight size={12} className="inline" /></button>
+        <button onClick={onOpen} className="shrink-0 rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-sunken hover:text-ink">{actionLabel} <ArrowUpRight size={12} className="inline" /></button>
       )}
     </div>
   )
@@ -508,10 +573,15 @@ function QualBox({ v, k, tone }: { v: string; k: string; tone: 'good' | 'alert' 
 }
 
 /* 异动播报（晨报）：规则模板从 store 派生 3 句话，每句带下钻链接。 */
-function DailyBrief({ nav }: { nav: (to: string) => void }) {
+function DailyBrief({ nav, can, showAllClear }: { nav: (to: string) => void; can: (permission: string) => boolean; showAllClear: boolean }) {
   const s = useStore()
-  const items = buildInsights(s)
+  const items = buildInsights(s).flatMap((item) => {
+    if (item.id === 'ok' && !showAllClear) return []
+    const to = resolveDashboardTarget(item.to, can)
+    return to ? [{ ...item, to }] : []
+  })
   const dot: Record<string, string> = { alert: 'var(--color-alert)', warn: 'var(--color-warn)', good: 'var(--color-good)', info: 'var(--color-info)' }
+  if (items.length === 0) return null
   return (
     <div className="mb-4 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-card)]" style={rev(0.06)}>
       <div className="flex items-center gap-2 border-b border-line px-4 py-2.5">

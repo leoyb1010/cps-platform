@@ -113,6 +113,11 @@ export class MembersController {
     // 防自我提权 / 自我停用：不能编辑自己的成员记录
     if (id === user.id) throw new ForbiddenException('不能修改自己的角色或状态')
 
+    const target = await this.prisma.user.findUnique({ where: { id }, select: { roleId: true } })
+    if (!target) return { ok: false, detail: '目标成员不存在' }
+    // super 账号只能由种子/DBA 维护，不能被团队管理员停用，也不能经 API 被降级。
+    if (target.roleId === 'super') throw new ForbiddenException('不可修改超级管理员账号')
+
     const data: Record<string, unknown> = {}
     if (dto.roleId) {
       // 仅 super 可变更成员角色；任何人都不得通过此端点赋予 super（super 仅由种子/DBA 设定）

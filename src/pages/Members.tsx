@@ -15,7 +15,7 @@ import {
 } from '../components/ui/primitives'
 import { useToast } from '../components/ui/overlays'
 import { InviteMemberModal, ManageMemberModal } from '../components/ui/MemberModals'
-import { DEMO_USERS, ROLES, PERMISSIONS, type RoleId } from '../lib/auth'
+import { DEMO_USERS, ROLES, PERMISSIONS, useAuth, type RoleId } from '../lib/auth'
 import { isRealApi } from '../lib/http'
 import { adminApi, bizApi, useApi } from '../lib/adminApi'
 import { cx } from '../lib/format'
@@ -32,18 +32,20 @@ const scopeLabel = (st: string, sid: string | null) => st === 'brand' ? `品牌 
 const LOCAL_ROLES: RView[] = ROLE_IDS.map((r) => ({ id: r, name: ROLES[r].name, desc: ROLES[r].desc, perms: ROLES[r].perms }))
 
 export default function Members() {
+  const currentUser = useAuth()
+  const isSuper = currentUser?.roleId === 'super'
   const toast = useToast()
   const [tab, setTab] = useState<'members' | 'roles'>('members')
   const [invite, setInvite] = useState(false)
-  const [manageMember, setManageMember] = useState<{ id: string; name: string; roleId: string } | null>(null)
+  const [manageMember, setManageMember] = useState<{ id: string; name: string; roleId: string; status: string } | null>(null)
   const [activeRole, setActiveRole] = useState<string>('super')
 
   const membersApi = useApi(() => adminApi.members(), [])
   const rolesApi = useApi(() => adminApi.roles(), [])
   const members: MView[] = isRealApi ? (membersApi.data ?? []).map((m) => ({ id: m.id, name: m.name, account: m.account, roleId: m.roleId, roleName: m.roleName, scopeType: m.scopeType, scopeId: m.scopeId, status: m.status })) : LOCAL_MEMBERS
   // 供邀请弹窗选 scope（品牌/代理角色建号需绑定主体）
-  const brandsApi = useApi(() => bizApi.brands<{ id: string; name: string }[]>(), [])
-  const agentsApi = useApi(() => bizApi.agents<{ id: string; name: string }[]>(), [])
+  const brandsApi = useApi(() => isSuper ? bizApi.brands<{ id: string; name: string }[]>() : Promise.resolve([]), [isSuper])
+  const agentsApi = useApi(() => isSuper ? bizApi.agents<{ id: string; name: string }[]>() : Promise.resolve([]), [isSuper])
   const roles: RView[] = isRealApi ? (rolesApi.data ?? []).map((r) => ({ id: r.id, name: r.name, desc: r.description, perms: r.permissions })) : LOCAL_ROLES
   const activeRoleObj = roles.find((r) => r.id === activeRole) ?? roles[0]
   const cnt = (rid: string) => members.filter((m) => m.roleId === rid).length
@@ -52,8 +54,8 @@ export default function Members() {
     <>
       <PageHeader
         title="成员与角色"
-        desc="RBAC：成员归属角色，角色绑定权限点 + 数据范围。路由级 / 操作级 / 数据级三级控制：品牌只见自己、代理只见自己。"
-        actions={<Button variant="primary" onClick={() => setInvite(true)}><UserPlus size={14} /> 邀请成员</Button>}
+        desc={isSuper ? '创建账号、分配角色并维护权限与数据范围。' : '查看成员和角色；你可以停用或恢复账号，角色与权限由超级管理员维护。'}
+        actions={isSuper ? <Button variant="primary" onClick={() => setInvite(true)}><UserPlus size={14} /> 邀请成员</Button> : undefined}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -65,7 +67,7 @@ export default function Members() {
 
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">
-          <CardTitle title={tab === 'members' ? '成员列表' : '角色与权限矩阵'} desc={tab === 'members' ? '成员归属角色，角色决定可见与可用' : '角色 × 权限点（演示态可勾选，真实环境保存到后端）'} />
+          <CardTitle title={tab === 'members' ? '成员列表' : '角色与权限矩阵'} desc={tab === 'members' ? '成员归属角色，角色决定可见与可用' : isSuper ? '选择角色并维护其权限点' : '只读查看各角色包含的权限点'} />
           <Segmented value={tab} onChange={setTab} options={[{ value: 'members', label: '成员' }, { value: 'roles', label: '角色权限' }]} />
         </div>
 
@@ -84,7 +86,11 @@ export default function Members() {
                 <Td><span className="text-[12px] text-ink-3">{scopeLabel(u.scopeType, u.scopeId)}</span></Td>
                 <Td right><Badge tone={u.status === 'disabled' ? 'alert' : 'good'} dot>{u.status === 'disabled' ? '已停用' : '在职'}</Badge></Td>
                 <Td right>
-                  <button onClick={() => setManageMember({ id: u.id, name: u.name, roleId: u.roleId })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>
+                  {u.id === currentUser?.id
+                    ? <span className="text-[11.5px] text-ink-4">当前账号</span>
+                    : u.roleId === 'super'
+                      ? <span className="text-[11.5px] text-ink-4">受保护账号</span>
+                      : <button onClick={() => setManageMember({ id: u.id, name: u.name, roleId: u.roleId, status: u.status })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>}
                 </Td>
               </Row>
             ))}
@@ -110,6 +116,7 @@ export default function Members() {
                 key={activeRoleObj.id}
                 roleId={activeRoleObj.id}
                 initial={activeRoleObj.perms}
+                editable={isSuper && activeRoleObj.id !== 'super'}
                 onSave={async (perms) => {
                   if (isRealApi) {
                     const r = await adminApi.updateRole(activeRoleObj.id, perms).catch((e) => ({ ok: false, detail: e?.message }))
@@ -125,16 +132,16 @@ export default function Members() {
         )}
       </Card>
 
-      {invite && <InviteMemberModal scopeOptions={{ brands: brandsApi.data ?? [], agents: agentsApi.data ?? [] }} onClose={() => setInvite(false)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
-      {manageMember && <ManageMemberModal member={manageMember} onClose={() => setManageMember(null)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
+      {invite && isSuper && <InviteMemberModal scopeOptions={{ brands: brandsApi.data ?? [], agents: agentsApi.data ?? [] }} onClose={() => setInvite(false)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
+      {manageMember && <ManageMemberModal member={manageMember} canChangeRole={isSuper} onClose={() => setManageMember(null)} onDone={() => { if (isRealApi) membersApi.reload?.() }} />}
     </>
   )
 }
 
-function RolePerms({ roleId, initial, onSave }: { roleId: string; initial: string[]; onSave: (perms: string[]) => void | Promise<void> }) {
+function RolePerms({ roleId, initial, editable, onSave }: { roleId: string; initial: string[]; editable: boolean; onSave: (perms: string[]) => void | Promise<void> }) {
   const [granted, setGranted] = useState<Set<string>>(new Set(initial))
   const [saving, setSaving] = useState(false)
-  const readonly = roleId === 'super'
+  const readonly = !editable
   const toggle = (key: string) => {
     if (readonly) return
     setGranted((cur) => {
@@ -181,7 +188,7 @@ function RolePerms({ roleId, initial, onSave }: { roleId: string; initial: strin
           </div>
         ))}
       </div>
-      {readonly && <div className="mt-3 rounded-lg bg-surface-muted p-2.5 text-[11.5px] text-ink-4">超级管理员拥有全部权限，不可在此取消。</div>}
+      {readonly && <div className="mt-3 rounded-lg bg-surface-muted p-2.5 text-[11.5px] text-ink-4">{roleId === 'super' ? '超级管理员拥有全部权限，不可在此取消。' : '当前账号可查看权限矩阵；仅超级管理员可修改角色权限。'}</div>}
     </div>
   )
 }
