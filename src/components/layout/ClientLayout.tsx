@@ -9,6 +9,7 @@ import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
 import { OfflineBanner } from './OfflineBanner'
 import { PageSkeleton } from './PageSkeleton'
+import { ErrorBoundary } from './ErrorBoundary'
 import { brandTheme } from '../../lib/whitelabel'
 import { useTheme, resolvedTheme } from '../../lib/prefs'
 
@@ -159,8 +160,11 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
           </header>
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
             <OfflineBanner />
+            {/* 壳内错误边界：门户单页异常只塌在内容区，导航保留（main 的 key 含 pathname，换页自动重置错误态） */}
             <Suspense fallback={<PageSkeleton />}>
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
             </Suspense>
           </main>
         </div>

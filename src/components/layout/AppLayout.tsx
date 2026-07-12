@@ -16,6 +16,7 @@ import { isRealApi } from '../../lib/http'
 import { useToast } from '../ui/overlays'
 import { CommandPalette } from './CommandPalette'
 import { CoachMarks } from './CoachMarks'
+import { ErrorBoundary } from './ErrorBoundary'
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
@@ -200,9 +201,10 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
         <span className="text-hairtick">/</span>
         <span className="font-semibold text-ink">{title}</span>
       </div>
-      <span className="hidden items-center gap-1.5 rounded-md border border-good/30 bg-good/[0.06] px-2 py-1 text-[11px] text-good-ink md:inline-flex">
-        <span className="h-1.5 w-1.5 rounded-full bg-good" />
-        生产环境
+      {/* 环境徽标按 API_MODE 显示：real→生产环境(绿)，mock→演示环境(蓝)。演示模式不得谎称"生产环境"。 */}
+      <span className={cx('hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] md:inline-flex', isRealApi ? 'border-good/30 bg-good/[0.06] text-good-ink' : 'border-info/30 bg-info/[0.06] text-info-ink')}>
+        <span className={cx('h-1.5 w-1.5 rounded-full', isRealApi ? 'bg-good' : 'bg-info')} />
+        {isRealApi ? '生产环境' : '演示环境'}
       </span>
       <div className="ml-auto flex items-center gap-2.5">
         <div className="hidden md:block" data-coach="viewmode"><Segmented value={mode} onChange={setViewMode} options={[{ value: 'simple', label: '简洁' }, { value: 'expert', label: '专家' }]} /></div>
@@ -391,8 +393,11 @@ export default function AppLayout() {
           <main key={`${loc.pathname}-${epoch}`} className="mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
             <OfflineBanner />
             {/* 壳内 Suspense：lazy 页加载时只在内容区出骨架，侧栏/顶栏常驻，不整屏闪白 */}
+            {/* 壳内错误边界：单页渲染异常只塌在内容区，导航保留可用（main 的 key 含 pathname，换页自动重置错误态） */}
             <Suspense fallback={<PageSkeleton />}>
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
             </Suspense>
           </main>
         </div>
