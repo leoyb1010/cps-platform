@@ -69,9 +69,15 @@ export class CpsService {
     if (so.status === 'unsigned' || so.status === 'expired') return { ok: false, detail: '签约单已失效' }
     // 首扣幂等键强制绑定签约单（忽略调用方任意键），确保二次首扣——无论携带何种 Idempotency-Key——都命中同一键回放首次结果，
     // 绝不以 period=0 再次落单、双计 GMV。续扣走 renewCharge。
-    const r = await this.charge(so.id, 0, 'first', `first:${so.id}`)
-    // 签约成功回调（1）+ 扣款成功回调（2），由 charge 内部推 2；这里补 1（仅首次，回放不重推）。
-    if (r.ok && !(r as { replayed?: boolean }).replayed) await this.webhook.deliver(so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
+    // deferDeductWebhook=true：首扣的「扣款成功(2)」回调不在 charge 内部推，改由这里在「签约成功(1)」之后推，
+    // 保证合作方按业务时序先收签约后收扣款（P3-4）。guard 传首扣期望前置（signing/0），条件更新防复活/双扣（P1-B2）。
+    const r = await this.charge(so.id, 0, 'first', `first:${so.id}`, { prevStatus: 'signing', prevPeriod: 0 }, true)
+    // 签约成功回调（1）→ 扣款成功回调（2），先 1 后 2（仅首次，回放不重推）。
+    if (r.ok && !(r as { replayed?: boolean }).replayed) {
+      await this.webhook.deliver(so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
+      const rr = r as { extOrderNo?: string; amount?: number }
+      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: rr.extOrderNo, amount: rr.amount, period: 0, operateTime: new Date() })
+    }
     return r
   }
 
@@ -80,11 +86,19 @@ export class CpsService {
     const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } })
     if (!so) return { ok: false, detail: '签约单不存在' }
     if (so.status !== 'active') return { ok: false, detail: '仅生效签约单可续扣' }
-    return this.charge(so.id, so.currentPeriod + 1, 'renew', idemKey)
+    // guard 传续扣期望前置（active/当前期），条件更新确保只从"上一期 active"跃迁一期，防同期并发双扣与解约后复活（P1-B2）。
+    return this.charge(so.id, so.currentPeriod + 1, 'renew', idemKey, { prevStatus: 'active', prevPeriod: so.currentPeriod })
   }
 
   // ── 扣款核心（幂等）：走 fulfillment.ingestOrder 落账，恒等式安全。type=first/renew ──
-  private async charge(signOrderNo: string, period: number, type: 'first' | 'renew', idemKey?: string) {
+  private async charge(
+    signOrderNo: string,
+    period: number,
+    type: 'first' | 'renew',
+    idemKey?: string,
+    guard?: { prevStatus: string; prevPeriod: number },
+    deferDeductWebhook = false,
+  ) {
     const key = idemKey ?? `${signOrderNo}:${period}`
     // 幂等键绑定签约单：外部调用方把同一 Idempotency-Key 复用到另一张签约单时各自执行，
     // 而非静默回放首单结果（否则第二张签约单"看似扣款成功"实际没扣）。
@@ -104,22 +118,27 @@ export class CpsService {
         })
         const ing = await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: so.brandId, agentId: so.agentId || '未知', productId: so.productId, amount, type, plan: so.plan })
         // 推进签约单：首扣 → active + 关联订阅；续扣 → currentPeriod=period
-        await tx.signOrder.update({
-          where: { id: so.id },
+        // P1-B2：把"读快照-无条件写 active"改为条件更新——where 带期望前置状态+前置期数，
+        // 只有当签约单仍处于预期前值时才推进；count===0 说明 check 与 tx 之间被解约复活、
+        // 或同期已被并发扣款，抛错让整笔事务回滚（含上面的 Order/ingestOrder），杜绝双扣与解约单复活。
+        const g = guard ?? { prevStatus: type === 'first' ? 'signing' : 'active', prevPeriod: type === 'first' ? 0 : period - 1 }
+        const advanced = await tx.signOrder.updateMany({
+          where: { id: so.id, status: g.prevStatus, currentPeriod: g.prevPeriod },
           data: {
             status: 'active', currentPeriod: period,
             subscriptionId: ing.subscriptionId ?? so.subscriptionId,
             signedAt: so.signedAt ?? new Date(), nextChargeAt: new Date(Date.now() + 30 * 86400000),
           },
         })
+        if (advanced.count === 0) throw new Error(`签约单状态/期数已变更（期望 ${g.prevStatus}/${g.prevPeriod}），本次扣款回滚`)
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge', resource: 'SignOrder', resourceId: so.id, detail: `${type === 'first' ? '首扣' : '续扣'} 第${period}期 · 订单 ${oid} · ¥${amount}` })
         return { ok: true, detail: '扣款成功', signOrderNo: so.id, orderId: oid, extOrderNo: ext, period, amount }
       })
     }, signOrderNo)
     if (result.ok && !replayed) {
       this.metrics.recordFundAction('cps.charge', 'ok')
-      // 扣款成功回调（2）
-      await this.webhook.deliver(signOrderNo, YD_STATUS.DEDUCT, { orderNo: result.extOrderNo, amount: result.amount, period, operateTime: new Date() })
+      // 扣款成功回调（2）：续扣在此直接推；首扣 deferDeductWebhook=true，改由 confirmAndFirstCharge 在签约(1)之后推（P3-4）。
+      if (!deferDeductWebhook) await this.webhook.deliver(signOrderNo, YD_STATUS.DEDUCT, { orderNo: result.extOrderNo, amount: result.amount, period, operateTime: new Date() })
     }
     return replayed ? { ...result, replayed: true } : result
   }
@@ -160,8 +179,9 @@ export class CpsService {
         const amt = Math.abs(order.amount)
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period, refundedOrderId: order.id } })
         const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
-        await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
-        if (rev.settlement) await this.reserve.clawback(tx, rev.settlement.id, rev.share)
+        const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
+        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.refund', resource: 'Order', resourceId: order.id, detail: `退款 ¥${amt} · 签约 ${signOrderNo} · 交易 ${extOrderNo} · 冲账 ¥${rev.share}` })
         return { amt, share: rev.share, period: order.period }
       })
@@ -182,7 +202,10 @@ export class CpsService {
     const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } })
     if (!so) return { ok: false, detail: '签约单不存在' }
     if (so.status === 'unsigned') return { ok: true, detail: '已解约', replayed: true }
-    await this.prisma.signOrder.update({ where: { id: so.id }, data: { status: 'unsigned', unsignedAt: new Date() } })
+    // P1-B2：无条件解约收紧为条件更新——只从「未解约」态原子跃迁到 unsigned；
+    // 并发/竞态下只有 count===1 的赢家继续推 churn/webhook，count===0（已被并发解约）幂等返回，不重复副作用。
+    const done = await this.prisma.signOrder.updateMany({ where: { id: so.id, status: { not: 'unsigned' } }, data: { status: 'unsigned', unsignedAt: new Date() } })
+    if (done.count === 0) return { ok: true, detail: '已解约', replayed: true }
     await this.prisma.chargeRetry.updateMany({ where: { signOrderNo: so.id, status: 'pending' }, data: { status: 'cancelled' } })
     if (so.subscriptionId) await this.prisma.subscription.update({ where: { id: so.subscriptionId }, data: { status: 'churned', churnedAt: new Date() } }).catch(() => undefined)
     await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.unsign', resource: 'SignOrder', resourceId: so.id, detail: `解约 ${so.id}` })

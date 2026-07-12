@@ -43,53 +43,67 @@ export class ReconciliationService {
   ) {}
 
   async run(): Promise<ReconResult> {
-    const settlements = await this.prisma.settlement.findMany()
-    const releases = await this.prisma.reserveRelease.findMany()
-
-    // ── 恒等式 I（计提，静态）：gross = brandShare + reserve + platformFee + agentPayout + reversal ──
+    // P2-B4：分批(cursor)扫描，不再 findMany() 全表进内存——结算单量大时会撑爆内存。
+    //   每批只取 BATCH 张结算单，再按 settlementId in 批量取其释放计划行；内存占用与批大小成正比、与总量无关。
+    //   容差暂留 ±1 元：生产存储仍是 Float（Decimal 落地在 P0-3 阶段3），此刻收紧到 0.01 会误报浮点尾差。
+    const BATCH = 500
     const mismatches: ReconItem[] = []
-    for (const s of settlements) {
-      const allocated = s.brandShare + s.reserve + s.platformFee + s.agentPayout + s.reversal
-      const diff = Math.round(s.gross - allocated)
-      // 留 1 元容差防浮点四舍五入
-      if (Math.abs(diff) > 1) {
-        mismatches.push({ id: s.id, brandId: s.brandId, gross: Math.round(s.gross), allocated: Math.round(allocated), diff })
-      }
-    }
-
-    // ── 释放守恒（与 I 正交，不改 I 的任何一项）──
-    //   II  frozen          == reserve − reserveReleased − reserveClawedBack
-    //   III reserve         == reserveReleased + reserveClawedBack + Σ(未释放计划行 amount)   （计划完整性）
-    //   IV  reserveReleased == Σ(released 行 releasedAmount)                                  （释放对账）
-    const byS = new Map<string, typeof releases>()
-    for (const r of releases) {
-      const arr = byS.get(r.settlementId) ?? []
-      arr.push(r)
-      byS.set(r.settlementId, arr)
-    }
     const reserveMismatches: ReserveItem[] = []
     const near = (a: number, b: number) => Math.abs(Math.round(a - b)) <= 1 // 1 元容差
-    for (const s of settlements) {
-      const rows = byS.get(s.id) ?? []
-      // II
-      const frozenExpected = s.reserve - s.reserveReleased - s.reserveClawedBack
-      if (!near(s.frozen, frozenExpected)) {
-        reserveMismatches.push({ settlementId: s.id, kind: 'frozen_mismatch', detail: `frozen ${Math.round(s.frozen)} ≠ reserve−released−clawed ${Math.round(frozenExpected)}`, diff: Math.round(s.frozen - frozenExpected) })
+    let checkedSettlements = 0
+    let cursor: string | undefined
+
+    for (;;) {
+      const settlements = await this.prisma.settlement.findMany({
+        take: BATCH,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+        orderBy: { id: 'asc' },
+      })
+      if (settlements.length === 0) break
+      cursor = settlements[settlements.length - 1].id
+      checkedSettlements += settlements.length
+
+      // 本批结算单对应的释放计划行（按 settlementId 批量取，避免整表 reserveRelease 进内存）
+      const releases = await this.prisma.reserveRelease.findMany({ where: { settlementId: { in: settlements.map((s) => s.id) } } })
+      const byS = new Map<string, typeof releases>()
+      for (const r of releases) {
+        const arr = byS.get(r.settlementId) ?? []
+        arr.push(r)
+        byS.set(r.settlementId, arr)
       }
-      // 仅当该结算单确有释放计划时才校验 III/IV（无计划=未启用分期释放，跳过）
-      if (rows.length > 0) {
-        // III：未释放（scheduled|frozen）的计划额之和 + 已释放 + 已追偿 == reserve
-        const pending = rows.filter((r) => r.status === 'scheduled' || r.status === 'frozen').reduce((a, r) => a + r.amount, 0)
-        const planTotal = pending + s.reserveReleased + s.reserveClawedBack
-        if (!near(planTotal, s.reserve)) {
-          reserveMismatches.push({ settlementId: s.id, kind: 'plan_sum_mismatch', detail: `计划合计 ${Math.round(planTotal)} ≠ reserve ${Math.round(s.reserve)}`, diff: Math.round(planTotal - s.reserve) })
+
+      for (const s of settlements) {
+        // ── 恒等式 I（计提，静态）：gross = brandShare + reserve + platformFee + agentPayout + reversal ──
+        const allocated = s.brandShare + s.reserve + s.platformFee + s.agentPayout + s.reversal
+        const diff = Math.round(s.gross - allocated)
+        if (Math.abs(diff) > 1) {
+          mismatches.push({ id: s.id, brandId: s.brandId, gross: Math.round(s.gross), allocated: Math.round(allocated), diff })
         }
-        // IV：已释放行的 releasedAmount 之和 == reserveReleased
-        const releasedSum = rows.filter((r) => r.status === 'released').reduce((a, r) => a + r.releasedAmount, 0)
-        if (!near(releasedSum, s.reserveReleased)) {
-          reserveMismatches.push({ settlementId: s.id, kind: 'released_sum_mismatch', detail: `released 之和 ${Math.round(releasedSum)} ≠ reserveReleased ${Math.round(s.reserveReleased)}`, diff: Math.round(releasedSum - s.reserveReleased) })
+
+        // ── 释放守恒（与 I 正交，不改 I 的任何一项）──
+        //   II  frozen          == reserve − reserveReleased − reserveClawedBack
+        //   III reserve         == reserveReleased + reserveClawedBack + Σ(未释放计划行 amount)
+        //   IV  reserveReleased == Σ(released 行 releasedAmount)
+        const rows = byS.get(s.id) ?? []
+        const frozenExpected = s.reserve - s.reserveReleased - s.reserveClawedBack
+        if (!near(s.frozen, frozenExpected)) {
+          reserveMismatches.push({ settlementId: s.id, kind: 'frozen_mismatch', detail: `frozen ${Math.round(s.frozen)} ≠ reserve−released−clawed ${Math.round(frozenExpected)}`, diff: Math.round(s.frozen - frozenExpected) })
+        }
+        // 仅当该结算单确有释放计划时才校验 III/IV（无计划=未启用分期释放，跳过）
+        if (rows.length > 0) {
+          const pending = rows.filter((r) => r.status === 'scheduled' || r.status === 'frozen').reduce((a, r) => a + r.amount, 0)
+          const planTotal = pending + s.reserveReleased + s.reserveClawedBack
+          if (!near(planTotal, s.reserve)) {
+            reserveMismatches.push({ settlementId: s.id, kind: 'plan_sum_mismatch', detail: `计划合计 ${Math.round(planTotal)} ≠ reserve ${Math.round(s.reserve)}`, diff: Math.round(planTotal - s.reserve) })
+          }
+          const releasedSum = rows.filter((r) => r.status === 'released').reduce((a, r) => a + r.releasedAmount, 0)
+          if (!near(releasedSum, s.reserveReleased)) {
+            reserveMismatches.push({ settlementId: s.id, kind: 'released_sum_mismatch', detail: `released 之和 ${Math.round(releasedSum)} ≠ reserveReleased ${Math.round(s.reserveReleased)}`, diff: Math.round(releasedSum - s.reserveReleased) })
+          }
         }
       }
+
+      if (settlements.length < BATCH) break
     }
 
     const totalBad = mismatches.length + reserveMismatches.length
@@ -103,6 +117,6 @@ export class ReconciliationService {
         after: { mismatches, reserveMismatches },
       })
     }
-    return { ok: totalBad === 0, checkedSettlements: settlements.length, mismatches, reserveMismatches }
+    return { ok: totalBad === 0, checkedSettlements, mismatches, reserveMismatches }
   }
 }
