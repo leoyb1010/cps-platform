@@ -106,6 +106,8 @@ export interface StoreState {
   claims: AdClaim[]
   pendingAgents: PendingAgent[]
   contracts: GrowthContract[]
+  // real 模式订单游标续拉是否被上限截断（UI 据此提示"仅展示前 N 条"，避免静默只看到首页）
+  ordersTruncated: boolean
 }
 
 // 持久化键按模式隔离：真实模式水合的服务端数据曾写进与演示模式相同的键，
@@ -141,6 +143,7 @@ function seed(): StoreState {
     claims: [],
     pendingAgents: realEmpty(SEED_PENDING_AGENTS),
     contracts: realEmpty(seedContracts),
+    ordersTruncated: false,
   }
 }
 
@@ -287,34 +290,84 @@ export function stopLiveFeed() {
   if (liveTimer) { clearInterval(liveTimer); liveTimer = null }
 }
 
+// 未知 id 兜底空壳：服务端返回本地种子里没有的 id 时，用空结构而非 seed[0]。
+// 否则会把首条种子（有道等）的品牌/代理/号池/工单数据顶包到新实体，造成跨品牌数据串味。
+// 服务端 Partial 标量随后覆盖其上；嵌套字段（plans/channels/thresholds）保持空，UI 走既有空态。
+const emptyBrandBase = (id: string): Brand => ({
+  id, name: id, mark: id.slice(0, 1).toUpperCase() || '?', category: '', status: 'review', path: 'direct',
+  feeRate: 0, period: 0, reservePct: 0, thresholds: { complaint: 0, escalated: 0, chargeback: 0 }, plans: [], channels: [],
+  gmvMtd: 0, activeSubs: 0, renewalRate: 0, complaintRate: 0, escalatedRate: 0, chargebackRate: 0, joinedAt: '',
+})
+const emptyAgentBase = (id: string): Agent => ({
+  id, name: id, type: '企业', status: 'active', creditScore: 700, spendMtd: 0, firstOrders: 0, roi: 0, renewalRate: 0,
+  complaintRate: 0, refundRate: 0, payoutPending: 0, settledTotal: 0, deposit: 0, brandsCount: 0, joinedAt: '', invoicing: '企业开票',
+})
+const emptyMerchantBase = (id: string): MerchantAccount => ({
+  id, brandId: '', channel: 'wechat', mid: id, state: 'healthy', complaintRate: 0, escalatedRate: 0, chargebackRate: 0,
+  refundRate: 0, close72h: 100, gmvMtd: 0, txCount: 0, limitUsedPct: 0, weight: 0,
+})
+const emptyComplaintBase = (id: string): Complaint => ({
+  id, time: '', source: 'platform', level: 'normal', status: 'pending', slaLeftMin: 0, brandId: '', agentId: '', orderId: '', reason: '', owner: '未分配',
+})
+
+// 订单游标续拉（有界）：real 模式服务端游标分页 { items, nextCursor }，只取首页会静默丢弃后续订单。
+// 循环带 cursor 拉取直到无 nextCursor 或达上限（约 10 页），并暴露是否被截断。
+// 三态与其它集合一致：403 → 空数组（数据级 RBAC 清空）；网络错/5xx → null（保留现值不清屏）；成功 → items。
+const ORDERS_MAX = 2000
+async function fetchOrders(): Promise<{ orders: Order[] | null; truncated: boolean }> {
+  try {
+    const acc: Partial<Order>[] = []
+    let cursor: string | undefined
+    let truncated = false
+    do {
+      const page = await bizApi.orders<Partial<Order>[]>(cursor)
+      const items = Array.isArray(page) ? [] : page.items ?? []
+      acc.push(...items)
+      cursor = (Array.isArray(page) ? null : page.nextCursor) ?? undefined
+      if (acc.length >= ORDERS_MAX) { truncated = !!cursor; break }
+    } while (cursor)
+    return { orders: acc as Order[], truncated }
+  } catch (e) {
+    if ((e as { status?: number })?.status === 403) return { orders: [], truncated: false }
+    return { orders: null, truncated: false } // 网络错/5xx → 保留现值
+  }
+}
+
 /**
  * 真实模式：用服务端数据水合 store（业务页随后照常读 store，但反映服务端真值）。
  * 服务端表是扁平子集，UI 需要的嵌套字段（品牌 plans/channels/thresholds 等）以 seed 为底，
  * 服务端标量字段覆盖其上，保证既是真数据又不破坏页面所需结构。
  */
-export async function hydrateFromServer() {
-  if (!isRealApi) return
+let hydrating: Promise<void> | null = null
+export function hydrateFromServer(): Promise<void> {
+  if (!isRealApi) return Promise.resolve()
+  // 并发去重：登录 / 60s 轮询 / 镜像失败回收 可能同时触发水合。复用进行中的 promise，
+  // 防多请求并发相互覆盖（慢的旧请求覆盖新状态）。参考 auth.ts bootstrapAuth 的 once-promise。
+  if (hydrating) return hydrating
+  hydrating = doHydrate().finally(() => {
+    hydrating = null
+  })
+  return hydrating
+}
+
+async function doHydrate(): Promise<void> {
   // 每个集合独立取数，但区分失败语义：
   //   403（无权限）→ 置空：用户本就看不到，这让数据级 RBAC 在 UI 自然生效；
   //   网络错/5xx → 保留当前数据：一次瞬时 500 不应把整页清成"没有结算单"并持久化空集。
   const EMPTY: unknown[] = []
   const safe = async <T>(p: Promise<T>): Promise<T | null> =>
     p.catch((e: unknown) => ((e as { status?: number })?.status === 403 ? (EMPTY as T) : null))
-  const [brands, agents, merchants, ordersPage, settlements, tickets, config] = await Promise.all([
+  const [brands, agents, merchants, ordersResult, settlements, tickets, config] = await Promise.all([
     safe(bizApi.brands<Partial<Brand>[]>()),
     safe(bizApi.agents<Partial<Agent>[]>()),
     safe(bizApi.merchants<Partial<MerchantAccount>[]>()),
-    safe(bizApi.orders<Partial<Order>[]>()), // 游标分页：{ items, nextCursor }
+    fetchOrders(), // 游标分页 { items, nextCursor }，内部有界续拉；返回 { orders, truncated }
     safe(bizApi.settlements<Partial<Settlement>[]>()),
     safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
     safe(bizApi.config<Record<string, unknown>>()), // 配置 KV（平台配置/通道/SLA/归因）回读
   ])
-  // 订单是游标分页 { items, nextCursor }，与其它扁平数组不同。
-  // safe() 在 403 时返回 []（空数组），成功时返回 { items }。必须区分三态：
-  //   403 → []（安全空数组，与其它集合一致地按数据级 RBAC 清空，防越权用户续看旧单）
-  //   网络错/5xx → null（保留现值，一次瞬时错误不清屏）
-  //   成功 → items
-  const orders = ordersPage === null ? null : Array.isArray(ordersPage) ? [] : (ordersPage.items ?? [])
+  // 订单三态（详见 fetchOrders）：403 → []（数据级 RBAC 清空）；网络错/5xx → null（保留现值）；成功 → 全量续拉结果
+  const orders = ordersResult.orders
   // 全部失败（如完全离线）：保留现值 + 置离线态供全局 banner 提示，不阻断已有数据
   if (!brands && !agents && !merchants && orders === null && !settlements && !tickets) {
     setHydrationStatus('offline')
@@ -327,16 +380,18 @@ export async function hydrateFromServer() {
   const seedA = new Map(seedAgents.map((a) => [a.id, a]))
   const seedM = new Map(seedMerchants.map((m) => [m.id, m]))
   const next: StoreState = {
-    // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖；403 → 空；网络错 → 保留现值
-    brands: brands ? (brands.map((b) => ({ ...(seedB.get(b.id!) ?? seedBrands[0]), ...b })) as Brand[]) : state.brands,
-    agents: agents ? (agents.map((a) => ({ ...(seedA.get(a.id!) ?? seedAgents[0]), ...a })) as Agent[]) : state.agents,
-    merchants: merchants ? (merchants.map((m) => ({ ...(seedM.get(m.id!) ?? seedMerchants[0]), ...m })) as MerchantAccount[]) : state.merchants,
+    // 品牌/代理/号池：seed 兜底嵌套字段 + 服务端标量覆盖；未知 id → 空壳兜底（不用 seed[0] 顶包）；403 → 空；网络错 → 保留现值
+    brands: brands ? (brands.map((b) => ({ ...(seedB.get(b.id!) ?? emptyBrandBase(b.id!)), ...b })) as Brand[]) : state.brands,
+    agents: agents ? (agents.map((a) => ({ ...(seedA.get(a.id!) ?? emptyAgentBase(a.id!)), ...a })) as Agent[]) : state.agents,
+    merchants: merchants ? (merchants.map((m) => ({ ...(seedM.get(m.id!) ?? emptyMerchantBase(m.id!)), ...m })) as MerchantAccount[]) : state.merchants,
     orders: orders ? (orders as Order[]) : state.orders,
+    // 订单成功续拉时更新截断标记；网络错保留现值则一并保留旧标记
+    ordersTruncated: orders ? ordersResult.truncated : state.ordersTruncated,
     settlements: settlements ? (settlements as Settlement[]) : state.settlements,
     complaints: tickets
       ? tickets.map((t) => {
           const s = seedComplaints.find((c) => c.id === t.id)
-          return { ...(s ?? seedComplaints[0]), ...t } as Complaint
+          return { ...(s ?? emptyComplaintBase(t.id!)), ...t } as Complaint
         })
       : state.complaints,
     activity: state.activity,

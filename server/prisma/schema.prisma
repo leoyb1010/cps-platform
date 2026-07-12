@@ -225,6 +225,7 @@ model Settlement {
   updatedAt          DateTime @default(now()) @updatedAt
 
   @@unique([period, brandId]) // 同品牌同账期唯一，防重复结算单
+  @@index([brandId]) // applyRefundReversal 按 brandId 找结算单（退款冲账热路径）
 }
 
 model Ticket {
@@ -338,6 +339,8 @@ model ChargeRetry {
   nextRetryAt DateTime // 下次补扣时间
   lastTriedAt DateTime?
   createdAt   DateTime  @default(now())
+
+  @@index([status, nextRetryAt]) // 定时 sweep 热查询：按状态 + 到期时间捞待补扣
 }
 
 // 回调投递日志（出/入站）：供开发者中心「联调日志」展示。无资金语义，不进对账。
@@ -375,6 +378,9 @@ model ReserveRelease {
   releasedAmount Float     @default(0) // 实际释放额
   holdReason     String    @default("") // 冻结/延迟原因
   createdAt      DateTime  @default(now())
+
+  @@index([settlementId]) // 按结算单汇总/追偿（clawback、台账列表）
+  @@index([status, dueAt]) // 到期释放热查询：scheduled + dueAt<=now
 }
 
 // 资源置换台账（品牌间互相开票、各自确认收入）。双边：发起方 + 对手方均为真实品牌。

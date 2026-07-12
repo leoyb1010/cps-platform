@@ -17,6 +17,7 @@ import { useToast } from '../ui/overlays'
 import { CommandPalette } from './CommandPalette'
 import { CoachMarks } from './CoachMarks'
 import { ROLE_EXPERIENCE } from '../../lib/roleExperience'
+import { ErrorBoundary } from './ErrorBoundary'
 
 function openPalette() {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))
@@ -209,6 +210,7 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
         <span className="text-hairtick">/</span>
         <span className="font-semibold text-ink">{title}</span>
       </div>
+      {/* 环境徽标:real+PROD→生产环境(绿)、real+dev→真实接口(蓝)、mock→演示数据(灰)。演示模式不谎称"生产环境"。 */}
       <span className={cx('hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] md:inline-flex', environment.tone === 'good' ? 'border-good/30 bg-good/[0.06] text-good-ink' : environment.tone === 'info' ? 'border-info/30 bg-info-soft/50 text-info-ink' : 'border-line bg-surface-muted text-ink-3')}>
         <span className={cx('h-1.5 w-1.5 rounded-full', environment.tone === 'good' ? 'bg-good' : environment.tone === 'info' ? 'bg-info' : 'bg-ink-4')} />
         {environment.label}
@@ -402,8 +404,11 @@ export default function AppLayout() {
           <main key={`${loc.pathname}-${epoch}`} className="mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
             <OfflineBanner />
             {/* 壳内 Suspense：lazy 页加载时只在内容区出骨架，侧栏/顶栏常驻，不整屏闪白 */}
+            {/* 壳内错误边界：单页渲染异常只塌在内容区，导航保留可用（main 的 key 含 pathname，换页自动重置错误态） */}
             <Suspense fallback={<PageSkeleton />}>
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
             </Suspense>
           </main>
         </div>

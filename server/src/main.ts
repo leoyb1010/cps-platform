@@ -8,9 +8,11 @@ import { writeFileSync } from 'fs'
 import { AppModule } from './app.module'
 import { AllExceptionsFilter } from './common/all-exceptions.filter'
 
-// 生产环境：禁止使用占位/弱密钥，避免令牌可被伪造
+// 禁止使用占位/弱密钥或仓库内 demo 私钥，避免令牌/回调签名可被伪造。
+// 不再以 NODE_ENV!=='production' 单开关整体豁免：改为「检测到弱值即拒启」，
+// 仅在显式 ALLOW_WEAK_SECRETS=true 或 test 环境放行（保留本地 dev/e2e 便利，默认严格）。
 function assertSecrets() {
-  if (process.env.NODE_ENV !== 'production') return
+  if (process.env.ALLOW_WEAK_SECRETS === 'true' || process.env.NODE_ENV === 'test') return
   const weak = ['', 'CHANGE_ME', 'change-me-access', 'change-me-refresh', 'dev-access-secret-change-in-prod', 'dev-refresh-secret-change-in-prod']
   for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
     const v = process.env[k] || ''

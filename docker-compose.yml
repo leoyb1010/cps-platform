@@ -1,5 +1,13 @@
 # 网易有道 CPS 平台 — 一键启动（后端 NestJS + 前端 Nginx）
 # 用法：  docker compose up --build       → 打开 http://localhost:8080
+
+# 日志轮转：默认 json-file 无上限，长跑会撑爆磁盘 → 统一限 10m×3
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   server:
     build: ./server
@@ -8,6 +16,8 @@ services:
       DATABASE_URL: file:/data/prod.db
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET 必填：openssl rand -hex 32}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET 必填：openssl rand -hex 32}
+      # 有道出站回调平台私钥：缺失则 compose 直接报错，避免回退 demo 私钥被伪造回调后 crash-loop
+      YOUDAO_PLATFORM_PRIVATE_KEY: ${YOUDAO_PLATFORM_PRIVATE_KEY:?生产必须提供真实RSA私钥（PEM）：openssl genrsa 2048}
       ACCESS_TTL: 900s
       REFRESH_TTL_DAYS: "14"
       PORT: "3001"
@@ -22,6 +32,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    logging: *default-logging
+    mem_limit: 512m
     restart: unless-stopped
 
   web:
@@ -30,7 +42,15 @@ services:
       server:
         condition: service_healthy
     ports:
-      - '8080:80'
+      - '8080:8080'
+    # nginx-unprivileged 监听 8080；busybox wget 探活根路径
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+    mem_limit: 128m
     restart: unless-stopped
 
 volumes:

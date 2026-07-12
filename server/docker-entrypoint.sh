@@ -9,7 +9,8 @@ SCHEMA="prisma/schema.prisma"
 if [ "$DATABASE_PROVIDER" = "postgresql" ]; then
   SCHEMA="prisma/schema.postgres.prisma"
   echo "[entrypoint] provider=postgresql → regenerating client for PG…"
-  npx prisma generate --schema "$SCHEMA" >/dev/null 2>&1 || true
+  # 失败必须 fail-fast：client 没重生成就起服务会用错 provider 连库，比直接崩更隐蔽
+  npx prisma generate --schema "$SCHEMA" >/dev/null
   if [ -d "prisma/migrations-pg" ]; then
     rm -rf prisma/migrations
     cp -r prisma/migrations-pg prisma/migrations
@@ -49,7 +50,8 @@ NEED_SEED=$(node -e "const{PrismaClient}=require('@prisma/client');const p=new P
 if [ "$NEED_SEED" = "0" ]; then
   if [ "$NODE_ENV" = "production" ] && [ "$SEED_DEMO" != "true" ]; then
     echo "[entrypoint] bootstrapping first admin (生产：不灌演示数据)…"
-    run_script bootstrap-admin || echo "[entrypoint] bootstrap failed (continuing)"
+    # 建号失败必须 fail-fast：否则"零用户却正常服务"，谁也登不进又看似健康
+    run_script bootstrap-admin
   else
     echo "[entrypoint] seeding demo data…"
     run_script seed || echo "[entrypoint] seed skipped/failed (continuing)"

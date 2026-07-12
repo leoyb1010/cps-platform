@@ -35,79 +35,84 @@ export interface AgentSummary {
   trend: TrendPoint[]
 }
 
+// real/demo 两分支收敛：把"isRealApi ? real() : demo().then(demoFn)"的机械三元模板收进一处，
+// 强制每个方法同时给出真实与演示两种实现（漏写任一分支即类型报错），行为与原逐条三元等价。
+type Demo = Awaited<ReturnType<typeof demo>>
+function def<T>(real: () => Promise<T>, demoFn: (d: Demo) => unknown): Promise<T> {
+  return isRealApi ? real() : (demo().then(demoFn) as Promise<T>)
+}
+
 export const portalApi = {
-  summary: <T = BrandSummary | AgentSummary>(period?: { preset: string; from?: string; to?: string }) => {
-    if (!isRealApi) return demo().then((d) => d.summary(period)) as Promise<T>
-    const q = new URLSearchParams()
-    if (period?.preset) q.set('preset', period.preset)
-    if (period?.from) q.set('from', period.from)
-    if (period?.to) q.set('to', period.to)
-    const qs = q.toString()
-    return http.get<T>(`/portal/summary${qs ? `?${qs}` : ''}`)
-  },
-  brandOrders: <T = unknown[]>(filters?: { type?: string; dateFrom?: string; dateTo?: string }) => {
-    if (!isRealApi) return demo().then((d) => d.brandOrders(filters)) as Promise<T>
-    const q = new URLSearchParams()
-    if (filters?.type) q.set('type', filters.type)
-    if (filters?.dateFrom) q.set('dateFrom', filters.dateFrom)
-    if (filters?.dateTo) q.set('dateTo', filters.dateTo)
-    const qs = q.toString()
-    return http.get<T>(`/portal/brand/orders${qs ? `?${qs}` : ''}`)
-  },
-  brandSettlements: <T = unknown[]>(filters?: { period?: string; status?: string }) => {
-    if (!isRealApi) return demo().then((d) => d.brandSettlements(filters)) as Promise<T>
-    const q = new URLSearchParams()
-    if (filters?.period) q.set('period', filters.period)
-    if (filters?.status) q.set('status', filters.status)
-    const qs = q.toString()
-    return http.get<T>(`/portal/brand/settlements${qs ? `?${qs}` : ''}`)
-  },
-  brandOnboarding: <T = unknown>() => (isRealApi ? http.get<T>('/portal/brand/onboarding') : (demo().then((d) => d.brandOnboarding()) as Promise<T>)),
-  brandTickets: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/brand/tickets') : (demo().then((d) => d.brandTickets()) as Promise<T>)),
+  summary: <T = BrandSummary | AgentSummary>(period?: { preset: string; from?: string; to?: string }) =>
+    def<T>(() => {
+      const q = new URLSearchParams()
+      if (period?.preset) q.set('preset', period.preset)
+      if (period?.from) q.set('from', period.from)
+      if (period?.to) q.set('to', period.to)
+      const qs = q.toString()
+      return http.get<T>(`/portal/summary${qs ? `?${qs}` : ''}`)
+    }, (d) => d.summary(period)),
+  brandOrders: <T = unknown[]>(filters?: { type?: string; dateFrom?: string; dateTo?: string }) =>
+    def<T>(() => {
+      const q = new URLSearchParams()
+      if (filters?.type) q.set('type', filters.type)
+      if (filters?.dateFrom) q.set('dateFrom', filters.dateFrom)
+      if (filters?.dateTo) q.set('dateTo', filters.dateTo)
+      const qs = q.toString()
+      return http.get<T>(`/portal/brand/orders${qs ? `?${qs}` : ''}`)
+    }, (d) => d.brandOrders(filters)),
+  brandSettlements: <T = unknown[]>(filters?: { period?: string; status?: string }) =>
+    def<T>(() => {
+      const q = new URLSearchParams()
+      if (filters?.period) q.set('period', filters.period)
+      if (filters?.status) q.set('status', filters.status)
+      const qs = q.toString()
+      return http.get<T>(`/portal/brand/settlements${qs ? `?${qs}` : ''}`)
+    }, (d) => d.brandSettlements(filters)),
+  brandOnboarding: <T = unknown>() => def<T>(() => http.get<T>('/portal/brand/onboarding'), (d) => d.brandOnboarding()),
+  brandTickets: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/tickets'), (d) => d.brandTickets()),
   replyTicket: (id: string, body: { handlePlan?: string; note?: string; status?: string }) =>
-    isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/brand/tickets/${id}/reply`, body) : demo().then((d) => d.replyTicket(id, body)),
-  agentTickets: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/agent/tickets') : (demo().then((d) => d.agentTickets()) as Promise<T>)),
+    def(() => http.post<{ ok: boolean; detail: string }>(`/portal/brand/tickets/${id}/reply`, body), (d) => d.replyTicket(id, body)),
+  agentTickets: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/agent/tickets'), (d) => d.agentTickets()),
   agentReplyTicket: (id: string, body: { handlePlan?: string; note?: string; status?: string }) =>
-    isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/agent/tickets/${id}/reply`, body) : demo().then((d) => d.agentReplyTicket(id, body)),
-  brandBarter: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/brand/barter') : (demo().then((d) => d.brandBarter()) as Promise<T>)),
-  contracts: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/contracts') : (demo().then((d) => d.contracts()) as Promise<T>)),
-  marketBrands: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/market/brands') : (demo().then((d) => d.marketBrands()) as Promise<T>)),
-  agentPayouts: <T = unknown>() => (isRealApi ? http.get<T>('/portal/agent/payouts') : (demo().then((d) => d.agentPayouts()) as Promise<T>)),
-  agentCredit: <T = unknown>() => (isRealApi ? http.get<T>('/portal/agent/credit') : (demo().then((d) => d.agentCredit()) as Promise<T>)),
-  agentPlans: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/agent/plans') : (demo().then((d) => d.agentPlans()) as Promise<T>)),
-  claimContract: (id: string) => (isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/contracts/${id}/claim`) : demo().then((d) => d.claimContract(id))),
+    def(() => http.post<{ ok: boolean; detail: string }>(`/portal/agent/tickets/${id}/reply`, body), (d) => d.agentReplyTicket(id, body)),
+  brandBarter: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/barter'), (d) => d.brandBarter()),
+  contracts: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/contracts'), (d) => d.contracts()),
+  marketBrands: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/market/brands'), (d) => d.marketBrands()),
+  agentPayouts: <T = unknown>() => def<T>(() => http.get<T>('/portal/agent/payouts'), (d) => d.agentPayouts()),
+  agentCredit: <T = unknown>() => def<T>(() => http.get<T>('/portal/agent/credit'), (d) => d.agentCredit()),
+  agentPlans: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/agent/plans'), (d) => d.agentPlans()),
+  claimContract: (id: string) => def(() => http.post<{ ok: boolean; detail: string }>(`/portal/contracts/${id}/claim`), (d) => d.claimContract(id)),
   // 债3 客户主动操作
-  brandProducts: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/brand/products') : (demo().then((d) => d.brandProducts()) as Promise<T>)),
+  brandProducts: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/products'), (d) => d.brandProducts()),
   addBrandProduct: (body: { name: string; category?: string; description?: string; billingCycle?: string; firstPrice: number; renewPrice: number; defaultSharePct?: number; bundleEligible?: boolean; exclusiveGroup?: string; tags?: string[] }) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string }>('/portal/brand/products', body) : demo().then((d) => d.addBrandProduct(body)),
-  submitProduct: (id: string) => (isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/brand/products/${id}/submit`) : demo().then((d) => d.submitProduct(id))),
+    def(() => http.post<{ ok: boolean; id?: string }>('/portal/brand/products', body), (d) => d.addBrandProduct(body)),
+  submitProduct: (id: string) => def(() => http.post<{ ok: boolean; detail: string }>(`/portal/brand/products/${id}/submit`), (d) => d.submitProduct(id)),
   proposeContract: (body: { agentId?: string; productId?: string; settleModel: string; targetGmv?: number; settleParams?: Record<string, unknown>; userLimit?: Record<string, unknown>; ltvWindow?: string; complaintLiability?: string; reservePct?: number }) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string; detail?: string }>('/portal/contracts', body) : demo().then((d) => d.proposeContract(body)),
+    def(() => http.post<{ ok: boolean; id?: string; detail?: string }>('/portal/contracts', body), (d) => d.proposeContract(body)),
   proposeBarter: (body: { counterpartyBrandId: string; resourceType: string; myQuota: number; counterpartyQuota: number; invoiceStatus?: string; terms?: Record<string, unknown> }) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string }>('/portal/barter', body) : demo().then((d) => d.proposeBarter(body)),
+    def(() => http.post<{ ok: boolean; id?: string }>('/portal/barter', body), (d) => d.proposeBarter(body)),
   respondBarter: (id: string, action: 'accept' | 'reject') =>
-    isRealApi ? http.post<{ ok: boolean; detail: string }>(`/portal/barter/${id}/respond`, { action }) : demo().then((d) => d.respondBarter(id, action)),
+    def(() => http.post<{ ok: boolean; detail: string }>(`/portal/barter/${id}/respond`, { action }), (d) => d.respondBarter(id, action)),
   createClaim: (body: { brandId: string; productId?: string; channel?: string }) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string; trackingUrl?: string }>('/portal/agent/claims', body) : demo().then((d) => d.createClaim(body)),
-  agentClaims: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/agent/claims') : (demo().then((d) => d.agentClaims()) as Promise<T>)),
+    def(() => http.post<{ ok: boolean; id?: string; trackingUrl?: string }>('/portal/agent/claims', body), (d) => d.createClaim(body)),
+  agentClaims: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/agent/claims'), (d) => d.agentClaims()),
   requestPayout: (amount: number) =>
-    isRealApi ? http.post<{ ok: boolean; id?: string; detail: string }>('/portal/agent/payout-requests', { amount }) : demo().then((d) => d.requestPayout(amount)),
-  agentPayoutRequests: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/agent/payout-requests') : (demo().then((d) => d.agentPayoutRequests()) as Promise<T>)),
-  notifications: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/notifications') : (demo().then((d) => d.notifications()) as Promise<T>)),
-  readNotif: (id: string) => (isRealApi ? http.post<{ ok: boolean }>(`/portal/notifications/${id}/read`) : demo().then((d) => d.readNotif(id))),
+    def(() => http.post<{ ok: boolean; id?: string; detail: string }>('/portal/agent/payout-requests', { amount }), (d) => d.requestPayout(amount)),
+  agentPayoutRequests: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/agent/payout-requests'), (d) => d.agentPayoutRequests()),
+  notifications: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/notifications'), (d) => d.notifications()),
+  readNotif: (id: string) => def(() => http.post<{ ok: boolean }>(`/portal/notifications/${id}/read`), (d) => d.readNotif(id)),
   // 有道续费 RSA 对接 · 开发者中心
-  developer: <T = unknown>() => (isRealApi ? http.get<T>('/portal/brand/developer') : (demo().then((d) => d.developer()) as Promise<T>)),
+  developer: <T = unknown>() => def<T>(() => http.get<T>('/portal/brand/developer'), (d) => d.developer()),
   rsaKeygen: () =>
-    isRealApi ? http.post<{ ok: boolean; publicKey: string; privateKey: string; detail: string }>('/portal/brand/developer/rsa/keygen') : demo().then((d) => d.rsaKeygen()),
+    def(() => http.post<{ ok: boolean; publicKey: string; privateKey: string; detail: string }>('/portal/brand/developer/rsa/keygen'), (d) => d.rsaKeygen()),
   rsaUpload: (publicKey: string) =>
-    isRealApi ? http.post<{ ok: boolean; detail: string }>('/portal/brand/developer/rsa/upload', { publicKey }) : demo().then((d) => d.rsaUpload(publicKey)),
+    def(() => http.post<{ ok: boolean; detail: string }>('/portal/brand/developer/rsa/upload', { publicKey }), (d) => d.rsaUpload(publicKey)),
   setCallbackUrl: (callbackUrl: string) =>
-    isRealApi ? http.patch<{ ok: boolean; detail: string }>('/portal/brand/developer/callback', { callbackUrl }) : demo().then((d) => d.setCallbackUrl(callbackUrl)),
-  webhookLogs: <T = unknown[]>() => (isRealApi ? http.get<T>('/portal/brand/developer/logs') : (demo().then((d) => d.webhookLogs()) as Promise<T>)),
+    def(() => http.patch<{ ok: boolean; detail: string }>('/portal/brand/developer/callback', { callbackUrl }), (d) => d.setCallbackUrl(callbackUrl)),
+  webhookLogs: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/developer/logs'), (d) => d.webhookLogs()),
   consoleSign: (params: Record<string, unknown>) =>
-    isRealApi ? http.post<{ ok: boolean; stringToSign: string; algo: string; note: string }>('/portal/brand/developer/console/sign', { params }) : demo().then((d) => d.consoleSign(params)),
+    def(() => http.post<{ ok: boolean; stringToSign: string; algo: string; note: string }>('/portal/brand/developer/console/sign', { params }), (d) => d.consoleSign(params)),
   healthCheck: () =>
-    isRealApi
-      ? http.post<{ ok: boolean; score: number; readiness: string; checks: { item: string; pass: boolean; detail: string }[] }>('/portal/brand/developer/health-check')
-      : demo().then((d) => d.healthCheck()),
+    def(() => http.post<{ ok: boolean; score: number; readiness: string; checks: { item: string; pass: boolean; detail: string }[] }>('/portal/brand/developer/health-check'), (d) => d.healthCheck()),
 }

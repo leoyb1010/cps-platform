@@ -18,11 +18,27 @@ jobs:
           cache: npm
       - run: npm ci
       - name: TypeScript 严格检查
-        run: npx tsc -p tsconfig.app.json --noEmit --noUnusedLocals
+        # 类型开关单一来源于 tsconfig.app.json，不在命令行覆盖（原 --noUnusedLocals 与本地 tsconfig 不一致）
+        run: npx tsc -p tsconfig.app.json --noEmit
       - name: 单元测试 (Vitest)
         run: npm test
       - name: 生产构建
         run: npm run build
+
+  lint:
+    name: 代码规范 (ESLint · 前端)
+    runs-on: ubuntu-latest
+    # 存量告警较多，暂不阻断合并：先建立基线、逐步清零后再转阻断（见下方 note）
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: ESLint
+        run: npm run lint
 
   server:
     name: 后端 (build + e2e)
@@ -110,3 +126,43 @@ jobs:
       - name: 后端依赖审计（moderate 阻断）
         working-directory: server
         run: npm audit --audit-level=moderate
+
+  docker-smoke:
+    name: Docker 冒烟 (compose build + up + /health · PostgreSQL 运行时)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # compose 的 :? 必填 env 需在所有 compose 调用步骤都可见 → 统一写入 GITHUB_ENV。
+      # YOUDAO 私钥必须是"非仓库 demo"的真实 RSA，否则 main.ts assertSecrets 拒启 → 现场生成一次性密钥。
+      - name: 准备一次性生产 env
+        run: |
+          {
+            echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.pg.yml'
+            echo 'JWT_ACCESS_SECRET=ci-access-secret-not-for-prod-000000000000'
+            echo 'JWT_REFRESH_SECRET=ci-refresh-secret-not-for-prod-00000000000'
+            echo 'POSTGRES_PASSWORD=ci_pg_password_change_me'
+            echo 'YOUDAO_PLATFORM_PRIVATE_KEY<<PEM_EOF'
+            openssl genrsa 2048 2>/dev/null
+            echo 'PEM_EOF'
+          } >> "$GITHUB_ENV"
+      - name: 构建并起栈（默认 SQLite + PG 叠加层 → 服务端跑在 PostgreSQL 上）
+        run: docker compose up -d --build
+      - name: 等待 server 健康并冒烟 /health
+        run: |
+          sid=$(docker compose ps -q server)
+          for i in $(seq 1 40); do
+            st=$(docker inspect -f '{{.State.Health.Status}}' "$sid" 2>/dev/null || echo starting)
+            echo "server health: $st ($i/40)"
+            [ "$st" = healthy ] && break
+            [ "$st" = unhealthy ] && { echo 'server 变为 unhealthy'; exit 1; }
+            sleep 5
+          done
+          # 经 nginx(/api → server:3001) 打存活探针；同时校验前端根可达
+          curl -fsS http://localhost:8080/api/health
+          curl -fsS -o /dev/null http://localhost:8080/
+      - name: 失败时打印容器日志
+        if: failure()
+        run: docker compose logs --tail=120
+      - name: 拆栈
+        if: always()
+        run: docker compose down -v

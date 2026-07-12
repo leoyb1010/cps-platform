@@ -9,6 +9,7 @@ import { ReplayContext } from '../ui/primitives'
 import { ThemeToggle } from './AppLayout'
 import { OfflineBanner } from './OfflineBanner'
 import { PageSkeleton } from './PageSkeleton'
+import { ErrorBoundary } from './ErrorBoundary'
 import { brandTheme } from '../../lib/whitelabel'
 import { useTheme, resolvedTheme } from '../../lib/prefs'
 
@@ -177,8 +178,13 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
           </header>
           <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
             <OfflineBanner />
+            {/* 壳内错误边界：门户单页异常只塌在内容区，导航保留（main 的 key 含 pathname，换页自动重置错误态） */}
             <Suspense fallback={<PageSkeleton />}>
-              {hasPortalAccess ? <Outlet /> : (
+              {hasPortalAccess ? (
+                <ErrorBoundary>
+                  <Outlet />
+                </ErrorBoundary>
+              ) : (
                 <div className="mx-auto mt-[10vh] max-w-[560px] rounded-lg border border-line bg-surface p-6 text-center shadow-[var(--shadow-card)]">
                   <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-warn-soft text-warn-ink"><ShieldAlert size={20} /></span>
                   <h1 className="mt-4 text-[18px] font-semibold text-ink">当前角色未配置客户门户权限</h1>

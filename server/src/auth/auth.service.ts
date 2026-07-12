@@ -18,6 +18,14 @@ export class AuthService {
     return createHash('sha256').update(s).digest('hex')
   }
 
+  // 抹平用户名枚举时序：用户不存在/停用时也跑一次等价 argon2 校验，避免「找不到用户」提前返回泄露时延差。
+  // dummy hash 惰性生成一次并缓存（口令随机、永不匹配），后续校验耗时与真实路径一致。
+  private dummyHash: string | null = null
+  private async getDummyHash(): Promise<string> {
+    if (!this.dummyHash) this.dummyHash = await argon2.hash(randomBytes(16).toString('hex'))
+    return this.dummyHash
+  }
+
   async toAuthUser(userId: string): Promise<AuthUser | null> {
     const u = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: true } })
     if (!u || u.status !== 'active') return null
@@ -44,7 +52,11 @@ export class AuthService {
 
   async validate(account: string, password: string) {
     const u = await this.prisma.user.findUnique({ where: { account } })
-    if (!u || u.status !== 'active') throw new UnauthorizedException('账号或密码错误')
+    if (!u || u.status !== 'active') {
+      // 对不存在/停用账号也执行一次等价 argon2 校验，抹平时延，防用户名枚举
+      await argon2.verify(await this.getDummyHash(), password).catch(() => false)
+      throw new UnauthorizedException('账号或密码错误')
+    }
     const ok = await argon2.verify(u.passwordHash, password).catch(() => false)
     if (!ok) throw new UnauthorizedException('账号或密码错误')
     return u

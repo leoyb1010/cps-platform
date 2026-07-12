@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, ForbiddenException, Get, Headers, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger'
 import { IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { randomUUID } from 'crypto'
@@ -16,8 +16,6 @@ import { ScopeService } from './scope.service'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
-// 工单退款无关联原单时的兜底金额（演示数据缺口用；生产应改为强制关联原单）
-const DEFAULT_TICKET_AMOUNT = 33
 // 无分页引用型列表的防御性上限：管理端小表够用，防单请求全表拖库（订单/套餐/通知已各自分页）
 const LIST_CAP = 1000
 // 商户号脱敏：保留前 2 后 2，中间打码
@@ -355,12 +353,18 @@ export class BusinessController {
 
   @Post('settlements/:id/reconcile') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '对账差异核销 · 幂等' })
   async reconcile(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
-    const target = await this.prisma.settlement.findUnique({ where: { id }, select: { brandId: true } })
-    if (target) this.assertOwns(user, target.brandId)
+    const target = await this.prisma.settlement.findUnique({ where: { id }, select: { brandId: true, reconcileDiff: true } })
+    // 不存在显式 404（保持 F3 语义：原经 update 抛 P2025→404，改条件 updateMany 后 count=0 不再抛，须显式判空）
+    if (!target) throw new NotFoundException('结算单不存在')
+    this.assertOwns(user, target.brandId)
     const { result, replayed } = await this.idem.run(idemKey, 'settlement.reconcile', async () => {
       return this.prisma.$transaction(async (tx) => {
-        await tx.settlement.update({ where: { id }, data: { status: 'cleared', reconcileDiff: 0 } })
-        await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异已人工核销` })
+        // P2-B1 跃迁守卫：仅 reconciling(待核销) 或 cleared(幂等重入,diff 已 0) 可核销；
+        //   拦截 pending/reversed 直接被强制核销的非法跃迁。count===0 即业务拒绝，不再无条件覆盖状态。
+        const r = await tx.settlement.updateMany({ where: { id, status: { in: ['reconciling', 'cleared'] } }, data: { status: 'cleared', reconcileDiff: 0 } })
+        if (r.count === 0) return { ok: false, detail: '该结算单当前状态不可核销（仅对账中/已结算可核销）' }
+        // 审计记录被核销的差额值（事务外读取的核销前 reconcileDiff），便于事后追溯核销口径
+        await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异 ¥${target.reconcileDiff} 已人工核销`, before: { reconcileDiff: target.reconcileDiff }, after: { status: 'cleared', reconcileDiff: 0 } })
         return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
       })
     }, id)
@@ -375,16 +379,16 @@ export class BusinessController {
       const t = await this.prisma.ticket.findUnique({ where: { id } })
       if (!t || t.status === 'resolved') return { ok: false, detail: '工单不存在或已解决' }
       this.assertOwns(user, t.brandId, t.agentId)
-      const order = await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null)
-      // 有原单：以原单金额为准；金额为 0 视为异常拒绝（不凭空造钱）。
-      // 无原单（演示数据缺口）：按品牌平均客单价兜底（DEFAULT_TICKET_AMOUNT），不再用魔法值 33。
-      let amount: number
-      if (order) {
-        amount = Math.abs(order.amount)
-        if (amount === 0) return { ok: false, detail: '关联订单金额为零，无法退款' }
-      } else {
-        amount = DEFAULT_TICKET_AMOUNT
+      const order = t.orderId ? await this.prisma.order.findUnique({ where: { id: t.orderId } }).catch(() => null) : null
+      // P2-B3 生产红线：无关联原单一律拒绝退款——不再用兜底金额凭空冲账（会向未关联任何真实扣款的工单退钱、虚增 reversal）。
+      //   需退款必须先补齐原单归属（complaints/ingest 带 orderId，或运营人工指定原单），杜绝凭空造钱。
+      if (!order) {
+        this.metrics.recordFundAction('ticket.refund', 'reject')
+        return { ok: false, detail: '工单无关联原单，禁止凭空退款；请先补齐原单归属再退款' }
       }
+      // 以原单金额为准；金额为 0 视为异常拒绝（不凭空造钱）。
+      const amount = Math.abs(order.amount)
+      if (amount === 0) return { ok: false, detail: '关联订单金额为零，无法退款' }
       let share = 0
 
       // 事务内：条件更新抢占工单 + 资金联动 + 审计同事务落库（fail-closed，审计失败则整笔回滚）
@@ -407,9 +411,10 @@ export class BusinessController {
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收并扣信用分（工单退款较重）
         const rev = await this.settle.applyRefundReversal(tx, { brandId: t.brandId, amount })
         share = rev.share
-        await this.settle.applyAgentRefundImpact(tx, { agentId: t.agentId, share, withCredit: true })
-        // 逆向追偿：优先从该结算单未释放的准备金计划行冲减（守恒式 II，不动 reserve/agentPayout）
-        if (rev.settlement) await this.reserve.clawback(tx, rev.settlement.id, share)
+        const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: t.agentId, share, withCredit: true })
+        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金，
+        //   不再对 share 全额再扣一次）。守恒式 II，不动 reserve/agentPayout。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
         await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
         return true
       })
@@ -443,7 +448,12 @@ export class BusinessController {
   @Post('agents/:id/status') @RequirePerms('agent.write') @ApiOperation({ summary: '代理限流/冻结/恢复' })
   async setAgent(@Param('id') id: string, @Body() dto: AgentStatusDto, @CurrentUser() user: AuthUser) {
     this.assertOwns(user, null, id)
-    await this.prisma.agent.update({ where: { id }, data: { status: dto.status } })
+    const a = await this.prisma.agent.findUnique({ where: { id }, select: { status: true } })
+    if (!a) throw new NotFoundException('代理不存在') // 保持 F3 语义：原经 update 抛 P2025→404
+    // P2-B1 跃迁守卫：blacklist 为终态，不可经限流/冻结端点「复活」（须走专门解禁流程）；
+    //   active/throttled/frozen 三态本身可逆互转（运营处置），故仅拦截 blacklist 源态。
+    const r = await this.prisma.agent.updateMany({ where: { id, status: { not: 'blacklist' } }, data: { status: dto.status } })
+    if (r.count === 0) return { ok: false, detail: '代理已拉黑，状态不可在此变更' }
     await this.audit.record({ user, action: 'agent.status', resource: 'Agent', resourceId: id, detail: `代理 ${id} 置为 ${dto.status}` })
     return { ok: true, detail: `代理 ${id} 已更新` }
   }
@@ -524,7 +534,7 @@ export class BusinessController {
     const brand = await this.prisma.brand.findFirst({ where: { id: dto.brandId, deletedAt: null }, select: { id: true } })
     if (!brand) return { ok: false, detail: '品牌不存在或已删除' }
     const pref = dto.channel === 'wechat' ? 'WX' : dto.channel === 'alipay' ? 'AL' : 'BK'
-    const id = `M-${pref}-${shortId().slice(0, 6)}`
+    const id = `M-${pref}-${shortId()}`
     const mid = `${pref}${shortId()}`
     const m = await this.prisma.merchantAccount.create({ data: { id, brandId: dto.brandId, channel: dto.channel, mid, state: 'healthy', weight: dto.weight } })
     await this.audit.record({ user, action: 'merchant.create', resource: 'MerchantAccount', resourceId: id, detail: `号池新增商户号 ${id}（${dto.channel}）`, after: m })
@@ -550,9 +560,9 @@ export class BusinessController {
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收（订单退款不扣信用分）
         const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
         const share = rev.share
-        await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share, withCredit: false })
-        // 逆向追偿：优先从该结算单未释放的准备金计划行冲减（守恒式 II，不动 reserve/agentPayout）
-        if (rev.settlement) await this.reserve.clawback(tx, rev.settlement.id, share)
+        const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share, withCredit: false })
+        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
         // 审计同事务（fail-closed）
         await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amt}，逆向冲账 ¥${share}` })
         return { amt, share }
@@ -574,6 +584,20 @@ export class BusinessController {
     const before = await this.prisma.ticket.findUnique({ where: { id } })
     if (!before) return { ok: false, detail: '工单不存在' }
     this.assertOwns(user, before.brandId, before.agentId)
+    // P2-B1 跃迁守卫：resolved 为终态，不可回退到任何进行中状态（否则已退款关闭的工单被重开、SLA 计时错乱）。
+    //   仅在确实变更 status 时校验；只改 owner/level 不受限。资金型 resolved 由 ticket.refund 自带 updateMany 认领，与此处解耦。
+    if (dto.status !== undefined && dto.status !== before.status) {
+      const TICKET_TRANSITIONS: Record<string, string[]> = {
+        open: ['pending', 'processing', 'escalated', 'arbitration', 'resolved'],
+        pending: ['processing', 'escalated', 'arbitration', 'resolved'],
+        processing: ['pending', 'escalated', 'arbitration', 'resolved'],
+        escalated: ['processing', 'arbitration', 'resolved'],
+        arbitration: ['escalated', 'resolved'],
+        resolved: [],
+      }
+      const allowed = TICKET_TRANSITIONS[before.status] ?? []
+      if (!allowed.includes(dto.status)) return { ok: false, detail: `工单不可从 ${before.status} 跃迁到 ${dto.status}` }
+    }
     const data: Record<string, unknown> = {}
     if (dto.status !== undefined) data.status = dto.status
     if (dto.owner !== undefined) data.owner = dto.owner
@@ -654,7 +678,7 @@ export class BusinessController {
     if (p.discountPct != null && (p.discountPct < 0 || p.discountPct > 100)) return { ok: false, detail: '折扣需在 0-100 之间' }
     if (p.minItems != null && p.minItems < 1) return { ok: false, detail: '满足件数需 ≥ 1' }
     if (p.fixedPrice != null && p.fixedPrice < 0) return { ok: false, detail: '固定价不能为负' }
-    const id = 'BR-' + randomUUID().slice(0, 6)
+    const id = 'BR-' + shortId()
     await this.prisma.bundleRule.create({ data: { id, name: dto.name, kind: dto.kind, params: JSON.stringify(dto.params ?? {}), active: dto.active ?? true } })
     await this.audit.record({ user, action: 'bundlerule.create', resource: 'BundleRule', resourceId: id, detail: `组合优惠规则 ${dto.name}` })
     return { ok: true, id }
@@ -677,7 +701,7 @@ export class BusinessController {
   @Post('contracts') @RequirePerms('contract.write') @ApiOperation({ summary: '创建增长合约（内部）' })
   async addContract(@Body() dto: NewContractDto, @CurrentUser() user: AuthUser) {
     this.assertCreateAttribution(user, dto.brandId, dto.agentId ?? null)
-    const id = 'GC-' + randomUUID().slice(0, 6)
+    const id = 'GC-' + shortId()
     await this.prisma.growthContract.create({
       data: {
         id, brandId: dto.brandId, agentId: dto.agentId ?? null, productId: dto.productId ?? null,
@@ -700,7 +724,23 @@ export class BusinessController {
     const contract = await this.prisma.growthContract.findFirst({ where: { id, deletedAt: null } })
     if (!contract) return { ok: false, detail: '合约不存在' }
     this.assertOwns(user, contract.brandId, contract.agentId)
-    await this.prisma.growthContract.update({ where: { id }, data: { status: dto.status } })
+    // P2-B1 跃迁守卫：closed 终态不可回 active；settling(达标) 不可退回 active/fulfilling 继续累计 GMV。
+    //   仅在确实变更时校验；用条件 updateMany 认领（where 带前置 status），并发下同一非法/过期跃迁只有一个能落。
+    if (dto.status !== contract.status) {
+      const CONTRACT_TRANSITIONS: Record<string, string[]> = {
+        draft: ['open', 'active', 'closed', 'breached'],
+        open: ['active', 'closed', 'breached'],
+        active: ['fulfilling', 'settling', 'closed', 'breached'],
+        fulfilling: ['settling', 'closed', 'breached'],
+        settling: ['closed', 'breached'],
+        breached: ['closed'],
+        closed: [],
+      }
+      const allowed = CONTRACT_TRANSITIONS[contract.status] ?? []
+      if (!allowed.includes(dto.status)) return { ok: false, detail: `合约不可从 ${contract.status} 跃迁到 ${dto.status}` }
+    }
+    const r = await this.prisma.growthContract.updateMany({ where: { id, status: contract.status, deletedAt: null }, data: { status: dto.status } })
+    if (r.count === 0) return { ok: false, detail: '合约状态已变更，请刷新重试' }
     await this.audit.record({ user, action: 'contract.status', resource: 'GrowthContract', resourceId: id, detail: `合约 ${id} → ${dto.status}` })
     return { ok: true }
   }
@@ -717,7 +757,7 @@ export class BusinessController {
     if (dto.counterpartyBrandId === dto.initiatorBrandId) return { ok: false, detail: '对手品牌不能是自己' }
     const cp = await this.prisma.brand.findFirst({ where: { id: dto.counterpartyBrandId, deletedAt: null } })
     if (!cp) return { ok: false, detail: '对手品牌不存在或已删除' }
-    const id = 'BD-' + randomUUID().slice(0, 6)
+    const id = 'BD-' + shortId()
     await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: dto.initiatorBrandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: dto.myQuota, counterpartyQuota: dto.counterpartyQuota, ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
     await this.audit.record({ user, action: 'barter.create', resource: 'BarterDeal', resourceId: id, detail: `置换单 ${id}` })
     return { ok: true, id }
@@ -728,7 +768,20 @@ export class BusinessController {
     const deal = await this.prisma.barterDeal.findFirst({ where: { id, deletedAt: null } })
     if (!deal) return { ok: false, detail: '置换单不存在' }
     this.assertBarterOwns(user, deal)
-    await this.prisma.barterDeal.update({ where: { id }, data: { status: dto.status } })
+    // P2-B1 跃迁守卫：settled/rejected 为终态不可再流转；条件 updateMany 认领防并发过期跃迁。
+    if (dto.status !== deal.status) {
+      const BARTER_TRANSITIONS: Record<string, string[]> = {
+        proposed: ['accepted', 'active', 'rejected'],
+        accepted: ['active', 'rejected', 'settled'],
+        active: ['settled', 'rejected'],
+        settled: [],
+        rejected: [],
+      }
+      const allowed = BARTER_TRANSITIONS[deal.status] ?? []
+      if (!allowed.includes(dto.status)) return { ok: false, detail: `置换单不可从 ${deal.status} 跃迁到 ${dto.status}` }
+    }
+    const r = await this.prisma.barterDeal.updateMany({ where: { id, status: deal.status, deletedAt: null }, data: { status: dto.status } })
+    if (r.count === 0) return { ok: false, detail: '置换单状态已变更，请刷新重试' }
     await this.audit.record({ user, action: 'barter.status', resource: 'BarterDeal', resourceId: id, detail: `置换 ${id} → ${dto.status}` })
     return { ok: true }
   }
@@ -760,7 +813,7 @@ export class BusinessController {
   @Post('fulfillment/ingest') @RequirePerms('contract.write') @ApiOperation({ summary: '正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）' })
   async ingest(@Body() dto: OrderIngestDto, @CurrentUser() user: AuthUser) {
     this.assertCreateAttribution(user, dto.brandId, dto.agentId)
-    const id = 'O-' + randomUUID().slice(0, 6)
+    const id = 'O-' + shortId()
     const res = await this.prisma.$transaction(async (tx) => {
       await tx.order.create({
         data: { id, time: '实时', brandId: dto.brandId, agentId: dto.agentId, channel: dto.channel ?? 'wechat', type: dto.type, amount: dto.amount, plan: dto.plan, mid: 'M-RT', productId: dto.productId ?? null },
@@ -802,7 +855,7 @@ export class BusinessController {
     const level = dto.level ?? 'normal'
     // SLA 时限按级别：监管 24h、升级 48h、普通 72h（分钟）
     const slaLeftMin = level === 'regulatory' ? 1440 : level === 'escalated' ? 2880 : 4320
-    const id = 'TK-' + randomUUID().slice(0, 6)
+    const id = 'TK-' + shortId()
     await this.prisma.ticket.create({
       data: {
         id, time: '实时', source: dto.source, level, status: 'pending', slaLeftMin,
@@ -812,7 +865,7 @@ export class BusinessController {
     })
     // 广播通知给品牌（落消息，不进资金事务）
     await this.prisma.notification.create({
-      data: { id: 'NT-' + randomUUID().slice(0, 6), userId: null, scopeType: 'brand', scopeId: brandId, category: 'ticket', title: '新投诉工单', body: `来自${dto.source}的投诉：${dto.reason.slice(0, 30)}`, link: '/portal/brand/tickets', read: false },
+      data: { id: 'NT-' + shortId(), userId: null, scopeType: 'brand', scopeId: brandId, category: 'ticket', title: '新投诉工单', body: `来自${dto.source}的投诉：${dto.reason.slice(0, 30)}`, link: '/portal/brand/tickets', read: false },
     }).catch(() => undefined)
     await this.audit.record({ user, action: 'complaint.ingest', resource: 'Ticket', resourceId: id, detail: `外部投诉接入 ${id} · 来源 ${dto.source} · 品牌 ${brandId}${orderId ? ` · 订单 ${orderId}` : ''}` })
     return { ok: true, ticketId: id, brandId, agentId, level, slaLeftMin }
@@ -878,7 +931,7 @@ export class BusinessController {
         const out: { orderId: string; productId: string; brandId: string; amount: number; matchedContractId: string | null; subscriptionId: string | null }[] = []
         for (let i = 0; i < ordered.length; i++) {
           const p = ordered[i]
-          const oid = 'O-' + randomUUID().slice(0, 6)
+          const oid = 'O-' + shortId()
           await tx.order.create({ data: { id: oid, time: '实时', brandId: p.brandId, agentId: dto.agentId, channel, type, amount: alloc[i], plan: p.name, mid: 'M-RT', productId: p.id, bundleId: bundle.id } })
           const r = await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: p.brandId, agentId: dto.agentId, productId: p.id, amount: alloc[i], type, plan: p.name })
           out.push({ orderId: oid, productId: p.id, brandId: p.brandId, amount: alloc[i], matchedContractId: r.matchedContractId, subscriptionId: r.subscriptionId })

@@ -2,6 +2,9 @@ import { ConflictException, Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 
 const PENDING = '__pending__'
+// PENDING 占位超过此时长视为持有者已死（进程崩溃/重启遗留的死锁占位），可被后来者抢占重跑（P2-B7）。
+// 取 10 分钟：远大于正常资金 op 耗时（毫秒级），避免误抢正在执行的慢事务；且各资金 op 自身带条件更新，重跑亦不双花。
+const STALE_MS = 10 * 60 * 1000
 
 /**
  * 资金类写操作的幂等保护。
@@ -32,20 +35,15 @@ export class IdempotencyService {
     if (done.hit) return { result: done.value as T, replayed: true }
 
     // 抢占位行：create 成功者执行 op；失败者（并发输家）去等待赢家结果
-    let owns = false
-    try {
-      await this.prisma.idempotencyKey.create({ data: { key: storageKey, scope, result: PENDING } })
-      owns = true
-    } catch {
-      owns = false
-    }
+    let owns = await this.tryClaim(storageKey, scope)
 
     if (!owns) {
       // 并发输家：轮询等待赢家写入最终结果；绝不重复执行资金 op
       const waited = await this.waitForResult<T>(storageKey)
       if (waited.hit) return { result: waited.value as T, replayed: true }
-      // 赢家失败并删除了占位行 → 该 key 可重试，但避免我们也并发重入，直接返回冲突让客户端用新键或稍后重试
-      throw new ConflictException('幂等键处理中或上次失败，请稍后用同一键重试')
+      // 赢家失败删行、或占位死锁超时被判 stale：再抢占一次；仍抢不到才判冲突让客户端用新键或稍后重试
+      owns = await this.tryClaim(storageKey, scope)
+      if (!owns) throw new ConflictException('幂等键处理中或上次失败，请稍后用同一键重试')
     }
 
     // 占位拥有者：执行 op；失败则删除占位行（不毒化），成功则落最终结果
@@ -55,6 +53,36 @@ export class IdempotencyService {
       return { result, replayed: false }
     } catch (e) {
       await this.prisma.idempotencyKey.deleteMany({ where: { key: storageKey, result: PENDING } }).catch(() => {})
+      throw e
+    }
+  }
+
+  /**
+   * 抢占占位行：create 成功即独占执行权。
+   * P3-2：只有 Prisma P2002（唯一冲突）才算「并发输家」，其它错误（DB 连接故障等）一律上抛——
+   *   否则把连接失败误判成并发输家，会让本应重试的资金 op 被静默跳过（看似成功实际没执行）。
+   * P2-B7：撞到 P2002 时若占位是 stale PENDING（持有者已死），原子抢占后重跑，不永久死锁。
+   */
+  private async tryClaim(storageKey: string, scope: string): Promise<boolean> {
+    try {
+      await this.prisma.idempotencyKey.create({ data: { key: storageKey, scope, result: PENDING } })
+      return true
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'P2002') throw e
+      return this.reclaimIfStale(storageKey, scope)
+    }
+  }
+
+  /** 占位为 stale PENDING（createdAt 超 STALE_MS 且仍无结果）时原子抢占：删旧占位→重建，删成功者独占重跑权。 */
+  private async reclaimIfStale(storageKey: string, scope: string): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - STALE_MS)
+    const del = await this.prisma.idempotencyKey.deleteMany({ where: { key: storageKey, result: PENDING, createdAt: { lt: staleBefore } } })
+    if (del.count === 0) return false // 非 stale（已出最终结果 / 活跃 PENDING）→ 当并发输家去等待
+    try {
+      await this.prisma.idempotencyKey.create({ data: { key: storageKey, scope, result: PENDING } })
+      return true
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2002') return false // 另一 worker 抢先重建 → 让它跑
       throw e
     }
   }

@@ -445,6 +445,7 @@ export class PortalController {
   @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
   async setCallbackUrl(@Body() dto: CallbackUrlDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
+    // SSRF 红线：落库前用 callback-url 校验（https + 私有/保留网段 + DNS 解析），规范化后的 url 落库
     const checked = await validatePublicCallbackUrl(dto.callbackUrl)
     if (!checked.ok) return { ok: false, detail: checked.detail }
     await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: checked.url } })
@@ -491,11 +492,12 @@ export class PortalController {
     let cbOk = false
     const cbUrl = brand?.apiCallbackUrl || ''
     if (cbUrl) {
+      // 探测前用 callback-url 校验（含 DNS 解析）；redirect:'manual' 禁跟随重定向，防 302 绕过校验跳私网
       const checked = await validatePublicCallbackUrl(cbUrl)
       if (checked.ok) {
         try {
           const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
-          const res = await fetch(checked.url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
+          const res = await fetch(checked.url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
           cbOk = res.ok
         } catch { cbOk = false }
       }
