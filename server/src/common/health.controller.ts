@@ -1,4 +1,4 @@
-import { Controller, Get, Header, HttpCode, HttpStatus } from '@nestjs/common'
+import { Controller, Get, Header, HttpCode, HttpStatus, ServiceUnavailableException } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
@@ -23,7 +23,7 @@ export class HealthController {
 
   @Public()
   @Get('ready')
-  @HttpCode(HttpStatus.OK) // degraded 时也返回 200 体，由编排器读 status 字段判定；DB 不通才 503
+  @HttpCode(HttpStatus.OK) // 就绪时 200；DB 不通抛 503，让编排器能按状态码判定就绪（原先恒 200 与注释矛盾）
   @ApiOperation({ summary: '就绪探针（DB 连通 + 最近审计写入时间）' })
   async ready() {
     let db = 'down'
@@ -34,12 +34,15 @@ export class HealthController {
       /* db stays down */
     }
     const lastAudit = this.audit.lastSuccessAt
-    return {
+    const body = {
       status: db === 'up' ? 'ready' : 'degraded',
       db,
       lastAuditWriteAt: lastAudit ? lastAudit.toISOString() : null,
       lastAuditAgeSec: lastAudit ? Math.round((Date.now() - lastAudit.getTime()) / 1000) : null,
     }
+    // DB 不通 → 503（响应体仍带上诊断字段，供编排器/人工排查）
+    if (db !== 'up') throw new ServiceUnavailableException(body)
+    return body
   }
 
   @Public()
