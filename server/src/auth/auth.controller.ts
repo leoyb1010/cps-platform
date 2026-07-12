@@ -39,7 +39,9 @@ export class AuthController {
     res.cookie(REFRESH_COOKIE, raw, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: this.cfg.get('NODE_ENV') === 'production',
+      // 独立 COOKIE_SECURE 开关兜底：非 production 但已在 TLS 后（预发/灰度）也能强制 secure，
+      // 不再只押 NODE_ENV 单开关。test 默认 false，不影响 e2e。
+      secure: this.cfg.get('COOKIE_SECURE') === 'true' || this.cfg.get('NODE_ENV') === 'production',
       maxAge: days * 86400_000,
       // 默认 '/'，兼容直连(localhost:3001)与 nginx /api 反代两种部署；可用 REFRESH_COOKIE_PATH 覆盖
       path: this.cfg.get<string>('REFRESH_COOKIE_PATH') || '/',

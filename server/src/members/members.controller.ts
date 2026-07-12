@@ -122,7 +122,19 @@ export class MembersController {
       if (!role) return { ok: false, detail: '目标角色不存在' }
       data.roleId = dto.roleId
     }
-    if (dto.status) data.status = dto.status
+    if (dto.status) {
+      // 纵向越权防护：停用/启用平台内部账户（super/财务/风控/运营等 scopeType=platform）
+      // 与「改角色」同等敏感——非 super 不得操作，否则 teamadmin 可停用 super/财务瘫痪风控与出账。
+      // 客户账户（brand/agent 成员）的正常停用不受影响。
+      if (user.roleId !== 'super') {
+        const target = await this.prisma.user.findUnique({ where: { id }, select: { scopeType: true, roleId: true } })
+        if (!target) return { ok: false, detail: '目标成员不存在' }
+        if (target.roleId === 'super' || target.scopeType === 'platform') {
+          throw new ForbiddenException('仅超级管理员可停用/启用平台内部账户')
+        }
+      }
+      data.status = dto.status
+    }
     if (Object.keys(data).length === 0) return { ok: false, detail: '无可更新字段' }
 
     // 角色/状态变更后 bump token 版本：该成员旧 access token(含旧角色/权限) 立即失效

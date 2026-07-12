@@ -10,6 +10,7 @@ import { sendMail } from '../common/mailer'
 import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign, pubHint } from '../youdao/rsa-signature'
 import { buildStringToSign } from '../cps/signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
+import { assertSafeCallbackUrl } from '../common/url-guard'
 
 class CallbackUrlDto {
   @IsString() @MaxLength(300) callbackUrl!: string
@@ -444,6 +445,8 @@ export class PortalController {
   @Patch('brand/developer/callback') @RequirePerms('portal.brand.developer') @ApiOperation({ summary: '品牌-配置回调地址（接收状态 webhook）' })
   async setCallbackUrl(@Body() dto: CallbackUrlDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
+    // SSRF 红线：落库前校验，拒绝非 https / 私有网段 / 本机地址（否则被 healthCheck 主动探测打内网）
+    assertSafeCallbackUrl(dto.callbackUrl.slice(0, 300))
     await this.prisma.brand.update({ where: { id: brandId }, data: { apiCallbackUrl: dto.callbackUrl.slice(0, 300) } })
     await this.audit.record({ user, action: 'cps.callback.set', resource: 'Brand', resourceId: brandId, detail: `品牌 ${brandId} 配置回调地址` })
     return { ok: true, detail: '回调地址已保存' }
@@ -489,8 +492,10 @@ export class PortalController {
     const cbUrl = brand?.apiCallbackUrl || ''
     if (cbUrl) {
       try {
+        // 探测前复用同一 SSRF 守卫（拒内网/非 https）；redirect:'manual' 禁跟随重定向，防绕过校验跳私网
+        assertSafeCallbackUrl(cbUrl)
         const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
-        const res = await fetch(cbUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
+        const res = await fetch(cbUrl, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
         cbOk = res.ok
       } catch { cbOk = false }
     }
