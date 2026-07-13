@@ -40,6 +40,12 @@ describe('RBAC · permsOf', () => {
     expect(set.has('x.custom')).toBe(true)
     expect(set.has('audit.read')).toBe(false) // 不再回退到角色映射
   })
+
+  it('服务端明确下发空权限时保持空集，不回退到本地角色', () => {
+    const set = permsOf({ ...userWith('brand'), permissions: [] })
+    expect(set.size).toBe(0)
+    expect(set.has('portal.brand.home')).toBe(false)
+  })
 })
 
 describe('RBAC · 角色与演示账户一致性', () => {

@@ -35,6 +35,13 @@ export interface AgentSummary {
   trend: TrendPoint[]
 }
 
+export interface CursorResult<T> {
+  items: T[]
+  truncated: boolean
+}
+
+const BRAND_ORDERS_MAX = 5000
+
 // real/demo 两分支收敛：把"isRealApi ? real() : demo().then(demoFn)"的机械三元模板收进一处，
 // 强制每个方法同时给出真实与演示两种实现（漏写任一分支即类型报错），行为与原逐条三元等价。
 type Demo = Awaited<ReturnType<typeof demo>>
@@ -52,15 +59,24 @@ export const portalApi = {
       const qs = q.toString()
       return http.get<T>(`/portal/summary${qs ? `?${qs}` : ''}`)
     }, (d) => d.summary(period)),
-  brandOrders: <T = unknown[]>(filters?: { type?: string; dateFrom?: string; dateTo?: string }) =>
-    def<T>(() => {
-      const q = new URLSearchParams()
-      if (filters?.type) q.set('type', filters.type)
-      if (filters?.dateFrom) q.set('dateFrom', filters.dateFrom)
-      if (filters?.dateTo) q.set('dateTo', filters.dateTo)
-      const qs = q.toString()
-      return http.get<T>(`/portal/brand/orders${qs ? `?${qs}` : ''}`)
-    }, (d) => d.brandOrders(filters)),
+  brandOrders: <T = unknown>(filters?: { type?: string; dateFrom?: string; dateTo?: string }): Promise<CursorResult<T>> =>
+    def<CursorResult<T>>(async () => {
+      const items: T[] = []
+      let cursor: string | undefined
+      let truncated = false
+      do {
+        const q = new URLSearchParams({ limit: '200' })
+        if (cursor) q.set('cursor', cursor)
+        if (filters?.type) q.set('type', filters.type)
+        if (filters?.dateFrom) q.set('dateFrom', filters.dateFrom)
+        if (filters?.dateTo) q.set('dateTo', filters.dateTo)
+        const page = await http.get<{ items: T[]; nextCursor: string | null }>(`/portal/brand/orders?${q.toString()}`)
+        items.push(...page.items)
+        cursor = page.nextCursor ?? undefined
+        if (items.length >= BRAND_ORDERS_MAX) { truncated = !!cursor; break }
+      } while (cursor)
+      return { items, truncated }
+    }, async (d) => ({ items: await d.brandOrders(filters) as T[], truncated: false })),
   brandSettlements: <T = unknown[]>(filters?: { period?: string; status?: string }) =>
     def<T>(() => {
       const q = new URLSearchParams()
@@ -77,6 +93,7 @@ export const portalApi = {
   agentReplyTicket: (id: string, body: { handlePlan?: string; note?: string; status?: string }) =>
     def(() => http.post<{ ok: boolean; detail: string }>(`/portal/agent/tickets/${id}/reply`, body), (d) => d.agentReplyTicket(id, body)),
   brandBarter: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/barter'), (d) => d.brandBarter()),
+  brandCandidates: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/candidates'), async (d) => (await d.marketBrands()).filter((b) => b.id !== 'youdao')),
   contracts: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/contracts'), (d) => d.contracts()),
   marketBrands: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/market/brands'), (d) => d.marketBrands()),
   agentPayouts: <T = unknown>() => def<T>(() => http.get<T>('/portal/agent/payouts'), (d) => d.agentPayouts()),

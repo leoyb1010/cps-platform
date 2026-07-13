@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
+import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
 import { buildRsaSign } from '../youdao/rsa-signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
-import { validatePublicCallbackUrl } from '../common/callback-url'
+import { postJsonToPublicCallback, validatePublicCallbackUrl } from '../common/callback-url'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 // 模块级 logger（供自由函数 yuanToFen 用；类内另有 this.logger）
@@ -35,6 +36,46 @@ function platformPrivateKey(): string {
 export class SignWebhookService {
   private readonly logger = new Logger('SignWebhook')
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * 在调用方资金/状态事务内写入 outbox。pending 行延迟一分钟到期：正常路径提交后
+   * 立即 flush；若进程恰在提交后崩溃，retrySweep 会接管，保证事件不丢。
+   */
+  async enqueueInTx(tx: Prisma.TransactionClient, signOrderNo: string, status: number, fields: WebhookFields): Promise<string | null> {
+    const so = await tx.signOrder.findUnique({ where: { id: signOrderNo } })
+    if (!so) return null
+    const brand = await tx.brand.findUnique({ where: { id: so.brandId } })
+    const callbackUrl = brand?.apiCallbackUrl || ''
+    const payload: Record<string, unknown> = {
+      custOrderId: so.custOrderId || so.id,
+      orderId: fields.orderNo ?? so.id,
+      status,
+      subMsg: fields.subMsg ?? '',
+      effectiveTime: (fields.operateTime ?? new Date()).getTime(),
+      price: yuanToFen(fields.amount ?? 0),
+    }
+    payload.sign = buildRsaSign(payload, platformPrivateKey())
+    const id = 'CB-' + shortId()
+    await tx.signCallbackLog.create({
+      data: {
+        id, signOrderNo: so.id, brandId: so.brandId, status, direction: 'outbound',
+        payload: JSON.stringify(payload), callbackUrl,
+        deliveryStatus: callbackUrl ? 'pending' : 'dead',
+        error: callbackUrl ? '' : '未配置回调地址',
+        nextRetryAt: callbackUrl ? new Date(Date.now() + 60_000) : null,
+      },
+    })
+    return id
+  }
+
+  /** 提交后立即投递已入库 outbox；失败由 attempt 转 retrying，不反向破坏主事务。 */
+  async flushEnqueued(id: string | null): Promise<void> {
+    if (!id) return
+    const row = await this.prisma.signCallbackLog.findUnique({ where: { id } }).catch(() => null)
+    if (!row || row.deliveryStatus === 'dead' || row.deliveryStatus === 'delivered') return
+    const payload = JSON.parse(row.payload || '{}') as Record<string, unknown>
+    await this.attempt(row.id, row.callbackUrl, payload)
+  }
 
   async deliver(signOrderNo: string, status: number, fields: WebhookFields): Promise<void> {
     const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } }).catch(() => null)
@@ -88,15 +129,7 @@ export class SignWebhookService {
       return
     }
     try {
-      const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 5000)
-      const res = await fetch(safeCallback.url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-        redirect: 'manual', // P1-S1：禁止跟随重定向，防 302 跳转绕过上面的 SSRF 校验打内网
-        signal: ctrl.signal,
-      }).finally(() => clearTimeout(t))
+      const res = await postJsonToPublicCallback(safeCallback.url, payload, 5000)
       if (res.ok) {
         // P2-B6：attempts 由"读-加一-写绝对值"改为原子 increment，消除并发 sweep 下的丢失更新
         await this.update(id, { httpStatus: res.status, ok: true, error: '', deliveryStatus: 'delivered', attempts: { increment: 1 }, nextRetryAt: null })
@@ -131,7 +164,10 @@ export class SignWebhookService {
     this.sweeping = true
     try {
       const due = await this.prisma.signCallbackLog
-        .findMany({ where: { deliveryStatus: 'retrying', nextRetryAt: { lte: now } }, orderBy: { nextRetryAt: 'asc' }, take: limit })
+        .findMany({
+          where: { deliveryStatus: { in: ['pending', 'retrying'] }, nextRetryAt: { lte: now } },
+          orderBy: { nextRetryAt: 'asc' }, take: limit,
+        })
         .catch(() => [])
       let delivered = 0, dead = 0
       for (const row of due) {

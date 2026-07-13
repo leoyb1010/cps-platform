@@ -270,7 +270,7 @@ export default function Merchants() {
                     <span className="inline-flex items-center gap-1">
                       {/* 非健康号：进处置舱（聚合上下文 + 影响预演 + 留痕，比逐个按钮更稳） */}
                       {canWrite && m.state !== 'healthy' && (
-                        <button onClick={(e) => { e.stopPropagation(); nav(`/risk/incident/${m.id}`) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-brand hover:bg-brand-soft">处置舱</button>
+                        <button onClick={(e) => { e.stopPropagation(); void nav(`/risk/incident/${m.id}`) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-brand hover:bg-brand-soft">处置舱</button>
                       )}
                       {canWrite && (m.state === 'fused' ? (
                         <button onClick={() => { setMerchantState(m.id, 'healthy', '健康'); toast({ tone: 'good', text: `${m.id} 已恢复进单` }) }} className="rounded-md px-2 py-1 text-[12px] font-medium text-good-ink hover:bg-good-soft">恢复</button>

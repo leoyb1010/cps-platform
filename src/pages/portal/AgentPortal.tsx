@@ -121,7 +121,7 @@ export function AgentPlans() {
   const toast = useToast()
   const { data, state, reload } = usePortalResource<AgentPlanRow[]>(() => portalApi.agentPlans())
   const claimsApi = usePortalResource<ClaimRow[]>(() => portalApi.agentClaims())
-  const copy = (url: string) => { copyText(url).then((ok) => toast(ok ? { tone: 'good', text: '追踪链接已复制' } : { tone: 'info', text: url })) }
+  const copy = (url: string) => { void copyText(url).then((ok) => toast(ok ? { tone: 'good', text: '追踪链接已复制' } : { tone: 'info', text: url })) }
   return (
     <>
       <PageHeader

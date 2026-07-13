@@ -24,25 +24,9 @@ export function buildRsaSign(params: SignParams, privateKeyPem: string): string 
   return signer.sign(privateKeyPem, 'base64')
 }
 
-// nonce 去重缓存：仅当请求带 nonce 时启用，窗口内已用 nonce 一律拒绝（防同一签名在时间窗内重放）。
-// 向后兼容：不带 nonce 的对接（含现有 e2e）走纯时间戳校验，skew 从 300s 收紧到 120s 缩小重放窗口。
-// 轻量进程内实现，惰性清理过期项避免无界增长；nonce 已纳入签名串（buildStringToSign 不剔 nonce），
-// 攻击者无法在不破坏 sign 的前提下更换 nonce。
-const NONCE_TTL_MS = 120_000
-const seenNonces = new Map<string, number>()
-function claimNonce(nonce: string, nowMs: number): boolean {
-  if (seenNonces.size > 2000) {
-    for (const [k, exp] of seenNonces) if (exp <= nowMs) seenNonces.delete(k)
-  }
-  const exp = seenNonces.get(nonce)
-  if (exp !== undefined && exp > nowMs) return false // 窗口内已用 → 重放
-  seenNonces.set(nonce, nowMs + NONCE_TTL_MS)
-  return true
-}
-
 /**
- * 用公钥验签。① 必带 sign；② timestamp 偏移 ≤ skewSec（防重放）；③ RSA 验证；
- * ④ 若带 nonce，则在时间窗内去重拒绝重放。返回结构化结果，由调用方映射 403（不抛异常）。
+ * 用公钥验签。① 必带 sign；② timestamp 偏移 ≤ skewSec；③ RSA 验证。
+ * nonce 的强制存在与跨实例原子去重由入口层使用数据库唯一键完成；这里保持纯密码学验证函数。
  * base64 非法/验证异常一律 false。
  */
 export function verifyRsaSign(
@@ -69,13 +53,7 @@ export function verifyRsaSign(
     const verifier = createVerify('sha256')
     verifier.update(base, 'utf8')
     const ok = verifier.verify(publicKeyPem, provided, 'base64')
-    if (!ok) return { ok: false, reason: '签名校验失败' }
-    // 签名先过再记 nonce：避免攻击者用任意伪 nonce 污染缓存。仅对带 nonce 的请求去重（向后兼容）。
-    const nonce = params.nonce
-    if (typeof nonce === 'string' && nonce.length > 0) {
-      if (!claimNonce(nonce, nowMs)) return { ok: false, reason: 'nonce 重复，疑似重放' }
-    }
-    return { ok: true }
+    return ok ? { ok: true } : { ok: false, reason: '签名校验失败' }
   } catch {
     // 公钥格式错误 / base64 非法 / 验证异常 → 一律视为验签失败（不抛）
     return { ok: false, reason: '签名校验失败' }

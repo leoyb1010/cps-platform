@@ -1,7 +1,9 @@
 import { isIP } from 'node:net'
 import { lookup } from 'node:dns/promises'
+import { request as httpsRequest } from 'node:https'
 
-type CallbackUrlCheck = { ok: true; url: string } | { ok: false; detail: string }
+type ResolvedAddress = { address: string; family: 4 | 6 }
+type CallbackUrlCheck = { ok: true; url: string; addresses: ResolvedAddress[] } | { ok: false; detail: string }
 
 const BLOCKED_HOSTS = new Set([
   'localhost',
@@ -41,10 +43,47 @@ function benchmarkIpv4(host: string): boolean {
 }
 
 function blockedIpv6(host: string): boolean {
-  const h = host.toLowerCase()
-  const mapped = h.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
-  if (mapped) return blockedIpv4(mapped[1])
-  return h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')
+  const value = ipv6ToBigInt(host)
+  if (value === null) return true
+  // 出站 webhook 只允许公网 global-unicast IPv6（2000::/3），并排除其中的文档/基准保留段。
+  if (!inIpv6Range(value, ipv6ToBigInt('2000::')!, 3)) return true
+  return (
+    inIpv6Range(value, ipv6ToBigInt('2001:2::')!, 48) ||
+    inIpv6Range(value, ipv6ToBigInt('2001:db8::')!, 32)
+  )
+}
+
+function ipv6ToBigInt(host: string): bigint | null {
+  const input = host.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]
+  const halves = input.split('::')
+  if (halves.length > 2) return null
+  const parse = (part: string): number[] | null => {
+    if (!part) return []
+    const out: number[] = []
+    for (const token of part.split(':')) {
+      if (/^\d+\.\d+\.\d+\.\d+$/.test(token)) {
+        if (isIP(token) !== 4) return null
+        const n = ipv4ToNumber(token)
+        out.push((n >>> 16) & 0xffff, n & 0xffff)
+      } else {
+        if (!/^[0-9a-f]{1,4}$/.test(token)) return null
+        out.push(Number.parseInt(token, 16))
+      }
+    }
+    return out
+  }
+  const left = parse(halves[0]); const right = parse(halves[1] ?? '')
+  if (!left || !right) return null
+  const missing = halves.length === 2 ? 8 - left.length - right.length : 0
+  if (missing < 0 || (halves.length === 1 && left.length !== 8)) return null
+  const words = [...left, ...Array(missing).fill(0), ...right]
+  if (words.length !== 8) return null
+  return words.reduce((acc, word) => (acc << 16n) | BigInt(word), 0n)
+}
+
+function inIpv6Range(value: bigint, base: bigint, prefix: number): boolean {
+  const shift = BigInt(128 - prefix)
+  return (value >> shift) === (base >> shift)
 }
 
 function blockedIp(host: string): boolean {
@@ -63,7 +102,7 @@ function hostEmbedsBlockedIpv4(host: string): boolean {
 
 export async function validatePublicCallbackUrl(raw: string): Promise<CallbackUrlCheck> {
   const value = raw.trim()
-  if (!value) return { ok: true, url: '' }
+  if (!value) return { ok: true, url: '', addresses: [] }
 
   let url: URL
   try {
@@ -85,6 +124,7 @@ export async function validatePublicCallbackUrl(raw: string): Promise<CallbackUr
   const ipVersion = isIP(host)
   if (ipVersion && blockedIp(host)) return { ok: false, detail: '回调地址不能指向本机或内网 IP' }
 
+  let addresses: ResolvedAddress[]
   if (!ipVersion) {
     let records: { address: string }[]
     try {
@@ -98,7 +138,40 @@ export async function validatePublicCallbackUrl(raw: string): Promise<CallbackUr
     if (blockedRecords.length > 0 && !fakeDnsOnly) {
       return { ok: false, detail: '回调地址不能解析到本机或内网 IP' }
     }
+    addresses = records.map((r) => ({ address: r.address, family: isIP(r.address) as 4 | 6 }))
+  } else {
+    addresses = [{ address: host, family: ipVersion as 4 | 6 }]
   }
 
-  return { ok: true, url: url.toString().slice(0, 300) }
+  return { ok: true, url: url.toString().slice(0, 300), addresses }
+}
+
+/** 校验并把 HTTPS 连接固定到本次已验证 IP；不跟随重定向，消除校验后再次 DNS 解析的重绑定窗口。 */
+export async function postJsonToPublicCallback(raw: string, payload: unknown, timeoutMs: number): Promise<{ ok: boolean; status: number }> {
+  const checked = await validatePublicCallbackUrl(raw)
+  if (!checked.ok) throw new Error(checked.detail)
+  const url = new URL(checked.url)
+  const target = checked.addresses[0]
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest({
+      protocol: 'https:',
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      servername: isIP(url.hostname.replace(/^\[|\]$/g, '')) ? undefined : url.hostname,
+      lookup: ((_hostname: string, options: { all?: boolean }, callback: (...args: unknown[]) => void) => {
+        if (options?.all) callback(null, [target])
+        else callback(null, target.address, target.family)
+      }) as never,
+      timeout: timeoutMs,
+    }, (res) => {
+      res.resume()
+      resolve({ ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300, status: res.statusCode ?? 0 })
+    })
+    req.on('timeout', () => req.destroy(new Error('回调请求超时')))
+    req.on('error', reject)
+    req.end(JSON.stringify(payload))
+  })
 }

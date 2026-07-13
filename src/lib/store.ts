@@ -544,7 +544,7 @@ export function resolveTicketWithRefund(ticketId: string) {
 
   // 5) 活动流 / 通知（把联动讲出来）
   let activity = logActivity(state, `工单 ${ticketId} 已退款 ¥${amount} · ${brand?.name ?? ''}`, 'good')
-  let withReversal = { ...state, complaints, orders, settlements, agents, activity }
+  const withReversal = { ...state, complaints, orders, settlements, agents, activity }
   withReversal.activity = logActivity(withReversal, `逆向冲账 ¥${share} → 冲减 ${touchedSettlement || '结算单'} 代理分润`, 'alert')
   withReversal.activity = logActivity(withReversal, `代理 ${agentId} 待结算 −¥${share}、信用分 −4`, 'warn')
   if (agentLimited) withReversal.activity = logActivity(withReversal, `代理 ${agentId} 信用分跌破 760 → 已自动限流`, 'alert')

@@ -209,12 +209,21 @@ async function main() {
     const withSnap = {
       reserveReleased: 0, reserveClawedBack: 0,
       ...s,
-      agentShareSnapshot: s.gross > 0 ? +(s.agentPayout / s.gross).toFixed(6) : 0,
+      // agentPayout 已可能被历史 reversal 冲减；成交时点原始分润应还原为二者之和。
+      agentShareSnapshot: s.gross > 0 ? +((s.agentPayout + (s.reversal ?? 0)) / s.gross).toFixed(6) : 0,
     }
     await db.settlement.upsert({ where: { id: s.id }, update: withSnap, create: withSnap })
   }
   for (const t of TICKETS) await db.ticket.upsert({ where: { id: t.id }, update: t, create: t })
-  for (const o of ORDERS) await db.order.upsert({ where: { id: o.id }, update: o, create: o })
+  // Fixture 订单显式绑定原结算单，退款测试不再依赖“取品牌最新一期”的错误隐式规则。
+  // SETTLEMENTS 按新到旧排列；种子里的“今天/昨天”订单属于各品牌当前展示账期。
+  for (const o of ORDERS) {
+    const settlementId = (o.type === 'first' || o.type === 'renew')
+      ? SETTLEMENTS.find((s) => s.brandId === o.brandId)?.id ?? null
+      : null
+    const bound = { ...o, settlementId }
+    await db.order.upsert({ where: { id: o.id }, update: bound, create: bound })
+  }
   // 订阅增长交易（新）：增长合约 / 订阅聚合 / 准备金释放台账
   for (const c of CONTRACTS) await db.growthContract.upsert({ where: { id: c.id }, update: c, create: c })
   for (const s of SUBSCRIPTIONS) await db.subscription.upsert({ where: { id: s.id }, update: s, create: s })

@@ -17,9 +17,9 @@
 ![ORM](https://img.shields.io/badge/Prisma_6-SQLite_/_PostgreSQL-2D3748?style=flat-square&logo=prisma&logoColor=white)
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
 ![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
-![API](https://img.shields.io/badge/API-106_端点-FF6B35?style=flat-square)
-![测试](https://img.shields.io/badge/测试-224_自动化用例-4CAF50?style=flat-square)
-![CI](https://img.shields.io/badge/CI-GitHub_Actions_×5-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![API](https://img.shields.io/badge/API-107_端点-FF6B35?style=flat-square)
+![测试](https://img.shields.io/badge/测试-253_自动化用例-4CAF50?style=flat-square)
+![CI](https://img.shields.io/badge/CI-GitHub_Actions_×7-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
 
@@ -69,7 +69,7 @@
 
 ## 🧩 核心模块
 
-内部控制台 19 页 + 品牌门户 11 页 + 代理门户 8 页 + C 端超市，后端 **106 个 API**。真实模式读取走服务端，写操作镜像服务端并以服务端为审计权威源。
+内部控制台 19 页 + 品牌门户 11 页 + 代理门户 8 页 + C 端超市，后端 **107 个 API**。真实模式读取走服务端，写操作镜像服务端并以服务端为审计权威源。
 
 | 模块 | 路由 | 核心能力 |
 |---|---|---|
@@ -152,7 +152,18 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 ## 🔐 安全与质量（Review）
 
-经过**八轮对抗式安全与产品自审**（含多角色真实试用、独立子代理三路并行审计 + 两轮深度复测），累计定位并修复 **70+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+经过**九轮对抗式安全与产品自审**（含多角色真实试用、独立子代理三路并行审计 + 两轮深度复测），累计定位并修复 **80+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+
+**第九轮（v12）资金并发、安全重放与 real 模式清零复测**（详见 [`docs/多角色对抗审计报告-2026-07-13-修复复测.md`](docs/多角色对抗审计报告-2026-07-13-修复复测.md)）：
+
+| 级别 | 发现 | 修复 |
+|---|---|---|
+| 🔴 严重 | 退款余额不足 CAS 输家仍继续记账；准备金 clawback 并发重复追偿 | 所有回退路径按 CAS 真实赢家计账；准备金以 `status+amount` 原子认领，新增资金竞争回归 |
+| 🔴 严重 | 补扣可与解约/正常续扣竞争，造成解约后扣款或同期双单 | 事务内认领补扣任务 + `active/currentPeriod` 状态闸；解约副作用与 webhook outbox 同事务 |
+| 🟠 高 | refresh 双并发可换出两个后继；RSA nonce 在 DTO 层不可用 | refresh 条件认领并检测重放后吊销全族；写接口强制 nonce + DB 唯一键跨实例防重放 |
+| 🟠 高 | IPv6 编码绕过 callback SSRF；DNS 校验与请求存在重绑定窗口 | 完整 IPv6 公网段白名单；HTTPS 连接固定到已验证 IP，禁止重定向 |
+| 🟠 高 | real 模式品牌置换 403；订单静默截断；门户权限前端 fail-open | 品牌独立候选端点；游标分页与截断禁导出；显式空权限不再回退并加逐路由守卫 |
+| 🟡 工程 | Compose 用 liveness 冒充 readiness；ESLint 红但 CI 放行 | Compose/CI 统一 `/ready`；清零 ESLint 并改为阻断门禁 |
 
 **第八轮（v11）多角色清晰度与复杂度审计**（详见 [`docs/多角色清晰度与复杂度审计报告-2026-07-10.md`](docs/多角色清晰度与复杂度审计报告-2026-07-10.md)）：
 
@@ -221,7 +232,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏（手机号/商户号）· 审计旁路落盘。
 
-**测试矩阵**：后端 180（e2e + 单测）· 前端 35（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 224 自动化用例**。CI 五作业：前端构建 / 后端 e2e / PG schema 校验 / Playwright / 依赖扫描。
+**测试矩阵**：后端 199（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 253 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
 
 ---
 
@@ -236,12 +247,12 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 | 可观测 | prom-client（HTTP 延迟直方图 P50/95/99 + 业务指标）· 请求追踪 ID · `/health` `/ready` 探针 |
 | 鉴权/RBAC | argon2 哈希 · JWT + tokenVersion 即时失效 · 28 权限点 · 路由/操作/数据三级守卫 · 默认拒绝 |
 | 资金安全 | 幂等键资源绑定(防双花/防吞单) · 跨路径退款唯一锚 · 条件更新(防并发) · 审计 fail-closed(同事务) · 每日对账任务（恒等式 I + 守恒式 II/III/IV） |
-| 对外开放 | 有道规范 RSA(SHA256) 签名 · 时间戳防重放 · 凭证自助管理 · webhook 投递与重试日志 |
+| 对外开放 | 有道规范 RSA(SHA256) 签名 · 时间戳 + DB nonce 跨实例防重放 · 凭证自助管理 · webhook outbox 投递与重试日志 |
 | 工程化 | 双 schema 同步校验 · 优雅停机 · 软删除 · 游标分页 · 截图流水线（`scripts/screenshots.mjs`）· GitHub Actions CI |
 
 ---
 
-## 🗂 后端 API（106 端点 · 详见 `/docs` 与 `server/openapi.json`）
+## 🗂 后端 API（107 端点 · 详见 `/docs` 与 `server/openapi.json`）
 
 | 域 | 代表端点 |
 |---|---|
@@ -287,6 +298,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
+| **v12 · 资金并发与安全清零** | 修复退款/准备金 CAS 竞争、补扣/解约状态机、原账期绑定；refresh 原子轮换、RSA DB nonce、IPv6/DNS 重绑定 SSRF；real 模式分页/RBAC/readiness；ESLint 转阻断；两轮对抗 findings=0 |
 | **v9 · 动线化 · 实时化 · 智能化** | 铁律：功能可专业、操作必小白（规整而非删减）。**B0 规整**：控制台分组折叠(一项不减)、门户分组导航(资源平台/接单大厅)、密度切换、3 步引导。**B1 动线**：C 端**落地页生成器**(移动优先+归因闭环+合规模块)、结算工作台(五步 Checklist+对账解释器)、**风险处置舱**(影响预演)、分润 Sankey、⌘K 动作化、行动队列、代码分割。**B2 门户深化**：资源广场、投放透视、异动播报、接单模拟器、实时事件流。**B3 智能**：Ask 平台(模板制)、LTV 预测带、品牌白标、i18n 骨架。执行方案见 [`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) |
 | **v8 · 全面审查 + 体验升级** | 三路对抗式审查修 40+ 缺陷（工单退款跨路径双冲账 P0 / 幂等键资源绑定 / CPS 跨品牌签约 / 配置契约漂移 / 刷新令牌互踢 / 权限路由守卫）；**暗色模式**（令牌级三态主题）；登录页品牌叙事重设计；**演示模式全入口打通**（订阅超市本地货架算价 + 品牌/代理门户演示数据层 + 门户演示账户）；图表健壮性（单点/负值/标签防重叠）；焦点陷阱与无障碍；README 截图流水线 |
 | **v7 · 前端审计 + v6 收尾** | 前端首轮对抗式审计修 4 缺陷（switchRole 伪造 super / 创建并发丢失 / useApi 脚枪 / seq 碰撞）；X-Request-Id 入站清洗；创建写以服务端 id 为准 |

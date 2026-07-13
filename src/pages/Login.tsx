@@ -28,13 +28,13 @@ export default function Login() {
       const u = isRealApi ? await login(account.trim(), pwd) : await login(account.trim() || 'admin', pwd || 'demo')
       // 首登/邀请建号须先改密：拦到改密页，不放进控制台
       if (u.mustChangePassword) {
-        nav('/change-password', { replace: true })
+        void nav('/change-password', { replace: true })
         return
       }
       // 深链回跳：从受守卫页被弹到登录 → 登录后回原页（平台账户限内部路由）
       const from = (loc.state as { from?: string } | null)?.from
       const fallback = homeForScope(u)
-      nav(from && !from.startsWith('/portal') && fallback === '/' ? from : fallback, { replace: true })
+      void nav(from && !from.startsWith('/portal') && fallback === '/' ? from : fallback, { replace: true })
     } catch (e) {
       setErr(e instanceof Error ? e.message : '登录失败，请重试')
     } finally {
@@ -66,7 +66,7 @@ export default function Login() {
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            submit()
+            void submit()
           }}
           className="space-y-3.5"
         >

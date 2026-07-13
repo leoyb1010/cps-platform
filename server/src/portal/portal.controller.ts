@@ -10,7 +10,7 @@ import { sendMail } from '../common/mailer'
 import { genRsaKeypair, isValidPublicKey, buildRsaSign, verifyRsaSign, pubHint } from '../youdao/rsa-signature'
 import { buildStringToSign } from '../cps/signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
-import { validatePublicCallbackUrl } from '../common/callback-url'
+import { postJsonToPublicCallback, validatePublicCallbackUrl } from '../common/callback-url'
 
 class CallbackUrlDto {
   @IsString() @MaxLength(300) callbackUrl!: string
@@ -73,6 +73,8 @@ class BarterRespondDto {
 // 门户订单筛选（type/周期；scope 由 brandId 注入，前端不可传）。
 // type 取值对齐真实 Order.type 集合：first / renew / refund / chargeback。'refund' 视为退款+拒付合并筛选。
 class PortalOrderQueryDto {
+  @IsOptional() @IsString() cursor?: string
+  @IsOptional() @IsString() limit?: string
   @IsOptional() @IsIn(['first', 'renew', 'refund', 'chargeback']) type?: string
   @IsOptional() @IsISO8601() dateFrom?: string
   @IsOptional() @IsISO8601() dateTo?: string
@@ -198,9 +200,18 @@ export class PortalController {
     if (q.type) where.type = q.type === 'refund' ? { in: ['refund', 'chargeback'] } : q.type
     if (q.dateFrom || q.dateTo) where.createdAt = { ...(q.dateFrom ? { gte: new Date(q.dateFrom) } : {}), ...(q.dateTo ? { lte: new Date(q.dateTo) } : {}) }
     where.brandId = id // scope-last
-    const rows = await this.prisma.order.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 200 })
+    const limit = Math.min(Math.max(Number(q.limit) || 200, 1), 200)
+    const rows = await this.prisma.order.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
+    })
+    const hasMore = rows.length > limit
+    const page = hasMore ? rows.slice(0, limit) : rows
     // 去掉 agentId 明文，仅保留脱敏渠道标识
-    return rows.map((o) => ({ id: o.id, brandId: o.brandId, plan: o.plan, type: o.type, amount: o.amount, time: o.time, channel: o.agentId ? '渠道#' + o.agentId.slice(-4) : '直营' }))
+    const items = page.map((o) => ({ id: o.id, brandId: o.brandId, plan: o.plan, type: o.type, amount: o.amount, time: o.time, channel: o.agentId ? '渠道#' + o.agentId.slice(-4) : '直营' }))
+    return { items, nextCursor: hasMore ? page[page.length - 1].id : null }
   }
 
   // ── 品牌：我的结算单（脱敏：只 gross/brandShare/reserve/状态/账期，剔除平台费/代理分润）──
@@ -293,6 +304,20 @@ export class PortalController {
     })
     // 标注「我是发起方还是对手方」便于前端区分
     return rows.map((d) => ({ ...d, iAmInitiator: d.initiatorBrandId === id, partner: d.initiatorBrandId === id ? d.counterpartyBrandId : d.initiatorBrandId }))
+  }
+
+  // 品牌发起置换时的对手候选：只暴露存活品牌 id/name，且排除自己。
+  // 不复用代理商选品市场端点，避免品牌账户需要 portal.agent.market 权限。
+  @Get('brand/candidates')
+  @RequirePerms('portal.brand.contracts')
+  async brandCandidates(@CurrentUser() user: AuthUser) {
+    const id = this.scopeId(user, 'brand')
+    return this.prisma.brand.findMany({
+      where: { id: { not: id }, status: 'live', deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+      take: 500,
+    })
   }
 
   // ── 品牌/代理：我的增长合约（单方视图：品牌看我发的、代理看我接的）──
@@ -496,8 +521,7 @@ export class PortalController {
       const checked = await validatePublicCallbackUrl(cbUrl)
       if (checked.ok) {
         try {
-          const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 3000)
-          const res = await fetch(checked.url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ probe: true }), signal: ctrl.signal }).finally(() => clearTimeout(t))
+          const res = await postJsonToPublicCallback(checked.url, { probe: true }, 3000)
           cbOk = res.ok
         } catch { cbOk = false }
       }

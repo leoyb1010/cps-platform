@@ -28,8 +28,6 @@ jobs:
   lint:
     name: 代码规范 (ESLint · 前端)
     runs-on: ubuntu-latest
-    # 存量告警较多，暂不阻断合并：先建立基线、逐步清零后再转阻断（见下方 note）
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -147,7 +145,7 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: 构建并起栈（默认 SQLite + PG 叠加层 → 服务端跑在 PostgreSQL 上）
         run: docker compose up -d --build
-      - name: 等待 server 健康并冒烟 /health
+      - name: 等待 server 就绪并冒烟 /ready
         run: |
           sid=$(docker compose ps -q server)
           for i in $(seq 1 40); do
@@ -157,8 +155,8 @@ jobs:
             [ "$st" = unhealthy ] && { echo 'server 变为 unhealthy'; exit 1; }
             sleep 5
           done
-          # 经 nginx(/api → server:3001) 打存活探针；同时校验前端根可达
-          curl -fsS http://localhost:8080/api/health
+          # 经 nginx(/api → server:3001) 打就绪探针（含 DB）；同时校验前端根可达
+          curl -fsS http://localhost:8080/api/ready
           curl -fsS -o /dev/null http://localhost:8080/
       - name: 失败时打印容器日志
         if: failure()

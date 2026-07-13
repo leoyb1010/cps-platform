@@ -72,21 +72,34 @@ export class ReserveReleaseService {
    */
   async clawback(tx: Prisma.TransactionClient, settlementId: string, amount: number): Promise<{ clawed: number }> {
     if (amount <= 0) return { clawed: 0 }
-    const rows = await tx.reserveRelease.findMany({ where: { settlementId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
     let remain = amount
     let clawed = 0
-    for (const rr of rows) {
-      if (remain <= 0) break
+    // 每轮只处理当前最早的一行，并以 status+amount 做 CAS。与另一笔 clawback 或
+    // releaseRow 竞争失败时重新读取；只有真正认领成功的金额才进入 settlement 累计。
+    for (let attempt = 0; remain > 0 && attempt < 1000; attempt++) {
+      const rr = await tx.reserveRelease.findFirst({ where: { settlementId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
+      if (!rr) break
       const take = Math.min(remain, rr.amount)
+      let won
       if (take >= rr.amount) {
         // 整行追回
-        await tx.reserveRelease.update({ where: { id: rr.id }, data: { status: 'clawed_back', holdReason: '退款逆向追偿' } })
+        won = await tx.reserveRelease.updateMany({
+          where: { id: rr.id, status: 'scheduled', amount: rr.amount },
+          data: { status: 'clawed_back', holdReason: '退款逆向追偿' },
+        })
       } else {
         // 部分追回：缩减该行计划额
-        await tx.reserveRelease.update({ where: { id: rr.id }, data: { amount: rr.amount - take } })
+        won = await tx.reserveRelease.updateMany({
+          where: { id: rr.id, status: 'scheduled', amount: rr.amount },
+          data: { amount: { decrement: take } },
+        })
       }
-      remain -= take
-      clawed += take
+      if (won.count === 1) {
+        remain = round2(remain - take)
+        clawed = round2(clawed + take)
+      } else if (attempt === 999) {
+        throw new Error(`结算单 ${settlementId} 准备金追偿竞争过于激烈，已安全回滚`)
+      }
     }
     if (clawed > 0) {
       // 原子递增 reserveClawedBack + 递减 frozen，避免与并发 release 的 lost update（守恒式 II）。

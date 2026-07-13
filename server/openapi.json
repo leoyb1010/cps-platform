@@ -1563,6 +1563,20 @@
         ]
       }
     },
+    "/portal/brand/candidates": {
+      "get": {
+        "operationId": "PortalController_brandCandidates",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "portal"
+        ]
+      }
+    },
     "/portal/contracts": {
       "get": {
         "operationId": "PortalController_contracts",

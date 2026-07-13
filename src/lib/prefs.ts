@@ -162,7 +162,7 @@ function loadStrArr(key: string): string[] {
   return []
 }
 function makeSetStore(key: string) {
-  let set = new Set<string>(typeof localStorage !== 'undefined' ? loadStrArr(key) : [])
+  const set = new Set<string>(typeof localStorage !== 'undefined' ? loadStrArr(key) : [])
   const ls = new Set<() => void>()
   let snapshot = [...set]
   const persist = () => {

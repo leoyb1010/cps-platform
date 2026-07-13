@@ -36,13 +36,13 @@ export default function PortalLogin() {
       const u = await login(account.trim(), pwd)
       // 首登/邀请建号须先改密
       if (u.mustChangePassword) {
-        nav('/change-password', { replace: true })
+        void nav('/change-password', { replace: true })
         return
       }
       const from = (loc.state as { from?: string } | null)?.from
       const home = homeForScope(u)
       // 深链回跳：仅回落到自己门户区内的路径，避免跨区跳转又被守卫弹回
-      nav(from && home !== '/' && from.startsWith(home) ? from : home, { replace: true })
+      void nav(from && home !== '/' && from.startsWith(home) ? from : home, { replace: true })
     } catch (e) {
       setErr(e instanceof Error ? e.message : '登录失败，请重试')
     } finally {
@@ -69,7 +69,7 @@ export default function PortalLogin() {
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            submit()
+            void submit()
           }}
           className="space-y-3.5"
         >

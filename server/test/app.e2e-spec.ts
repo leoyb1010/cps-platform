@@ -5,7 +5,7 @@ import request from 'supertest'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createSign } from 'crypto'
 import { DEMO_RSA_PRIVATE, DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
-import { resetPrismaTestDb } from '../src/test-utils/prisma-test-db'
+import { cleanupPrismaTestDb, resetPrismaTestDb } from '../src/test-utils/prisma-test-db'
 import cookieParser = require('cookie-parser')
 
 // 有道对接演示凭证（与 seed 一致），RSA 签名对外接口测试
@@ -21,7 +21,7 @@ function ydStringToSign(params: Record<string, unknown>): string {
 }
 // 用演示私钥 RSA SHA256 签名（合作方一侧）
 function ydSign(params: Record<string, unknown>): Record<string, unknown> {
-  const p = { custId: YD_CUST, merchantId: YD_MCH, timestamp: Math.floor(Date.now() / 1000), ...params }
+  const p = { custId: YD_CUST, merchantId: YD_MCH, timestamp: Math.floor(Date.now() / 1000), nonce: `n-${Date.now()}-${Math.random()}`, ...params }
   const signer = createSign('sha256'); signer.update(ydStringToSign(p), 'utf8')
   return { ...p, sign: signer.sign(DEMO_RSA_PRIVATE, 'base64') }
 }
@@ -34,6 +34,7 @@ process.env.ALLOW_FAKE_DNS_CALLBACK_RESOLUTION = 'true'
 
 let app: INestApplication
 let httpServer: any
+let databaseUrl: string | undefined
 
 async function token(account: string): Promise<string> {
   const res = await request(httpServer).post('/auth/login').send({ account, password: 'demo' })
@@ -51,7 +52,7 @@ async function mkPaidBundle(productIds: string[]): Promise<{ bundleId: string; f
 beforeAll(async () => {
   // 在导入 AppModule(及其 PrismaClient)前：删旧 test.db → 建表 → 灌种子。
   // 绝对路径临时库避免 schema 相对路径残留；seed 子进程沿用同一个 DATABASE_URL。
-  const databaseUrl = resetPrismaTestDb('e2e-test')
+  databaseUrl = resetPrismaTestDb('e2e-test')
   const env = { ...process.env, DATABASE_URL: databaseUrl }
   execFileSync('npx', ['ts-node', 'prisma/seed.ts'], { env, encoding: 'utf8', stdio: 'pipe' })
   const { AppModule } = await import('../src/app.module')
@@ -67,6 +68,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close()
+  cleanupPrismaTestDb(databaseUrl)
 })
 
 describe('Auth', () => {
@@ -109,6 +111,10 @@ describe('Auth · 改密', () => {
     const login = await request(httpServer).post('/auth/login').send({ account: acct, password: tempPw }).expect(201)
     const access = login.body.access as string
     expect(login.body.user.mustChangePassword).toBe(true) // 邀请建号首登须改密
+    await request(httpServer).get('/auth/me').set('Authorization', `Bearer ${access}`).expect(200)
+    await request(httpServer).get('/notifications').set('Authorization', `Bearer ${access}`).expect(403)
+    const refreshCookie = login.headers['set-cookie']
+    await request(httpServer).post('/auth/refresh').set('Cookie', refreshCookie).expect(403)
 
     // 旧密码错 → 400
     await request(httpServer).post('/auth/change-password').set('Authorization', `Bearer ${access}`).send({ oldPassword: 'wrong-old', newPassword: 'newpass123' }).expect(400)
@@ -512,6 +518,13 @@ describe('数据级 RBAC (scope)', () => {
       expect(b).not.toHaveProperty('activeSubs')
     }
   })
+  it('客户门户：品牌可获取资源置换对手候选，且不包含自己', async () => {
+    const bt = await token('brand')
+    const res = await request(httpServer).get('/portal/brand/candidates').set('Authorization', `Bearer ${bt}`).expect(200)
+    expect(res.body.length).toBeGreaterThan(0)
+    expect(res.body.every((b: any) => b.id !== 'youdao')).toBe(true)
+    expect(res.body.every((b: any) => Object.keys(b).every((key) => key === 'id' || key === 'name'))).toBe(true)
+  })
   it('客户门户：越权拦截——品牌打代理端点 403，代理打品牌端点 403', async () => {
     const bt = await token('brand')
     const at = await token('agent')
@@ -522,12 +535,12 @@ describe('数据级 RBAC (scope)', () => {
     const bt = await token('brand')
     // 类型过滤：只返回 first（且仍只见自己 youdao）
     const firstOnly = await request(httpServer).get('/portal/brand/orders?type=first').set('Authorization', `Bearer ${bt}`).expect(200)
-    for (const o of firstOnly.body) { expect(o.type).toBe('first'); expect(o.brandId).toBe('youdao') }
+    for (const o of firstOnly.body.items) { expect(o.type).toBe('first'); expect(o.brandId).toBe('youdao') }
     // R1 修复：'renew' 是合法类型（不是 'renewal'），DTO 接受不报 400
     await request(httpServer).get('/portal/brand/orders?type=renew').set('Authorization', `Bearer ${bt}`).expect(200)
     // R1 修复：'refund' 同时覆盖退款 + 拒付 → 返回的每条都应是 refund 或 chargeback（youdao 订单恰为 first，结果为空亦合法，关键是类型不混入 first）
     const refundLike = await request(httpServer).get('/portal/brand/orders?type=refund').set('Authorization', `Bearer ${bt}`).expect(200)
-    for (const o of refundLike.body) { expect(['refund', 'chargeback']).toContain(o.type); expect(o.brandId).toBe('youdao') }
+    for (const o of refundLike.body.items) { expect(['refund', 'chargeback']).toContain(o.type); expect(o.brandId).toBe('youdao') }
     // 跨品牌验证拒付被纳入：用有 chargeback 订单的 ximalaya 账号（通过种子 wpsbrand? 此处仅验类型正确，chargeback 归并由 where in 保证）
     // 'renewal'（旧错误值）已不在白名单 → 400
     await request(httpServer).get('/portal/brand/orders?type=renewal').set('Authorization', `Bearer ${bt}`).expect(400)
@@ -1359,7 +1372,7 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     const pid = await liveProductId()
     // 错签
     const bad = await request(httpServer).post('/pay/outside/order').type('form')
-      .send({ custId: YD_CUST, merchantId: YD_MCH, goodsId: pid, custOrderId: 'CO-bad', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd', timestamp: String(Math.floor(Date.now() / 1000)), sign: 'deadbeef' })
+      .send({ custId: YD_CUST, merchantId: YD_MCH, goodsId: pid, custOrderId: 'CO-bad', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd', timestamp: String(Math.floor(Date.now() / 1000)), nonce: 'bad-sign-nonce', sign: 'deadbeef' })
     expect(bad.body.code).toBe(403)
     // 时间戳过期
     const stale = ydSign({ goodsId: pid, custOrderId: 'CO-stale', phone: '13900000000', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>
@@ -1386,6 +1399,21 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(p1.body.code).toBe(0)
     const p2 = await request(httpServer).post('/pay/outside/order').type('form').send(ydSign({ goodsId: pid, custOrderId: co, phone: '13900001111', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) as Record<string, string>)
     expect(p2.body.code).toBe(125)
+  })
+
+  it('RSA POST nonce 必填且数据库原子拒绝同一签名重放', async () => {
+    const pid = await liveProductId()
+    const signed = ydSign({ goodsId: pid, custOrderId: `CO-replay-${Date.now()}`, phone: '13900006666', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' })
+    const [a, b] = await Promise.all([
+      request(httpServer).post('/pay/outside/order').type('form').send(signed),
+      request(httpServer).post('/pay/outside/order').type('form').send(signed),
+    ])
+    expect([a.body.code, b.body.code].filter((code) => code === 0)).toHaveLength(1)
+    expect([a.body.code, b.body.code].filter((code) => code === 403)).toHaveLength(1)
+
+    const noNonce = { ...ydSign({ goodsId: pid, custOrderId: `CO-no-nonce-${Date.now()}`, phone: '13900006667', payType: 'ALIPAY', platform: 'android', signType: 'payAfterSigning', deviceId: 'd' }) }
+    delete noNonce.nonce
+    await request(httpServer).post('/pay/outside/order').type('form').send(noNonce).expect(400)
   })
 
   it('未过审商品不可签约扣款：pending/draft goodsId → 124（商品不可用）', async () => {
@@ -1626,7 +1654,7 @@ describe('多租户越权矩阵', () => {
   describe('C · 品牌方(brand) portal 列表按 scope 收窄，每条归属 youdao', () => {
     it('/portal/brand/orders：每条 brandId===youdao', async () => {
       const bt = await token('brand')
-      const rows = (await request(httpServer).get('/portal/brand/orders').set('Authorization', `Bearer ${bt}`).expect(200)).body
+      const rows = (await request(httpServer).get('/portal/brand/orders').set('Authorization', `Bearer ${bt}`).expect(200)).body.items
       expect(rows.every((o: any) => o.brandId === 'youdao')).toBe(true)
     })
     it('/portal/brand/settlements：每条 brandId===youdao', async () => {

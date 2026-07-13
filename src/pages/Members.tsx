@@ -146,7 +146,8 @@ function RolePerms({ roleId, initial, editable, onSave }: { roleId: string; init
     if (readonly) return
     setGranted((cur) => {
       const n = new Set(cur)
-      n.has(key) ? n.delete(key) : n.add(key)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
       return n
     })
   }

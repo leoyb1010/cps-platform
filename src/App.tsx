@@ -84,6 +84,17 @@ function RequirePerm({ perm, anyPerm, children }: { perm?: string; anyPerm?: str
   return <>{children}</>
 }
 
+// 门户也做路由级权限守卫：隐藏导航不等于阻止直达 URL。
+// 被撤权时跳到当前 scope 第一个可访页；若权限全空，保留在壳内由 ClientLayout 显示统一的无权 UX。
+function RequirePortalPerm({ perm, children }: { perm: string; children: React.ReactNode }) {
+  const user = useAuth()
+  const can = useCan()
+  if (can(perm)) return <>{children}</>
+  const groups = user?.scopeType === 'brand' ? BRAND_NAV_GROUPS : user?.scopeType === 'agent' ? AGENT_NAV_GROUPS : []
+  const firstAllowed = groups.flatMap((g) => g.items).find((item) => can(item.perm))
+  return firstAllowed ? <Navigate to={firstAllowed.to} replace /> : <>{children}</>
+}
+
 function currentEntryPath(): string {
   const hashPath = window.location.hash.replace(/^#/, '')
   return hashPath || window.location.pathname || '/'
@@ -106,8 +117,9 @@ export default function App() {
   const [ready, setReady] = useState(!needsBootstrap)
   useEffect(() => {
     if (needsBootstrap)
-      bootstrapAuth()
+      void bootstrapAuth()
         .then((ok) => (ok && shouldHydratePlatformStore(getCurrentUser()) ? hydrateFromServer() : undefined))
+        .catch(() => false)
         .finally(() => setReady(true))
   }, [needsBootstrap])
   if (!ready) {
@@ -143,19 +155,19 @@ export default function App() {
           </RequireScope>
         }
       >
-        <Route path="/portal/brand" element={<BrandHome />} />
-        <Route path="/portal/brand/orders" element={<BrandOrders />} />
-        <Route path="/portal/brand/settlement" element={<BrandSettlement />} />
-        <Route path="/portal/brand/onboarding" element={<BrandOnboarding />} />
-        <Route path="/portal/brand/tickets" element={<BrandTickets />} />
-        <Route path="/portal/brand/contracts" element={<BrandContracts />} />
-        <Route path="/portal/brand/products" element={<BrandProducts />} />
-        <Route path="/portal/brand/developer" element={<BrandDeveloper />} />
-        <Route path="/portal/brand/landing" element={<BrandLanding />} />
-        <Route path="/portal/brand/barter" element={<BrandBarter />} />
-        <Route path="/portal/brand/aigc" element={<PortalAigc />} />
-        <Route path="/portal/brand/insights" element={<BrandInsights />} />
-        <Route path="/portal/brand/plaza" element={<BrandPlaza />} />
+        <Route path="/portal/brand" element={<RequirePortalPerm perm="portal.brand.home"><BrandHome /></RequirePortalPerm>} />
+        <Route path="/portal/brand/orders" element={<RequirePortalPerm perm="portal.brand.orders"><BrandOrders /></RequirePortalPerm>} />
+        <Route path="/portal/brand/settlement" element={<RequirePortalPerm perm="portal.brand.settlement"><BrandSettlement /></RequirePortalPerm>} />
+        <Route path="/portal/brand/onboarding" element={<RequirePortalPerm perm="portal.brand.onboarding"><BrandOnboarding /></RequirePortalPerm>} />
+        <Route path="/portal/brand/tickets" element={<RequirePortalPerm perm="portal.brand.tickets"><BrandTickets /></RequirePortalPerm>} />
+        <Route path="/portal/brand/contracts" element={<RequirePortalPerm perm="portal.brand.contracts"><BrandContracts /></RequirePortalPerm>} />
+        <Route path="/portal/brand/products" element={<RequirePortalPerm perm="portal.brand.products"><BrandProducts /></RequirePortalPerm>} />
+        <Route path="/portal/brand/developer" element={<RequirePortalPerm perm="portal.brand.developer"><BrandDeveloper /></RequirePortalPerm>} />
+        <Route path="/portal/brand/landing" element={<RequirePortalPerm perm="portal.brand.products"><BrandLanding /></RequirePortalPerm>} />
+        <Route path="/portal/brand/barter" element={<RequirePortalPerm perm="portal.brand.contracts"><BrandBarter /></RequirePortalPerm>} />
+        <Route path="/portal/brand/aigc" element={<RequirePortalPerm perm="portal.aigc"><PortalAigc /></RequirePortalPerm>} />
+        <Route path="/portal/brand/insights" element={<RequirePortalPerm perm="portal.brand.orders"><BrandInsights /></RequirePortalPerm>} />
+        <Route path="/portal/brand/plaza" element={<RequirePortalPerm perm="portal.brand.contracts"><BrandPlaza /></RequirePortalPerm>} />
         {/* 未知子路径回品牌门户首页，避免落在空 Outlet 上（与平台console的 * 兜底一致） */}
         <Route path="/portal/brand/*" element={<Navigate to="/portal/brand" replace />} />
       </Route>
@@ -168,15 +180,15 @@ export default function App() {
           </RequireScope>
         }
       >
-        <Route path="/portal/agent" element={<AgentHome />} />
-        <Route path="/portal/agent/market" element={<AgentMarket />} />
-        <Route path="/portal/agent/plans" element={<AgentPlans />} />
-        <Route path="/portal/agent/payouts" element={<AgentPayouts />} />
-        <Route path="/portal/agent/credit" element={<AgentCredit />} />
-        <Route path="/portal/agent/contracts" element={<AgentContracts />} />
-        <Route path="/portal/agent/tickets" element={<AgentTickets />} />
-        <Route path="/portal/agent/aigc" element={<PortalAigc />} />
-        <Route path="/portal/agent/landing" element={<AgentLanding />} />
+        <Route path="/portal/agent" element={<RequirePortalPerm perm="portal.agent.home"><AgentHome /></RequirePortalPerm>} />
+        <Route path="/portal/agent/market" element={<RequirePortalPerm perm="portal.agent.market"><AgentMarket /></RequirePortalPerm>} />
+        <Route path="/portal/agent/plans" element={<RequirePortalPerm perm="portal.agent.plans"><AgentPlans /></RequirePortalPerm>} />
+        <Route path="/portal/agent/payouts" element={<RequirePortalPerm perm="portal.agent.payouts"><AgentPayouts /></RequirePortalPerm>} />
+        <Route path="/portal/agent/credit" element={<RequirePortalPerm perm="portal.agent.credit"><AgentCredit /></RequirePortalPerm>} />
+        <Route path="/portal/agent/contracts" element={<RequirePortalPerm perm="portal.agent.contracts"><AgentContracts /></RequirePortalPerm>} />
+        <Route path="/portal/agent/tickets" element={<RequirePortalPerm perm="portal.agent.tickets"><AgentTickets /></RequirePortalPerm>} />
+        <Route path="/portal/agent/aigc" element={<RequirePortalPerm perm="portal.aigc"><PortalAigc /></RequirePortalPerm>} />
+        <Route path="/portal/agent/landing" element={<RequirePortalPerm perm="portal.agent.market"><AgentLanding /></RequirePortalPerm>} />
         <Route path="/portal/agent/*" element={<Navigate to="/portal/agent" replace />} />
       </Route>
 

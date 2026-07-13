@@ -289,6 +289,7 @@ export function Button({
   loading,
   type = 'button',
   disabled,
+  title,
 }: {
   children: ReactNode
   variant?: 'primary' | 'ghost' | 'soft' | 'danger'
@@ -299,6 +300,7 @@ export function Button({
   loading?: boolean // externally-controlled loading state (e.g. async submit)
   type?: 'button' | 'submit'
   disabled?: boolean
+  title?: string
 }) {
   const [busy, setBusy] = useState(false)
   const sizeCls = size === 'sm' ? 'px-2.5 py-1 text-[12px]' : 'px-3 py-1.5 text-[13px]'
@@ -322,7 +324,7 @@ export function Button({
   }
   const showSpin = busy || loading
   return (
-    <button className={cx(base, v, className)} onClick={handle} disabled={disabled || showSpin} type={type}>
+    <button className={cx(base, v, className)} onClick={handle} disabled={disabled || showSpin} type={type} title={title}>
       {showSpin && <Loader2 size={14} className="animate-spin" />}
       {children}
     </button>

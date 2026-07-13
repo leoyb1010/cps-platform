@@ -5,7 +5,7 @@ import type { Request, Response } from 'express'
 import { IsString, MinLength } from 'class-validator'
 import { ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
-import { Public } from './auth.guard'
+import { AllowBeforePasswordChange, Public } from './auth.guard'
 import { CurrentUser, type AuthUser } from '../rbac/rbac'
 
 class LoginDto {
@@ -74,12 +74,14 @@ export class AuthController {
   }
 
   @Get('me')
+  @AllowBeforePasswordChange()
   @ApiOperation({ summary: '当前登录用户 + 角色 + 权限点 + 数据范围' })
   me(@CurrentUser() user: AuthUser) {
     return { user }
   }
 
   @Post('change-password')
+  @AllowBeforePasswordChange()
   @Throttle({ default: { ttl: 60_000, limit: CHPWD_LIMIT } }) // 防猜旧密码：每 IP 每分钟 5 次（test 放开）
   @ApiOperation({ summary: '修改密码（校验旧密码；成功后吊销全部会话，需重新登录）' })
   async changePassword(@Body() dto: ChangePasswordDto, @CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {

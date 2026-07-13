@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common'
+import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import * as argon2 from 'argon2'
@@ -99,17 +99,34 @@ export class AuthService {
 
   async rotateRefresh(raw: string, ua = '', ip = '') {
     const hash = this.sha256(raw)
-    const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash } })
-    if (!rec || rec.expiresAt < new Date()) throw new UnauthorizedException('登录已过期，请重新登录')
-    // 重放检测：已被吊销的 refresh 又被使用 = 可能被盗用（攻击者已先轮换）。
-    // 不只是拒绝本次，而是吊销该用户全部会话族，连带作废攻击者刚换得的令牌。
-    if (rec.revoked) {
-      await this.revokeAllForUser(rec.userId)
-      throw new UnauthorizedException('检测到异常登录，已注销全部会话，请重新登录')
+    const next = randomBytes(32).toString('hex')
+    const days = Number(this.cfg.get('REFRESH_TTL_DAYS') || 14)
+    const now = new Date()
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const rec = await tx.refreshToken.findUnique({
+        where: { tokenHash: hash },
+        include: { user: { select: { mustChangePassword: true, status: true } } },
+      })
+      if (!rec || rec.expiresAt < now || rec.user.status !== 'active') return { kind: 'expired' as const }
+      if (rec.user.mustChangePassword) return { kind: 'password-change' as const }
+
+      // 单条条件更新是轮换的原子认领点：并发请求只有一个能把 revoked=false 改为 true。
+      const claimed = await tx.refreshToken.updateMany({ where: { id: rec.id, revoked: false }, data: { revoked: true } })
+      if (claimed.count !== 1) return { kind: 'replayed' as const }
+      await tx.refreshToken.create({
+        data: { userId: rec.userId, tokenHash: this.sha256(next), ua, ip, expiresAt: new Date(now.getTime() + days * 86400_000) },
+      })
+      return { kind: 'ok' as const, userId: rec.userId }
+    })
+    if (outcome.kind === 'expired') throw new UnauthorizedException('登录已过期，请重新登录')
+    if (outcome.kind === 'password-change') throw new ForbiddenException('首次登录必须先修改密码')
+    if (outcome.kind === 'replayed') {
+      // 条件认领输家代表同一 refresh 被并发/重复使用；严格吊销整族并 bump access token 版本。
+      const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: hash }, select: { userId: true } })
+      if (rec) await this.revokeAllForUser(rec.userId)
+      throw new UnauthorizedException('检测到刷新令牌重放，已注销全部会话')
     }
-    await this.prisma.refreshToken.update({ where: { id: rec.id }, data: { revoked: true } })
-    const next = await this.issueRefresh(rec.userId, ua, ip)
-    return { userId: rec.userId, refresh: next }
+    return { userId: outcome.userId, refresh: next }
   }
 
   async revokeRefresh(raw?: string) {

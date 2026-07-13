@@ -194,6 +194,8 @@ model Order {
   signOrderNo    String? // CPS 连续包月：所属签约单号（一签约对多扣款）；非签约订单为 null
   extOrderNo     String? // CPS 交易单号（支付宝侧商家单号 orderNo），退款按此定位单期
   period         Int? // CPS 扣款期数：首订 0，续期累加；非签约订单为 null
+  settlementId   String? // 原订单所属结算单快照；退款必须按此原账期冲账，禁止取品牌最新一期
+  settlement     Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
   refundedOrderId String? @unique // 退款单专用：指向被退的原扣款单 id。唯一约束=存储层"一原单至多一退"，兜底并发下两条退款路径同时通过应用层检查（NULL 不参与唯一，非退款单不受影响）
   createdAt      DateTime @default(now())
 
@@ -202,6 +204,7 @@ model Order {
   @@index([subscriptionId])
   @@index([signOrderNo])
   @@index([extOrderNo]) // 退款按交易号定位单期，必须有索引
+  @@index([settlementId])
 }
 
 model Settlement {
@@ -224,6 +227,7 @@ model Settlement {
   reserveClawedBack  Float   @default(0) // 已追偿准备金累计
   createdAt          DateTime @default(now())
   updatedAt          DateTime @default(now()) @updatedAt
+  orders             Order[]
 
   @@unique([period, brandId]) // 同品牌同账期唯一，防重复结算单
   @@index([brandId]) // applyRefundReversal 按 brandId 找结算单（退款冲账热路径）
@@ -334,7 +338,7 @@ model ChargeRetry {
   amount      Float
   period      Int       @default(0) // 补扣对应期数
   attempt     Int       @default(0) // 已补扣次数
-  status      String    @default("pending") // pending | succeeded | exhausted | cancelled
+  status      String    @default("pending") // pending | processing | succeeded | exhausted | cancelled
   reason      String    @default("") // 失败原因
   windowStart DateTime  @default(now()) // 补扣窗口起点（+3月为截止）
   nextRetryAt DateTime // 下次补扣时间

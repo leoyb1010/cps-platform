@@ -407,9 +407,10 @@ export class BusinessController {
             return true
           }
         }
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '', refundedOrderId: order?.id ?? null } })
+        const originalSettlement = await this.settle.bindOrderSettlement(tx, order)
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: t.brandId, agentId: t.agentId, channel: order?.channel ?? 'wechat', type: 'refund', amount: -amount, plan: order?.plan ?? '退款', mid: order?.mid ?? '', settlementId: originalSettlement?.id ?? null, refundedOrderId: order?.id ?? null } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收并扣信用分（工单退款较重）
-        const rev = await this.settle.applyRefundReversal(tx, { brandId: t.brandId, amount })
+        const rev = await this.settle.applyRefundReversal(tx, { settlement: originalSettlement, amount })
         share = rev.share
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: t.agentId, share, withCredit: true })
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金，
@@ -556,9 +557,10 @@ export class BusinessController {
         const existingRefund = await tx.order.findFirst({ where: { type: 'refund', refundedOrderId: id } })
         if (existingRefund) return null
         const amt = Math.abs(order.amount)
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, refundedOrderId: id } })
+        const originalSettlement = await this.settle.bindOrderSettlement(tx, order)
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, settlementId: originalSettlement?.id ?? null, refundedOrderId: id } })
         // 结算侧逆向冲账（比例走快照优先链）+ 代理侧分润回收（订单退款不扣信用分）
-        const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
+        const rev = await this.settle.applyRefundReversal(tx, { settlement: originalSettlement, amount: amt })
         const share = rev.share
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share, withCredit: false })
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。

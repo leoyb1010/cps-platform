@@ -10,7 +10,7 @@ import { PeriodFilter } from '../../components/ui/filters'
 import { type PeriodValue } from '../../lib/period'
 import { BARTER_RESOURCE_TYPES, INVOICE_STATUS } from '../../lib/dict'
 import { TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
-import { portalApi, type BrandSummary } from '../../lib/portalApi'
+import { portalApi, type BrandSummary, type CursorResult } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, PortalBanner } from '../../components/portal/kit'
 import { money, pct } from '../../lib/format'
 
@@ -83,14 +83,14 @@ export function BrandOrders() {
   const [type, setType] = useState<'all' | 'first' | 'renew' | 'refund'>('all')
   const [q, setQ] = useState('')
   // type 走服务端过滤（真实类型筛选）；搜索在前端做轻量匹配
-  const { data, state, reload } = usePortalResource<BrandOrderRow[]>(() => portalApi.brandOrders(type === 'all' ? undefined : { type }), [type])
+  const { data, state, reload } = usePortalResource<CursorResult<BrandOrderRow>>(() => portalApi.brandOrders(type === 'all' ? undefined : { type }), [type])
   const apply = (rows: BrandOrderRow[]) => rows.filter((o) => !q || o.id.toLowerCase().includes(q.toLowerCase()) || (o.plan || '').includes(q))
   return (
     <>
       <PageHeader
         title="我的订单"
         desc="你的品牌的订单流水（渠道已脱敏）。可按类型快速筛选、搜索订单号。"
-        actions={data && <Button variant="ghost" onClick={() => exportCsv('我的订单.csv', apply(data), [
+        actions={data && <Button variant="ghost" disabled={data.truncated} title={data.truncated ? '数据已截断，禁止导出不完整对账文件' : undefined} onClick={() => exportCsv('我的订单.csv', apply(data.items), [
           { key: 'id', label: '订单', get: (r) => r.id }, { key: 'plan', label: '套餐', get: (r) => r.plan }, { key: 'type', label: '类型', get: (r) => r.type }, { key: 'channel', label: '渠道', get: (r) => r.channel }, { key: 'amount', label: '金额', get: (r) => r.amount }, { key: 'time', label: '时间', get: (r) => r.time },
         ])}><Download size={14} /> 导出 CSV</Button>}
       />
@@ -98,9 +98,10 @@ export function BrandOrders() {
         <Segmented value={type} onChange={setType} options={[{ value: 'all', label: '全部' }, { value: 'first', label: '首单' }, { value: 'renew', label: '续费' }, { value: 'refund', label: '退款/拒付' }]} />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索订单号 / 套餐" className="h-8 max-w-[220px]" />
       </div>
-      <PortalState state={state} data={data} reload={reload} skeleton={<TableSkeleton />} emptyWhen={(d) => d.length === 0} emptyTitle="暂无订单">
+      {data?.truncated && <div role="alert" className="mb-3 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-[12px] text-warn-ink">订单超过 5,000 笔，当前仅展示前 5,000 笔。统计与 CSV 导出已禁用，请缩小筛选范围。</div>}
+      <PortalState state={state} data={data} reload={reload} skeleton={<TableSkeleton />} emptyWhen={(d) => d.items.length === 0} emptyTitle="暂无订单">
         {(d) => {
-          const rows = apply(d)
+          const rows = apply(d.items)
           return (
             <Card pad={false}>
               <TableShell className="px-2 pb-2" head={<><Th className="pl-3">订单</Th><Th>套餐</Th><Th>类型</Th><Th>渠道</Th><Th right>金额</Th><Th right>时间</Th></>}>
@@ -115,7 +116,7 @@ export function BrandOrders() {
                   </Row>
                 ))}
               </TableShell>
-              <div className="border-t border-line px-5 py-2.5 text-[11.5px] text-ink-4">共 {rows.length} 笔</div>
+              <div className="border-t border-line px-5 py-2.5 text-[11.5px] text-ink-4">{d.truncated ? '当前已加载' : '共'} {rows.length} 笔{d.truncated ? '（非完整统计）' : ''}</div>
             </Card>
           )
         }}
@@ -183,7 +184,7 @@ export function BrandOnboarding() {
   const dev = usePortalResource<DevData>(() => portalApi.developer())
   const products = usePortalResource<ProductLite[]>(() => portalApi.brandProducts())
   const contracts = usePortalResource<ContractLite[]>(() => portalApi.contracts())
-  const orders = usePortalResource<OrderLite[]>(() => portalApi.brandOrders())
+  const orders = usePortalResource<OrderLite[]>(() => portalApi.brandOrders<OrderLite>().then((r) => r.items))
   return (
     <>
       <PageHeader title="我的入驻" desc="从入驻到首单的接入进度，跟着清单逐步完成即可开始经营。" />
@@ -355,7 +356,7 @@ type BrandBarterRow = { id: string; partner: string; iAmInitiator: boolean; stat
 export function BrandBarter() {
   const toast = useToast()
   const { data, state, reload } = usePortalResource<BrandBarterRow[]>(() => portalApi.brandBarter())
-  const marketApi = usePortalResource<{ id: string; name: string }[]>(() => portalApi.marketBrands())
+  const marketApi = usePortalResource<{ id: string; name: string }[]>(() => portalApi.brandCandidates())
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [f, setF] = useState({ counterpartyBrandId: '', resourceType: '广告位', myQuota: 500000, counterpartyQuota: 500000, invoiceStatus: 'pending' })

@@ -177,8 +177,9 @@ export class CpsService {
         const dupe = await tx.order.findFirst({ where: { type: 'refund', refundedOrderId: order.id } })
         if (dupe) return null
         const amt = Math.abs(order.amount)
-        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period, refundedOrderId: order.id } })
-        const rev = await this.settle.applyRefundReversal(tx, { brandId: order.brandId, amount: amt })
+        const originalSettlement = await this.settle.bindOrderSettlement(tx, order)
+        await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period, settlementId: originalSettlement?.id ?? null, refundedOrderId: order.id } })
+        const rev = await this.settle.applyRefundReversal(tx, { settlement: originalSettlement, amount: amt })
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
         if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
@@ -199,18 +200,29 @@ export class CpsService {
 
   // ── 解约：active→unsigned，取消补扣队列，停止续费，推 webhook(3) ──
   async unsign(signOrderNo: string) {
-    const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } })
-    if (!so) return { ok: false, detail: '签约单不存在' }
-    if (so.status === 'unsigned') return { ok: true, detail: '已解约', replayed: true }
-    // P1-B2：无条件解约收紧为条件更新——只从「未解约」态原子跃迁到 unsigned；
-    // 并发/竞态下只有 count===1 的赢家继续推 churn/webhook，count===0（已被并发解约）幂等返回，不重复副作用。
-    const done = await this.prisma.signOrder.updateMany({ where: { id: so.id, status: { not: 'unsigned' } }, data: { status: 'unsigned', unsignedAt: new Date() } })
-    if (done.count === 0) return { ok: true, detail: '已解约', replayed: true }
-    await this.prisma.chargeRetry.updateMany({ where: { signOrderNo: so.id, status: 'pending' }, data: { status: 'cancelled' } })
-    if (so.subscriptionId) await this.prisma.subscription.update({ where: { id: so.subscriptionId }, data: { status: 'churned', churnedAt: new Date() } }).catch(() => undefined)
-    await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.unsign', resource: 'SignOrder', resourceId: so.id, detail: `解约 ${so.id}` })
-    await this.webhook.deliver(so.id, YD_STATUS.UNSIGN, { operateTime: new Date() })
-    return { ok: true, detail: '解约成功' }
+    const at = new Date()
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const so = await tx.signOrder.findUnique({ where: { id: signOrderNo } })
+      if (!so) return { ok: false as const, detail: '签约单不存在', replayed: false, outboxId: null as string | null }
+      if (so.status === 'unsigned') return { ok: true as const, detail: '已解约', replayed: true, outboxId: null as string | null }
+      if (so.status === 'expired') return { ok: false as const, detail: '签约单已过期，不可改写为解约', replayed: false, outboxId: null as string | null }
+
+      // 状态、补扣取消、订阅 churn、审计和回调 outbox 同事务提交；任一失败全部回滚，
+      // 不再出现 status 已 unsigned 但其余副作用永久缺失的半完成状态。
+      const done = await tx.signOrder.updateMany({
+        where: { id: so.id, status: { in: ['signing', 'active'] } },
+        data: { status: 'unsigned', unsignedAt: at },
+      })
+      if (done.count === 0) return { ok: false as const, detail: '签约单状态已变化，请重试', replayed: false, outboxId: null as string | null }
+      await tx.chargeRetry.updateMany({ where: { signOrderNo: so.id, status: { in: ['pending', 'processing'] } }, data: { status: 'cancelled' } })
+      if (so.subscriptionId) await tx.subscription.updateMany({ where: { id: so.subscriptionId }, data: { status: 'churned', churnedAt: at } })
+      await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.unsign', resource: 'SignOrder', resourceId: so.id, detail: `解约 ${so.id}` })
+      const outboxId = await this.webhook.enqueueInTx(tx, so.id, YD_STATUS.UNSIGN, { operateTime: at })
+      return { ok: true as const, detail: '解约成功', replayed: false, outboxId }
+    })
+    if (outcome.ok && !outcome.replayed) await this.webhook.flushEnqueued(outcome.outboxId)
+    const { outboxId: _outboxId, ...result } = outcome
+    return result
   }
 
   // ── 查询：签约单 + 各期扣款状态（对账用）──
@@ -240,44 +252,70 @@ export class CpsService {
       // 避峰：深夜顺延到次日 09:00
       if (hour >= 22 || hour < 7) {
         const next = new Date(now); next.setHours(9, 0, 0, 0); if (hour >= 22) next.setDate(next.getDate() + 1)
-        await this.prisma.chargeRetry.update({ where: { id: cr.id }, data: { nextRetryAt: next } })
-        deferred++; continue
+        const moved = await this.prisma.chargeRetry.updateMany({ where: { id: cr.id, status: 'pending', attempt: cr.attempt }, data: { nextRetryAt: next } })
+        if (moved.count === 1) deferred++
+        continue
       }
       const so = await this.prisma.signOrder.findUnique({ where: { id: cr.signOrderNo } })
       // 已解约/失效 → 取消补扣
       if (!so || so.status !== 'active') {
-        await this.prisma.chargeRetry.update({ where: { id: cr.id }, data: { status: 'cancelled', lastTriedAt: now } })
+        await this.prisma.chargeRetry.updateMany({ where: { id: cr.id, status: 'pending', attempt: cr.attempt }, data: { status: 'cancelled', lastTriedAt: now } })
         continue
       }
       // 超 3 个月窗口未成功 → 自动解约 + 标记 exhausted
       const windowEnd = new Date(cr.windowStart); windowEnd.setMonth(windowEnd.getMonth() + 3)
       if (now > windowEnd) {
-        await this.prisma.chargeRetry.update({ where: { id: cr.id }, data: { status: 'exhausted', lastTriedAt: now } })
-        await this.unsign(cr.signOrderNo) // 自动解约（推 webhook 3）
-        exhausted++; continue
+        const claimed = await this.prisma.chargeRetry.updateMany({ where: { id: cr.id, status: 'pending', attempt: cr.attempt }, data: { status: 'exhausted', lastTriedAt: now } })
+        if (claimed.count === 1) {
+          await this.unsign(cr.signOrderNo) // 自动解约（推 webhook 3）
+          exhausted++
+        }
+        continue
       }
       if (outcome === 'success') {
         // 补扣成功：走 ingestOrder 落续费单（恒等式安全），推进签约单期数，推 webhook(2)，补扣单完成
         const period = cr.period
         const r = await this.idem.run(`${cr.id}:${cr.attempt}`, 'cps.retry', async () => {
           return this.prisma.$transaction(async (tx) => {
+            // 先在事务内认领补扣行。进程崩溃后幂等占位被回收重跑、并发 sweep、
+            // 或 unsign 已取消该行时，count=0 均不得再落 Order。
+            const retryClaim = await tx.chargeRetry.updateMany({
+              where: { id: cr.id, status: 'pending', attempt: cr.attempt },
+              data: { status: 'processing', lastTriedAt: now },
+            })
+            if (retryClaim.count === 0) return { executed: false as const, ext: '', period }
+
+            // 与普通 renewCharge 共用同一状态/期数闸：谁先把 active/(period-1)
+            // 推到 period，谁获得本期扣款权。解约先提交或本期已正常扣款时取消补扣。
+            const advanced = await tx.signOrder.updateMany({
+              where: { id: so.id, status: 'active', currentPeriod: period - 1 },
+              data: { currentPeriod: period, nextChargeAt: new Date(now.getTime() + 30 * 86400000) },
+            })
+            if (advanced.count === 0) {
+              await tx.chargeRetry.updateMany({ where: { id: cr.id, status: 'processing' }, data: { status: 'cancelled' } })
+              return { executed: false as const, ext: '', period }
+            }
             const oid = 'O-' + shortId(); const ext = 'TXN' + shortId()
             await tx.order.create({ data: { id: oid, time: '实时', brandId: so.brandId, agentId: so.agentId || '未知', channel: 'alipay', type: 'renew', amount: cr.amount, plan: so.plan, mid: 'M-CPS', productId: so.productId, signOrderNo: so.id, extOrderNo: ext, period } })
             await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: so.brandId, agentId: so.agentId || '未知', productId: so.productId, amount: cr.amount, type: 'renew', plan: so.plan })
-            await tx.signOrder.update({ where: { id: so.id }, data: { currentPeriod: period, nextChargeAt: new Date(now.getTime() + 30 * 86400000) } })
-            await tx.chargeRetry.update({ where: { id: cr.id }, data: { status: 'succeeded', attempt: cr.attempt + 1, lastTriedAt: now } })
+            await tx.chargeRetry.updateMany({ where: { id: cr.id, status: 'processing', attempt: cr.attempt }, data: { status: 'succeeded', attempt: { increment: 1 }, lastTriedAt: now } })
             await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.retry', resource: 'ChargeRetry', resourceId: cr.id, detail: `补扣成功 第${period}期 · 订单 ${oid} · ¥${cr.amount}` })
-            return { ext, period }
+            return { executed: true as const, ext, period }
           })
         })
-        if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: r.result.ext, amount: cr.amount, period: r.result.period, operateTime: now }) }
-        succeeded++
+        if (r.result.executed) {
+          if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: r.result.ext, amount: cr.amount, period: r.result.period, operateTime: now }) }
+          succeeded++
+        }
       } else {
         // 补扣失败：attempt+1，排下次（首次失败当天再补1次→次日；之后每周）
         const next = new Date(now)
         if (cr.attempt === 0) next.setDate(next.getDate() + 1)
         else next.setDate(next.getDate() + 7)
-        await this.prisma.chargeRetry.update({ where: { id: cr.id }, data: { attempt: cr.attempt + 1, nextRetryAt: next, lastTriedAt: now } })
+        await this.prisma.chargeRetry.updateMany({
+          where: { id: cr.id, status: 'pending', attempt: cr.attempt },
+          data: { attempt: { increment: 1 }, nextRetryAt: next, lastTriedAt: now },
+        })
       }
     }
     return { swept: rows.length, succeeded, exhausted, deferred }

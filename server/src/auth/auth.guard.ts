@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common'
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
@@ -7,6 +7,8 @@ import { AuthService } from './auth.service'
 /** 标注公开接口（跳过登录校验），如 /auth/login。 */
 export const PUBLIC_KEY = 'is_public'
 export const Public = () => SetMetadata(PUBLIC_KEY, true)
+export const PASSWORD_CHANGE_ALLOWED_KEY = 'password_change_allowed'
+export const AllowBeforePasswordChange = () => SetMetadata(PASSWORD_CHANGE_ALLOWED_KEY, true)
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -37,6 +39,10 @@ export class AuthGuard implements CanActivate {
     if ((payload.tv ?? 0) !== currentTv) throw new UnauthorizedException('登录态已失效，请重新登录')
     const user = await this.auth.toAuthUser(payload.sub)
     if (!user) throw new UnauthorizedException('用户不存在或已停用')
+    const passwordChangeAllowed = this.reflector.getAllAndOverride<boolean>(PASSWORD_CHANGE_ALLOWED_KEY, [ctx.getHandler(), ctx.getClass()])
+    if (user.mustChangePassword && !passwordChangeAllowed) {
+      throw new ForbiddenException('首次登录必须先修改密码')
+    }
     req.user = user
     return true
   }

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
+import { createHash } from 'crypto'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
 import { CpsService } from '../cps/cps.service'
@@ -9,7 +10,7 @@ import { YD_CODE, ydErr, ydOk } from './youdao-codes'
 import { toOrderStatus } from './youdao-status'
 
 // 验签结果：成功带归属，失败带有道错误码（由 handler 直接 return，HTTP 200 + body code，符合有道规范）
-type AuthnInput = { merchantId?: string; custId?: string }
+type AuthnInput = { merchantId?: string; custId?: string; nonce?: string }
 type AuthnResult = { ok: true; brandId: string; merchantId: string; custId: string } | { ok: false; err: { code: number; msg: string } }
 
 // ── 有道续费对接 DTO（form-data / urlencoded；forbidNonWhitelisted 要求穷举字段）──
@@ -27,6 +28,7 @@ class OrderDto {
   @IsOptional() @IsString() @MaxLength(40) source?: string
   @IsOptional() @IsString() @MaxLength(500) passbackParams?: string
   @IsOptional() timestamp?: string
+  @IsString() @MaxLength(128) nonce!: string
   @IsString() sign!: string
 }
 class RefundDto {
@@ -34,6 +36,7 @@ class RefundDto {
   @IsString() @MaxLength(64) merchantId!: string
   @IsString() @MaxLength(64) orderId!: string // 词典订单号（退款订单）
   @IsOptional() timestamp?: string
+  @IsString() @MaxLength(128) nonce!: string
   @IsString() sign!: string
 }
 class UnsignDto {
@@ -41,6 +44,7 @@ class UnsignDto {
   @IsString() @MaxLength(64) merchantId!: string
   @IsString() @MaxLength(64) orderId!: string // 签约下单时有道返回的订单号（= signOrderNo）
   @IsOptional() timestamp?: string
+  @IsString() @MaxLength(128) nonce!: string
   @IsString() sign!: string
 }
 
@@ -51,7 +55,7 @@ export class YoudaoController {
 
   // RSA 验签：按 merchantId 取凭证公钥 → verifyRsaSign。失败返有道错误码（HTTP 200 + body code，符合规范），
   //   不抛 UnauthorizedException（那会被全局过滤器改成 401 + 通用体）。
-  private async authn(body: AuthnInput): Promise<AuthnResult> {
+  private async authn(body: AuthnInput, requireNonce = false): Promise<AuthnResult> {
     const merchantId = body.merchantId
     const custId = body.custId
     if (!merchantId || typeof merchantId !== 'string' || !custId || typeof custId !== 'string') return { ok: false, err: ydErr(YD_CODE.CUST_NOT_FOUND) }
@@ -59,13 +63,25 @@ export class YoudaoController {
     if (!cred || !cred.publicKey) return { ok: false, err: ydErr(YD_CODE.CUST_NOT_FOUND) }
     const r = verifyRsaSign(body as Record<string, unknown>, cred.publicKey)
     if (!r.ok) return { ok: false, err: ydErr(YD_CODE.SIGN_ERROR) }
+    if (requireNonce) {
+      const nonce = body.nonce
+      if (!nonce) return { ok: false, err: ydErr(YD_CODE.SIGN_ERROR) }
+      // merchant/cust/nonce 共同绑定并哈希限长；主键唯一约束是跨进程、跨实例的原子防重放锚。
+      const digest = createHash('sha256').update(`${merchantId}\0${custId}\0${nonce}`).digest('hex')
+      try {
+        await this.prisma.idempotencyKey.create({ data: { key: `rsa.nonce:${digest}`, scope: 'rsa.nonce', result: JSON.stringify({ acceptedAt: Date.now() }) } })
+      } catch (e) {
+        if ((e as { code?: string }).code === 'P2002') return { ok: false, err: ydErr(YD_CODE.SIGN_ERROR) }
+        throw e
+      }
+    }
     return { ok: true, brandId: cred.brandId, merchantId, custId: cred.custId }
   }
 
   // ── 续费下单（RSA 验签）：建签约单 → 返回 orderId + 支付参数 ──
   @Public() @Post('pay/outside/order') @ApiOperation({ summary: '有道续费·下单（RSA 验签，form-data）：建签约单返回签约链接' })
   async order(@Body() dto: OrderDto) {
-    const a = await this.authn(dto)
+    const a = await this.authn(dto, true)
     if (!a.ok) return a.err
     const { brandId } = a
     // 合作方订单号唯一（有道规范 125 合作方订单重复）：顺序重复由 findFirst 命中返 125。
@@ -87,7 +103,7 @@ export class YoudaoController {
   // ── 退款（RSA 验签）：按 orderId（交易单）反查 → 走既有逆向冲账 ──
   @Public() @Post('order/outside/refund') @ApiOperation({ summary: '有道续费·退款（RSA 验签）：指定订单退款，恒等式不破' })
   async refund(@Body() dto: RefundDto, @Headers('idempotency-key') idemKey?: string) {
-    const a = await this.authn(dto)
+    const a = await this.authn(dto, true)
     if (!a.ok) return a.err
     const { brandId } = a
     // orderId 可能是签约单号（退首期）或交易单号；优先按交易单 extOrderNo 反查
@@ -106,7 +122,7 @@ export class YoudaoController {
   // ── 解约（RSA 验签）：orderId = 签约单号 ──
   @Public() @Post('order/outside/unsign') @ApiOperation({ summary: '有道续费·解约（RSA 验签）：停止后续扣款 + 取消补扣' })
   async unsign(@Body() dto: UnsignDto) {
-    const a = await this.authn(dto)
+    const a = await this.authn(dto, true)
     if (!a.ok) return a.err
     const { brandId } = a
     const so = await this.prisma.signOrder.findUnique({ where: { id: dto.orderId } })

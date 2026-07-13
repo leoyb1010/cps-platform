@@ -36,7 +36,7 @@ export function BrandDeveloper() {
   const { data, state, reload } = usePortalResource<DevConfig>(() => portalApi.developer<DevConfig>())
   const [tab, setTab] = useState<Tab>('cred')
   const [copied, setCopied] = useState('')
-  const copy = (text: string, tag: string) => { copyText(text).then((ok) => { if (ok) { setCopied(tag); setTimeout(() => setCopied(''), 1500) } }) }
+  const copy = (text: string, tag: string) => { void copyText(text).then((ok) => { if (ok) { setCopied(tag); setTimeout(() => setCopied(''), 1500) } }) }
 
   return (
     <div className="space-y-5">
@@ -133,7 +133,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
       <Confirm
         open={regenOpen}
         onClose={() => setRegenOpen(false)}
-        onConfirm={() => { setRegenOpen(false); keygen() }}
+        onConfirm={() => { setRegenOpen(false); void keygen() }}
         title="重新生成 RSA 密钥"
         tone="alert"
         confirmText="仍要重新生成"
@@ -218,12 +218,13 @@ function ConsoleTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { 
 }
 
 // ── SDK / 代码生成 ──
-function CodeTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; baseUrl: string; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
+function CodeTab({ endpoints, baseUrl: _baseUrl, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; baseUrl: string; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
   const [epIdx, setEpIdx] = useState(0)
   const [lang, setLang] = useState<string>('curl')
   const ep = endpoints[epIdx]
   const params = buildParams(ep.fields, {}, merchantId, custId, true)
   const input: CodeGenInput = { baseUrl: `https://dict-paycenter-test.youdao.com/client`, path: ep.path, method: ep.method, params }
+  void _baseUrl
   const gen = LANGS.find((l) => l.key === lang)!.gen
   const code = gen(input)
   return (

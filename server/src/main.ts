@@ -10,9 +10,17 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter'
 
 // 禁止使用占位/弱密钥或仓库内 demo 私钥，避免令牌/回调签名可被伪造。
 // 不再以 NODE_ENV!=='production' 单开关整体豁免：改为「检测到弱值即拒启」，
-// 仅在显式 ALLOW_WEAK_SECRETS=true 或 test 环境放行（保留本地 dev/e2e 便利，默认严格）。
+// 仅在非生产显式 ALLOW_WEAK_SECRETS=true 或 test 环境放行（生产永不允许逃生开关）。
 function assertSecrets() {
-  if (process.env.ALLOW_WEAK_SECRETS === 'true' || process.env.NODE_ENV === 'test') return
+  if (process.env.NODE_ENV === 'test') return
+  if (process.env.ALLOW_WEAK_SECRETS === 'true' && process.env.NODE_ENV !== 'production') {
+    // 本地可显式放宽“强度”，但不能放宽“必须存在”：否则服务表面启动成功，
+    // 直到首次登录/刷新才由 jsonwebtoken 因空 secret 返回 500。
+    for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
+      if (!process.env[k]) throw new Error(`[安全] ${k} 未设置；ALLOW_WEAK_SECRETS 仅允许弱开发值，不允许空值`)
+    }
+    return
+  }
   const weak = ['', 'CHANGE_ME', 'change-me-access', 'change-me-refresh', 'dev-access-secret-change-in-prod', 'dev-refresh-secret-change-in-prod']
   for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
     const v = process.env[k] || ''

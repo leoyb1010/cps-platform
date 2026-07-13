@@ -33,10 +33,16 @@ function runPrisma(args: string[], databaseUrl: string) {
 }
 
 export function resetPrismaTestDb(name: string): string {
-  const dbPath = join('/tmp', `cps-platform-${name}.db`)
+  // 带 worker PID：多个 Vitest/Codex 进程并行时不会互删对方正在使用的 SQLite 文件。
+  const dbPath = join('/tmp', `cps-platform-${name}-${process.pid}.db`)
   const databaseUrl = `file:${dbPath}`
   removeSqliteFiles(dbPath)
   process.env.DATABASE_URL = databaseUrl
   runPrisma(['db', 'push', '--skip-generate', '--accept-data-loss'], databaseUrl)
   return databaseUrl
+}
+
+export function cleanupPrismaTestDb(databaseUrl?: string) {
+  if (!databaseUrl?.startsWith('file:')) return
+  removeSqliteFiles(databaseUrl.slice('file:'.length))
 }

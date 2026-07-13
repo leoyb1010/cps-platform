@@ -52,7 +52,7 @@ const LC_BORDER: Record<'info' | 'good' | 'warn' | 'alert', string> = {
 }
 
 export default function Orders() {
-  const { orders } = useStore()
+  const { orders, ordersTruncated } = useStore()
   const toast = useToast()
   const [view, setView] = useState<'orders' | 'lifecycle'>('orders')
   const [f, setF] = useState<'all' | OrderType>('all')
@@ -66,8 +66,9 @@ export default function Orders() {
   const cbs = orders.filter((o) => o.type === 'chargeback').length
   // KPI 从 store 实时派生（不再硬编码静态样例，避免与下方实时表自相矛盾）；扣款单为 0 时给 '—'
   const deducted = firsts + renews
-  const refundRate = deducted ? (refunds / deducted) * 100 : null
-  const cbRate = deducted ? (cbs / deducted) * 100 : null
+  // 被上限截断时分母/分子都不完整，不输出具有误导性的比率。
+  const refundRate = ordersTruncated || !deducted ? null : (refunds / deducted) * 100
+  const cbRate = ordersTruncated || !deducted ? null : (cbs / deducted) * 100
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
 
   // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
@@ -87,10 +88,12 @@ export default function Orders() {
           <>
             <Segmented value={view} onChange={setView} options={[{ value: 'orders', label: '订单流' }, { value: 'lifecycle', label: '订阅生命周期' }]} />
             <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成' }) }}><RefreshCcw size={14} /> 同步回传</Button>
-            <Button variant="primary" onClick={() => { const csv = '订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); downloadText('订单对账.csv', csv); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
+            <Button variant="primary" disabled={ordersTruncated} title={ordersTruncated ? '数据已截断，禁止导出不完整对账文件' : undefined} onClick={() => { const csv = '订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); downloadText('订单对账.csv', csv); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
           </>
         }
       />
+
+      {ordersTruncated && <div role="alert" className="mb-4 rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-[12px] text-warn-ink">订单超过 2,000 笔，当前仅展示前 2,000 笔。比率统计与对账 CSV 已禁用，请到对账中心按周期导出。</div>}
 
       {view === 'lifecycle' ? (
         <>
@@ -163,8 +166,8 @@ export default function Orders() {
       ) : (
       <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card><Stat label="今日订单" value={int(orders.length)} sub={<span>首单 {int(firsts)} · 续费 {int(renews)}</span>} /></Card>
-        <Card><Stat label="续费 / 首单" value={firsts ? (renews / firsts).toFixed(2) : '—'} hint="续费笔数 ÷ 首单笔数" sub={<span>越高 LTV 越好</span>} /></Card>
+            <Card><Stat label="今日订单" value={ordersTruncated ? `≥ ${int(orders.length)}` : int(orders.length)} sub={<span>首单 {ordersTruncated ? '≥ ' : ''}{int(firsts)} · 续费 {ordersTruncated ? '≥ ' : ''}{int(renews)}</span>} /></Card>
+            <Card><Stat label="续费 / 首单" value={ordersTruncated || !firsts ? '—' : (renews / firsts).toFixed(2)} hint="续费笔数 ÷ 首单笔数" sub={<span>{ordersTruncated ? '数据不完整，暂不计算' : '越高 LTV 越好'}</span>} /></Card>
         <Card><Stat label="退款率" value={refundRate === null ? '—' : pct(refundRate)} sub={<span>触发分润冲账</span>} /></Card>
         <Card><Stat label="拒付率" value={cbRate === null ? '—' : pct(cbRate, 2)} sub={cbRate !== null && cbRate < 0.5 ? <span className="text-good-ink">低于阈值</span> : <span>对照红线 0.5%</span>} /></Card>
       </div>
@@ -235,7 +238,7 @@ export default function Orders() {
           })}
         </TableShell>
         <div className="flex items-center justify-between border-t border-line px-5 py-3 text-[12px] text-ink-3">
-          <span>本页 {list.length} 笔 · 首单 {list.filter((o) => o.type === 'first').length}，续费 {list.filter((o) => o.type === 'renew').length}，退款 {list.filter((o) => o.type === 'refund').length}，拒付 {list.filter((o) => o.type === 'chargeback').length}</span>
+          <span>{ordersTruncated ? '当前已加载' : '本页'} {list.length} 笔 · 首单 {list.filter((o) => o.type === 'first').length}，续费 {list.filter((o) => o.type === 'renew').length}，退款 {list.filter((o) => o.type === 'refund').length}，拒付 {list.filter((o) => o.type === 'chargeback').length}{ordersTruncated ? '（非完整统计）' : ''}</span>
           <span className="text-ink-4">每 5 分钟刷新 · 完整数据见对账中心</span>
         </div>
       </Card>

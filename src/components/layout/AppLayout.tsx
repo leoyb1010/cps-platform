@@ -293,7 +293,7 @@ function AccountMenu() {
           <div className="absolute right-2.5 bottom-[58px] left-2.5 z-[56] rounded-xl border border-line bg-surface py-1.5 shadow-[var(--shadow-pop)]" style={{ animation: 'revUpSm .18s both' }}>
             {!roles ? (
               <>
-                <MenuRow icon={<UserCog size={14} />} label="个人资料" onClick={() => { setOpen(false); nav('/profile') }} hint={user.account} />
+                <MenuRow icon={<UserCog size={14} />} label="个人资料" onClick={() => { setOpen(false); void nav('/profile') }} hint={user.account} />
                 {/* 表格密度：舒适/紧凑（仅摆放，不改功能）。财务对账场景常切紧凑一屏多看几行。 */}
                 <div className="flex items-center justify-between px-3 py-1.5">
                   <span className="flex items-center gap-2.5 text-[12.5px] text-ink-2"><Rows3 size={14} className="text-ink-4" /> 表格密度</span>
@@ -302,7 +302,7 @@ function AccountMenu() {
                 {/* 角色切换仅演示态可用；真实模式角色只能由后端变更，避免前端伪造权限 */}
                 {!isRealApi && <MenuRow icon={<Repeat size={14} />} label="切换角色（演示）" onClick={() => setRoles(true)} chevron />}
                 <div className="my-1 border-t border-line" />
-                <MenuRow icon={<LogOut size={14} />} label="退出登录" tone="alert" onClick={() => { logout(); nav('/login', { replace: true }) }} />
+                <MenuRow icon={<LogOut size={14} />} label="退出登录" tone="alert" onClick={() => { void logout().finally(() => { void nav('/login', { replace: true }) }) }} />
               </>
             ) : (
               <>

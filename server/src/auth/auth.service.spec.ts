@@ -41,12 +41,27 @@ describe('AuthService · refresh 轮换与重放防护', () => {
     const t1 = await auth.issueRefresh('u1')
     const { refresh: attackerToken } = await auth.rotateRefresh(t1) // 攻击者先轮换，得到新 token
     // 受害者用旧(已吊销) token 重放 → 触发全族吊销
-    await expect(auth.rotateRefresh(t1)).rejects.toThrow(/异常登录/)
+    await expect(auth.rotateRefresh(t1)).rejects.toThrow(/重放/)
     // 关键：攻击者刚换得的 token 现在也应失效
     await expect(auth.rotateRefresh(attackerToken)).rejects.toThrow()
     // 该用户已无任何有效会话
     const live = await prisma.refreshToken.count({ where: { userId: 'u1', revoked: false } })
     expect(live).toBe(0)
+  })
+
+  it('同一 refresh 双并发：只有一个请求成功，检测后整族均被吊销', async () => {
+    const t1 = await auth.issueRefresh('u1')
+    const results = await Promise.allSettled([auth.rotateRefresh(t1, 'a', '1'), auth.rotateRefresh(t1, 'b', '2')])
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1)
+    expect(await prisma.refreshToken.count({ where: { userId: 'u1', revoked: false } })).toBe(0)
+  })
+
+  it('强制改密账户不能用 refresh 绕过后端门禁', async () => {
+    await prisma.user.update({ where: { id: 'u1' }, data: { mustChangePassword: true } })
+    const t = await auth.issueRefresh('u1')
+    await expect(auth.rotateRefresh(t)).rejects.toThrow(/修改密码/)
+    expect(await prisma.refreshToken.count({ where: { userId: 'u1', revoked: false } })).toBe(1)
   })
 
   it('logout 吊销该 refresh', async () => {

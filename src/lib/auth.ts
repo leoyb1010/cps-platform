@@ -267,7 +267,8 @@ export function useAuth() {
 export function permsOf(u: User | null): Set<string> {
   if (!u) return new Set()
   // 真实后端下发的权限点优先；否则回退到本地角色映射
-  if (u.permissions && u.permissions.length) return new Set(u.permissions)
+  // real 模式服务端可明确下发 [] 表示全部撤权；只有字段缺失（mock/旧缓存）才回退本地角色映射。
+  if (u.permissions !== undefined) return new Set(u.permissions)
   return new Set(ROLES[u.roleId]?.perms ?? [])
 }
 export function useCan() {
