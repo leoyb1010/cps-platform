@@ -11,8 +11,8 @@ jobs:
     name: 前端 (build + typecheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -29,8 +29,8 @@ jobs:
     name: 代码规范 (ESLint · 前端)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -45,8 +45,8 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -76,8 +76,8 @@ jobs:
       run:
         working-directory: server
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -92,8 +92,8 @@ jobs:
     name: 端到端 (Playwright · 真实浏览器)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -114,8 +114,8 @@ jobs:
     name: 依赖漏洞扫描 (npm audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with: { node-version: 22 }
       # 前端无 high 漏洞 → 阻断
       - name: 前端依赖审计（high 阻断）
@@ -129,7 +129,7 @@ jobs:
     name: Docker 冒烟 (compose build + up + /health · PostgreSQL 运行时)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # compose 的 :? 必填 env 需在所有 compose 调用步骤都可见 → 统一写入 GITHUB_ENV。
       # YOUDAO 私钥必须是"非仓库 demo"的真实 RSA，否则 main.ts assertSecrets 拒启 → 现场生成一次性密钥。
       - name: 准备一次性生产 env
