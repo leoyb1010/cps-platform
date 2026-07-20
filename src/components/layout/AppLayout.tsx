@@ -401,7 +401,7 @@ export default function AppLayout() {
         <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
         <div className="grid-bg flex min-h-screen flex-col md:pl-[236px]">
           <Topbar title={title} base={base} onReplay={replay} onMenu={() => setNavOpen(true)} onOpenGuide={() => setGuideOpen(true)} />
-          <main key={`${loc.pathname}-${epoch}`} className="mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
+          <main key={`${loc.pathname}-${epoch}`} className="page-in mx-auto w-full max-w-[1320px] px-4 pt-6 pb-10 md:px-6">
             <OfflineBanner />
             {/* 壳内 Suspense：lazy 页加载时只在内容区出骨架，侧栏/顶栏常驻，不整屏闪白 */}
             {/* 壳内错误边界：单页渲染异常只塌在内容区，导航保留可用（main 的 key 含 pathname，换页自动重置错误态） */}

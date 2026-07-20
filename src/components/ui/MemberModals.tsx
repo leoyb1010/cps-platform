@@ -5,7 +5,7 @@ import { Field, Input, Select } from './forms'
 import { ROLES, type RoleId } from '../../lib/auth'
 import { isRealApi } from '../../lib/http'
 import { adminApi } from '../../lib/adminApi'
-import { cx, copyText } from '../../lib/format'
+import { copyText } from '../../lib/format'
 import { buildMemberUpdatePayload } from '../../lib/memberAccess'
 
 const ROLE_OPTS = (Object.keys(ROLES) as RoleId[]).map((r) => ({ id: r, name: ROLES[r].name }))
@@ -50,7 +50,7 @@ export function InviteMemberModal({ scopeOptions, onClose, onDone }: { scopeOpti
     )
   }
   return (
-    <Modal open onClose={onClose} title="邀请成员 / 建号" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button disabled={!canSend || busy} onClick={send} className={cx('rounded-lg px-3 py-1.5 text-[13px] font-medium text-white', canSend && !busy ? 'bg-brand hover:bg-brand-hover' : 'cursor-not-allowed bg-ink-4')}>{busy ? '建号中…' : '创建账号'}</button></>}>
+    <Modal open onClose={onClose} title="邀请成员 / 建号" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" disabled={!canSend || busy} onClick={send}>{busy ? '建号中…' : '创建账号'}</Button></>}>
       <div className="space-y-3.5">
         <Field label="登录账号（邮箱 / 手机）" required><Input value={form.account} onChange={(e) => set('account', e.target.value)} placeholder="name@company.com" /></Field>
         <Field label="显示名" required><Input value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="如：王运营" /></Field>
@@ -95,7 +95,7 @@ export function ManageMemberModal({ member, canChangeRole, onClose, onDone }: { 
     onClose(); onDone?.()
   }
   return (
-    <Modal open onClose={onClose} title={`管理成员 · ${member.name}`} footer={<><Button variant="ghost" onClick={onClose}>取消</Button><button onClick={save} className="rounded-lg bg-brand px-3 py-1.5 text-[13px] font-medium text-white hover:bg-brand-hover">保存</button></>}>
+    <Modal open onClose={onClose} title={`管理成员 · ${member.name}`} footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" onClick={save}>保存</Button></>}>
       <div className="space-y-3.5">
         {canChangeRole
           ? <Field label="角色"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
