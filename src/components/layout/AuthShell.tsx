@@ -38,7 +38,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
         <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-brand/[0.07] blur-3xl" />
 
         {/* 顶：Logo */}
-        <div className="relative flex items-center gap-2.5" style={{ animation: 'revUpSm .5s .05s cubic-bezier(.22,1,.36,1) both' }}>
+        <div className="relative flex items-center gap-2.5" style={{ animation: 'revUpSm .5s .05s var(--ease-out) both' }}>
           <img src="./youdao-logo.png" alt="网易有道" className="h-[22px] w-auto brightness-0 invert" />
           <span className="h-[18px] w-px bg-white/20" />
           <span className="text-[12px] font-medium tracking-[0.08em] text-white/70">CPS 会员联运平台</span>
@@ -48,18 +48,18 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
         <div className="relative max-w-[420px]">
           <h1
             className="text-[30px] font-semibold leading-[1.22] tracking-[-0.02em]"
-            style={{ animation: 'revUp .6s .12s cubic-bezier(.22,1,.36,1) both' }}
+            style={{ animation: 'revUp .6s .12s var(--ease-out) both' }}
           >
             把单品牌投流
             <br />
             做成<span className="text-[#ff6b71]">可联运、可结算、可风控</span>的平台
           </h1>
-          <p className="mt-3.5 text-[13.5px] leading-relaxed text-white/55" style={{ animation: 'revUp .6s .2s cubic-bezier(.22,1,.36,1) both' }}>
+          <p className="mt-3.5 text-[13.5px] leading-relaxed text-white/55" style={{ animation: 'revUp .6s .2s var(--ease-out) both' }}>
             业务层在上，投流 SaaS 底座在下。多品牌 · 开放代理 · 混合资金 · SaaS 化。
           </p>
           <div className="mt-8 space-y-4">
             {FEATURES.map((f, i) => (
-              <div key={f.t} className="flex items-start gap-3" style={{ animation: `revUpSm .5s ${0.28 + i * 0.07}s cubic-bezier(.22,1,.36,1) both` }}>
+              <div key={f.t} className="flex items-start gap-3" style={{ animation: `revUpSm .5s ${0.28 + i * 0.07}s var(--ease-out) both` }}>
                 <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.05] text-[#ff8a8f]">
                   <f.icon size={15} strokeWidth={1.8} />
                 </span>
@@ -87,7 +87,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
 
       {/* 右：表单区 */}
       <main className="grid-bg relative flex flex-col items-center justify-center px-5 py-10">
-        <div className="w-full max-w-[400px]" style={{ animation: 'revUpSm .5s .1s cubic-bezier(.22,1,.36,1) both' }}>
+        <div className="w-full max-w-[400px]" style={{ animation: 'revUpSm .5s .1s var(--ease-out) both' }}>
           {children}
         </div>
         {footer && <div className="absolute inset-x-0 bottom-5 px-5 text-center">{footer}</div>}

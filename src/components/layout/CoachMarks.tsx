@@ -88,7 +88,7 @@ export function CoachMarks({ id, steps }: { id: string; steps: CoachStep[] }) {
             width: rect.width + 8,
             height: rect.height + 8,
             boxShadow: '0 0 0 9999px rgba(20,21,26,0.45)',
-            transition: 'all .25s cubic-bezier(.4,0,.2,1)',
+            transition: 'all .25s var(--ease-standard)',
           }}
         />
       )}

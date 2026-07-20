@@ -1,6 +1,6 @@
-import { Children, createContext, useContext, useEffect, useRef, useState } from 'react'
+import { Children, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, ChevronsUpDown, Loader2 } from 'lucide-react'
 import type { Tone } from '../../lib/data'
 import { cx } from '../../lib/format'
 import { resolveBrandLogo } from '../../lib/brandLogos'
@@ -76,6 +76,36 @@ export function CountUp(props: {
   const { epoch } = useReplay()
   const text = useCountUp(props.to, { ...props, epoch })
   return <span className={cx('tnum', props.className)}>{text}</span>
+}
+
+/**
+ * F11：数值滚动 hook（返回原始 number，供调用方进一步格式化/计算）。与 useCountUp（返回格式化串）
+ * 同源合并到本文件，消除此前 lib/useCountUp 的第二套实现。目标值中途变化时从当前显示位置续滚，
+ * 尊重 prefers-reduced-motion（偏好减少动效时直接落值）。
+ */
+export function useCountUpValue(target: number, duration = 520): number {
+  const [display, setDisplay] = useState(target)
+  const dispRef = useRef(target)
+  const rafRef = useRef<number | null>(null)
+  useEffect(() => {
+    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduce || duration <= 0) { setDisplay(target); dispRef.current = target; return }
+    const from = dispRef.current
+    if (from === target) return
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - t, 3) // easeOutCubic
+      const v = from + (target - from) * eased
+      dispRef.current = v
+      setDisplay(v)
+      if (t < 1) rafRef.current = requestAnimationFrame(tick)
+      else { dispRef.current = target; setDisplay(target) }
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [target, duration])
+  return display
 }
 
 /* ── registration corner mark (instrument signature) ─ */
@@ -420,6 +450,54 @@ export function Th({
       )}
     >
       {children}
+    </th>
+  )
+}
+
+/* ── 表头排序（F5：三态 asc/desc/none + aria-sort，客户端排序） ── */
+export type SortDir = 'asc' | 'desc' | null
+export interface SortState<T> {
+  sorted: T[]
+  key: keyof T | null
+  dir: SortDir
+  toggle: (k: keyof T) => void
+  ariaSort: (k: keyof T) => 'ascending' | 'descending' | 'none'
+}
+// 通用客户端排序 hook：数字按值、其余按 zh-CN 本地化字符串比较，null 沉底。accessor 可派生排序键。
+export function useSort<T>(rows: T[], accessor?: (row: T, key: keyof T) => unknown): SortState<T> {
+  const [key, setKey] = useState<keyof T | null>(null)
+  const [dir, setDir] = useState<SortDir>(null)
+  const sorted = useMemo(() => {
+    if (!key || !dir) return rows
+    const get = accessor ?? ((r: T, k: keyof T) => r[k])
+    const s = [...rows].sort((a, b) => {
+      const av = get(a, key), bv = get(b, key)
+      if (av == null && bv == null) return 0
+      if (av == null) return 1
+      if (bv == null) return -1
+      if (typeof av === 'number' && typeof bv === 'number') return av - bv
+      return String(av).localeCompare(String(bv), 'zh-CN')
+    })
+    return dir === 'desc' ? s.reverse() : s
+  }, [rows, key, dir, accessor])
+  const toggle = (k: keyof T) => {
+    if (key !== k) { setKey(k); setDir('asc'); return }
+    if (dir === 'asc') setDir('desc')
+    else if (dir === 'desc') { setKey(null); setDir(null) }
+    else setDir('asc')
+  }
+  const ariaSort = (k: keyof T) => (key === k ? (dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none') : 'none') as 'ascending' | 'descending' | 'none'
+  return { sorted, key, dir, toggle, ariaSort }
+}
+// 可排序表头单元：点击三态切换、aria-sort 标注、图标指示方向。用法与 Th 一致，额外传 sortKey + sort。
+export function SortTh<T>({ children, sortKey, sort, right, className }: { children?: ReactNode; sortKey: keyof T; sort: SortState<T>; right?: boolean; className?: string }) {
+  const active = sort.key === sortKey
+  return (
+    <th aria-sort={sort.ariaSort(sortKey)} className={cx('px-3 py-2.5 font-medium', right && 'text-right', className)}>
+      <button type="button" onClick={() => sort.toggle(sortKey)} className={cx('inline-flex select-none items-center gap-1 transition-colors hover:text-ink-2', active && 'text-ink-2', right && 'flex-row-reverse')}>
+        {children}
+        {active && sort.dir === 'asc' ? <ChevronUp size={13} /> : active && sort.dir === 'desc' ? <ChevronDown size={13} /> : <ChevronsUpDown size={13} className="opacity-40" />}
+      </button>
     </th>
   )
 }

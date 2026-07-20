@@ -48,7 +48,7 @@ import {
 import { money, pct, int, cx, csvCell, downloadText } from '../lib/format'
 
 const wan = (n: number) => '¥' + Math.round(n / 1e4).toLocaleString('zh-CN') + '万'
-const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s cubic-bezier(.22,1,.36,1) both` })
+const rev = (d: number) => ({ animation: `revUpSm .4s ${(d * 0.55).toFixed(2)}s var(--ease-out) both` })
 type Range = 'today' | 'week' | 'month' | 'quarter'
 const RANGE_LABEL: Record<Range, string> = { today: '今日', week: '本周', month: '本月', quarter: '本季' }
 
@@ -361,7 +361,7 @@ export default function Dashboard() {
                   <div className="min-w-0 flex-1">
                     <div className="flex justify-between"><span className="tnum text-[12px] whitespace-nowrap text-ink">{m.id}</span><span className={cx('tnum text-[11px]', TONE[tone].ink)}>{pct(m.complaintRate)}</span></div>
                     <div className="relative mt-1.5 h-[5px] overflow-hidden rounded-[2px] bg-surface-sunken">
-                      <div style={{ width: `${Math.min(100, m.complaintRate * 100)}%`, background: `var(--color-${tone})`, transformOrigin: 'left', animation: `growX .8s ${0.5 + i * 0.08}s cubic-bezier(.45,0,.15,1) both` }} className="h-full" />
+                      <div style={{ width: `${Math.min(100, m.complaintRate * 100)}%`, background: `var(--color-${tone})`, transformOrigin: 'left', animation: `growX .8s ${0.5 + i * 0.08}s var(--ease-draw) both` }} className="h-full" />
                       <span className="absolute top-[-2px] h-[9px] w-px bg-ink-5" style={{ left: '80%' }} />
                     </div>
                   </div>
@@ -537,7 +537,7 @@ function MiniSpark({ data, tone, delay }: { data: number[]; tone: 'brand' | 'neu
   const color = tone === 'brand' ? 'var(--color-brand)' : 'var(--color-ink)'
   return (
     <svg viewBox="0 0 200 30" style={{ width: '100%', height: 24, overflow: 'visible' }}>
-      <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1s ${delay}s cubic-bezier(.45,0,.15,1) both` }} d={d} fill="none" stroke={color} strokeWidth="1.6" opacity={tone === 'neutral' ? 0.55 : 1} />
+      <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1s ${delay}s var(--ease-draw) both` }} d={d} fill="none" stroke={color} strokeWidth="1.6" opacity={tone === 'neutral' ? 0.55 : 1} />
       <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.2" fill={color} opacity={tone === 'neutral' ? 0.55 : 1} />
     </svg>
   )
@@ -556,7 +556,7 @@ function ComplaintChart({ data }: { data: number[] }) {
       <text x={VBW - 2} y={thrY - 4} textAnchor="end" className="tnum" fontSize="9" fill="var(--color-brand)" opacity="0.8">阈值 1.0%</text>
       <defs><linearGradient id="cmpg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--color-warn)" stopOpacity="0.16" /><stop offset="1" stopColor="var(--color-warn)" stopOpacity="0" /></linearGradient></defs>
       <path style={{ animation: 'fadeIn 1s .6s both' }} d={area} fill="url(#cmpg)" />
-      <path pathLength={1} style={{ strokeDasharray: 1, animation: 'draw 1.1s .45s cubic-bezier(.45,0,.15,1) both' }} d={line} fill="none" stroke="var(--color-warn)" strokeWidth="1.8" />
+      <path pathLength={1} style={{ strokeDasharray: 1, animation: 'draw 1.1s .45s var(--ease-draw) both' }} d={line} fill="none" stroke="var(--color-warn)" strokeWidth="1.8" />
       <circle cx={xs[n - 1]} cy={y(data[n - 1])} r="3" fill="var(--color-warn)" />
     </svg>
   )

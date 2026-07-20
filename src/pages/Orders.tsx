@@ -11,6 +11,8 @@ import {
   BrandMark,
   TableShell,
   Th,
+  SortTh,
+  useSort,
   Td,
   Row,
   TONE,
@@ -69,6 +71,7 @@ export default function Orders() {
   const refundRate = deducted ? (refunds / deducted) * 100 : null
   const cbRate = deducted ? (cbs / deducted) * 100 : null
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
+  const sort = useSort(list) // F5：表头三态排序（订单号/金额/类型）
 
   // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
   // series.renewalCohort 是纯静态常量，hydrateFromServer 从不覆盖它 → 真实模式下无真实来源，
@@ -194,16 +197,16 @@ export default function Orders() {
           className="px-2 pb-2"
           head={
             <>
-              <Th className="pl-3">订单号 / 时间</Th>
+              <SortTh sortKey="id" sort={sort} className="pl-3">订单号 / 时间</SortTh>
               <Th>品牌 / 套餐</Th>
               <Th>代理</Th>
               <Th>通道 / 商户号</Th>
-              <Th>类型</Th>
-              <Th right>金额</Th>
+              <SortTh sortKey="type" sort={sort}>类型</SortTh>
+              <SortTh sortKey="amount" sort={sort} right>金额</SortTh>
             </>
           }
         >
-          {list.map((o) => {
+          {sort.sorted.map((o) => {
             const b = brandById(o.brandId)
             const t = ORDER_TYPE[o.type]
             return (

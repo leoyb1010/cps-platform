@@ -260,7 +260,7 @@ export function Meter({
           width: `${Math.min(100, value)}%`,
           background: toneVar[tone],
           transformOrigin: 'left',
-          animation: animate ? `growX .8s ${delay}s cubic-bezier(.45,0,.15,1) both` : undefined,
+          animation: animate ? `growX .8s ${delay}s var(--ease-draw) both` : undefined,
           transition: animate ? undefined : 'width .3s',
         }}
       />
@@ -405,8 +405,8 @@ export function CrosshairChart({
           </g>
         ))}
         <path style={{ animation: `fadeIn 1s .55s both` }} d={area} fill={`url(#cm-${id})`} />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s cubic-bezier(.45,0,.15,1) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s cubic-bezier(.45,0,.15,1) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" vectorEffect="non-scaling-stroke" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s var(--ease-draw) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s var(--ease-draw) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" vectorEffect="non-scaling-stroke" />
         {hi !== null && (
           <>
             <line x1={xs[hi]} x2={xs[hi]} y1={padT} y2={padT + ih} stroke="var(--color-brand)" strokeWidth="1" strokeDasharray="3 3" />
