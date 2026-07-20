@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, KeyRound, Activity, ShieldCheck, Upload, Play } from 'lucide-react'
+import { Copy, Check, KeyRound, Activity, ShieldCheck, Upload, Play, TriangleAlert } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button, TableShell, Th, Td, Row, Segmented } from '../../components/ui/primitives'
 import { Modal, useToast, Confirm } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
@@ -144,7 +144,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
       <Modal open={!!newPriv} onClose={() => setNewPriv(null)} title="RSA 密钥对已生成" width={560}>
         {newPriv && (
           <div className="space-y-3">
-            <p className="text-sm text-alert">⚠️ 私钥仅此一次显示，关闭后无法再次获取。请立即保存为 .pem 文件。</p>
+            <p className="flex items-start gap-1.5 text-sm text-alert"><TriangleAlert size={15} className="mt-0.5 shrink-0" /><span>私钥仅此一次显示，关闭后无法再次获取。请立即保存为 .pem 文件。</span></p>
             <Field label="私钥（PKCS8 PEM · 自留，绝不上传）">
               <div className="flex items-start gap-2">
                 <code className="flex-1 max-h-40 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">{newPriv.privateKey}</code>

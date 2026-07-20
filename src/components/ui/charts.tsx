@@ -93,7 +93,7 @@ export function AreaLine({
   const area = `${line} L${x(data.length - 1).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`
   const grid = [0, 0.25, 0.5, 0.75, 1]
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} role="img" aria-label="面积趋势图">
       <defs>
         <linearGradient id={`g-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={toneVar[tone]} stopOpacity={0.16} />
@@ -115,7 +115,8 @@ export function AreaLine({
         <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="var(--color-line-strong)" strokeWidth={1} strokeDasharray="4 3" />
       )}
       <path d={area} fill={`url(#g-${id})`} />
-      <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
+      {/* F6：non-scaling-stroke 让 preserveAspectRatio="none" 横向拉伸时线宽不变形 */}
+      <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r={3} fill={toneVar[tone]} />
       {labels &&
         labels.map((l, i) =>
@@ -388,7 +389,7 @@ export function CrosshairChart({
   return (
     <div ref={boxRef} className="relative">
       {/* preserveAspectRatio="none"：与鼠标定位/HTML tooltip 的满宽拉伸假设一致，避免非 588 宽度时 letterbox 漂移 */}
-      <svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }}>
+      <svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }} role="img" aria-label="十字准星趋势图">
         <defs>
           <linearGradient id={`cm-${id}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="var(--color-brand)" stopOpacity="0.14" />
@@ -404,8 +405,8 @@ export function CrosshairChart({
           </g>
         ))}
         <path style={{ animation: `fadeIn 1s .55s both` }} d={area} fill={`url(#cm-${id})`} />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s cubic-bezier(.45,0,.15,1) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s cubic-bezier(.45,0,.15,1) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s cubic-bezier(.45,0,.15,1) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s cubic-bezier(.45,0,.15,1) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" vectorEffect="non-scaling-stroke" />
         {hi !== null && (
           <>
             <line x1={xs[hi]} x2={xs[hi]} y1={padT} y2={padT + ih} stroke="var(--color-brand)" strokeWidth="1" strokeDasharray="3 3" />
@@ -594,17 +595,17 @@ export function ForecastLine({
   const bandDn = [data[data.length - 1], ...bandDnVals]
   const bandPath = `${bandUp.map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')} ${bandDn.map((val, i) => `L${x(projStart + bandDn.length - 1 - i).toFixed(1)},${y(bandDn[bandDn.length - 1 - i]).toFixed(1)}`).join(' ')} Z`
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} role="img" aria-label="预测趋势图">
       <defs><linearGradient id={`fc-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={toneVar[tone]} stopOpacity={0.14} /><stop offset="100%" stopColor={toneVar[tone]} stopOpacity={0} /></linearGradient></defs>
       {[0, 0.5, 1].map((g, i) => <line key={i} x1={padL} x2={W - padR} y1={padT + ih * g} y2={padT + ih * g} stroke="var(--color-line)" />)}
       {/* 历史面积 */}
       <path d={`${histPts} L${x(projStart).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`} fill={`url(#fc-${id})`} />
       {/* 预测区间带 */}
       <path d={bandPath} fill={toneVar[tone]} fillOpacity={0.1} />
-      {/* 历史实线 */}
-      <path d={histPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
+      {/* 历史实线（non-scaling-stroke 防满宽拉伸变形，F6） */}
+      <path d={histPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       {/* 预测虚线 */}
-      <path d={projPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} />
+      <path d={projPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} vectorEffect="non-scaling-stroke" />
       <circle cx={x(data.length - 1)} cy={y(last)} r={3} fill={toneVar[tone]} />
       {labels && labels.map((l, i) => (i % 2 === 0 || i === labels.length - 1) ? <text key={i} x={x(i)} y={H - 6} fontSize={10} fill="var(--color-ink-4)" textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}>{l}</text> : null)}
     </svg>

@@ -204,7 +204,7 @@ function Topbar({ title, base, onReplay, onMenu, onOpenGuide }: { title: string;
     : { label: '演示数据', tone: 'neutral' }
   return (
     <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-4 backdrop-blur-md md:gap-3.5 md:px-6">
-      <button aria-label="打开菜单" onClick={onMenu} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-2 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
+      <button aria-label="打开菜单" onClick={onMenu} className="relative grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-2 before:absolute before:-inset-1 before:content-[''] hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
       <div className="flex items-center gap-2 text-[13px]">
         <span className="text-ink-4">网易有道</span>
         <span className="text-hairtick">/</span>

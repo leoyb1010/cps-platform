@@ -154,7 +154,8 @@ export function Drawer({
             <h3 id={titleId} className="text-[15px] font-semibold text-ink">{title}</h3>
             {desc && <p className="mt-0.5 text-[12.5px] text-ink-3">{desc}</p>}
           </div>
-          <button aria-label="关闭" onClick={onClose} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-4 hover:bg-surface-muted hover:text-ink">
+          <button aria-label="关闭" onClick={onClose} className="relative grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-4 before:absolute before:-inset-1.5 before:content-[''] hover:bg-surface-muted hover:text-ink">
+            {/* F8：视觉 28px 不变，before 伪元素把可点热区扩到 ≥40px（WCAG 触控） */}
             <X size={16} />
           </button>
         </div>

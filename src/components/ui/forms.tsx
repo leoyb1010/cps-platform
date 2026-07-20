@@ -1,11 +1,22 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, cloneElement, isValidElement, type ReactElement, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cx } from '../../lib/format'
 import { toneVar } from './primitives'
 import type { Tone } from '../../lib/data'
 
 /* ── Field wrapper ─────────────────────────────── */
-export function Field({ label, hint, children, required }: { label: string; hint?: string; children: ReactNode; required?: boolean }) {
+// F7：统一 error 态。传 error 时自动给子输入接线 aria-invalid + aria-describedby + 红色 hairline，
+//   并在下方渲染 role="alert" 错误文案——各页无需再自造深浅不一的错误样式。
+export function Field({ label, hint, children, required, error }: { label: string; hint?: string; children: ReactNode; required?: boolean; error?: string }) {
+  const errId = useId()
+  const child =
+    error && isValidElement(children)
+      ? cloneElement(children as ReactElement<{ className?: string; 'aria-invalid'?: boolean; 'aria-describedby'?: string }>, {
+          'aria-invalid': true,
+          'aria-describedby': errId,
+          className: cx((children as ReactElement<{ className?: string }>).props.className, 'border-alert focus:border-alert focus:ring-alert/15'),
+        })
+      : children
   return (
     <label className="block">
       <div className="mb-1.5 flex items-center gap-1.5 text-[12.5px] font-medium text-ink-2">
@@ -13,7 +24,12 @@ export function Field({ label, hint, children, required }: { label: string; hint
         {required && <span className="text-brand">*</span>}
         {hint && <span className="font-normal text-ink-4">· {hint}</span>}
       </div>
-      {children}
+      {child}
+      {error && (
+        <div id={errId} role="alert" className="mt-1 flex items-center gap-1 text-[11.5px] text-alert-ink">
+          {error}
+        </div>
+      )}
     </label>
   )
 }

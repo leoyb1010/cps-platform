@@ -117,7 +117,7 @@ export default function Aigc() {
           <div className="space-y-2">
             {gens.map((g) => (
               <div key={g.jobId} className="flex items-center gap-3 rounded-lg border border-line bg-surface-muted p-3">
-                <img src={genThumb(g.assetType)} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover ring-1 ring-line" />
+                <img src={genThumb(g.assetType)} alt="" loading="lazy" className="h-9 w-9 shrink-0 rounded-md object-cover ring-1 ring-line" />
                 <CheckCircle2 size={16} className="shrink-0 text-good-ink" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] font-medium text-ink">{g.assetLabel} · {g.prompt}</div>
@@ -332,7 +332,7 @@ function AigcDrawer({ asset, anchor, onClose }: { asset: AigcAsset | null; ancho
     <DetailPopover anchor={anchor} onClose={onClose} width={400} title={<span>{a.name}</span>} desc={<span>{CREATIVE_TYPE_LABEL[a.type]} · {b?.name}</span>} footer={<Button variant="ghost" onClick={onClose}>关闭</Button>}>
       {/* 素材预览大图（品类抽象视觉；连续包月合规标识由投放侧承载） */}
       <div className="mb-3 overflow-hidden rounded-lg ring-1 ring-line">
-        <img src={aigcThumb(a)} alt="素材预览" className="aspect-[4/3] w-full object-cover" />
+        <img src={aigcThumb(a)} alt="素材预览" loading="lazy" className="aspect-[4/3] w-full object-cover" />
       </div>
       <div className="flex items-center justify-between rounded-lg border border-line bg-surface-muted p-3.5">
         <div><div className="text-[12.5px] font-medium text-ink">{CREATIVE_TYPE_LABEL[a.type]}素材</div><div className="mt-0.5 text-[11px] text-ink-4">消耗 {a.credits} 积分</div></div>
