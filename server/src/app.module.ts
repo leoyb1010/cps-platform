@@ -23,9 +23,11 @@ import { MarketController } from './market/market.controller'
 import { HealthController } from './common/health.controller'
 import { MetricsService } from './common/metrics.service'
 import { MetricsInterceptor } from './common/metrics.interceptor'
+import { MoneyResponseInterceptor } from './common/money.interceptor'
 import { IdempotencyService } from './common/idempotency.service'
 import { ReconciliationService } from './business/reconciliation.service'
 import { SettlementService } from './business/settlement.service'
+import { SettlementRunService } from './business/settlement-run.service'
 import { ScopeService } from './business/scope.service'
 import { ReserveReleaseService } from './business/reserve-release.service'
 import { FulfillmentService } from './business/fulfillment.service'
@@ -72,6 +74,7 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     IdempotencyService,
     ReconciliationService,
     SettlementService,
+    SettlementRunService,
     ScopeService,
     ReserveReleaseService,
     FulfillmentService,
@@ -82,9 +85,10 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermsGuard },
-    // 拦截器：指标(先) → 审计(后)
+    // 拦截器：指标(先) → 审计 → 金额边界(分→元，最后作用于响应体)
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MoneyResponseInterceptor },
   ],
 })
 export class AppModule {

@@ -248,6 +248,9 @@ export function consumeSessionExpired(): boolean {
 onAuthLost(() => {
   if (current) {
     sessionExpired = true // 曾登录 → 属过期，非首次访问
+    // 与主动登出一致清空业务缓存：共享机器上不给下一位登录者看上一账号残留的水合数据
+    //（内存 store + localStorage 持久化），下一账号登录前不会闪现上一账号的结算/工单。
+    clearStoreOnLogout()
     setUser(null)
   }
 })

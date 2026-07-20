@@ -125,7 +125,7 @@ function PortalBell() {
   const markRead = async (n: Notif) => { if (!n.read) { await portalApi.readNotif(n.id); load() }; if (n.link) location.hash = n.link; setOpen(false) }
   return (
     <div className="relative">
-      <button aria-label="通知" onClick={() => { setOpen((o) => !o); load() }} className="relative grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-muted">
+      <button aria-label="通知" onClick={() => { setOpen((o) => !o); load() }} className="relative grid h-8 w-8 place-items-center rounded-md text-ink-3 before:absolute before:-inset-1 before:content-[''] hover:bg-surface-muted">
         <Bell size={17} />
         {unread > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-[15px] min-w-[15px] place-items-center rounded-full bg-brand px-1 text-[9px] font-semibold text-white">{unread}</span>}
       </button>
@@ -161,22 +161,23 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
   // 订阅主题（useTheme）保证明暗切换时白标重算——暗底下 ink/hover 要提亮而非加深。
   useTheme()
   const wl = user?.scopeType === 'brand' ? brandTheme(user.scopeId, resolvedTheme() === 'dark') : {}
-  // 用路由路径作为 replay epoch 的种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
-  const epoch = loc.pathname.length
+  // 用路由路径本身作为 replay epoch 种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
+  // F3：原用 pathname.length，同长度路径互切（如 /portal/agent ↔ /portal/brand）epoch 不变 → CountUp 不重播。
+  const epoch = loc.pathname
   return (
     <ReplayContext.Provider value={{ epoch, replay: () => {} }}>
       <div className="min-h-screen bg-canvas" style={wl}>
         <ClientSidebar groups={visibleGroups} branding={branding} open={open} onClose={() => setOpen(false)} />
         <div className="md:pl-[236px]">
           <header className="sticky top-0 z-10 flex h-[58px] items-center gap-3 border-b border-line bg-canvas/85 px-5 backdrop-blur-md">
-            <button aria-label="打开菜单" onClick={() => setOpen(true)} className="grid h-8 w-8 place-items-center rounded-md text-ink-3 hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
+            <button aria-label="打开菜单" onClick={() => setOpen(true)} className="relative grid h-8 w-8 place-items-center rounded-md text-ink-3 before:absolute before:-inset-1 before:content-[''] hover:bg-surface-muted md:hidden"><Menu size={18} /></button>
             <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-ink-4">
               <span className="truncate">{branding.name}</span>
               <span className="rounded-md bg-good-soft px-1.5 py-0.5 text-[11px] font-medium text-good-ink">客户门户</span>
             </div>
             <div className="ml-auto flex items-center gap-2"><ThemeToggle /><PortalBell /></div>
           </header>
-          <main key={loc.pathname} className="mx-auto max-w-[1180px] px-5 py-6">
+          <main key={loc.pathname} className="page-in mx-auto max-w-[1180px] px-5 py-6">
             <OfflineBanner />
             {/* 壳内错误边界：门户单页异常只塌在内容区，导航保留（main 的 key 含 pathname，换页自动重置错误态） */}
             <Suspense fallback={<PageSkeleton />}>

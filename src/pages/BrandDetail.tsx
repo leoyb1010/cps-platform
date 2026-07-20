@@ -15,6 +15,7 @@ import {
   ThresholdBar,
 } from '../components/ui/primitives'
 import { AreaLine } from '../components/ui/charts'
+import { isRealApi } from '../lib/http'
 import { Modal, useToast } from '../components/ui/overlays'
 import { Field, Input, Select } from '../components/ui/forms'
 import {
@@ -87,7 +88,10 @@ export default function BrandDetail() {
           <ConfigItem label="投诉率阈值" value={pct(MERCHANT_THRESHOLD.complaint)} note="近7天累计红线" />
           <ConfigItem label="升级投诉阈值" value={pct(MERCHANT_THRESHOLD.escalated)} note="升级投诉红线" />
           <ConfigItem label="72h 完结率" value={`≥ ${MERCHANT_THRESHOLD.close72h}%`} note="投诉完结达标线" />
-          <ConfigItem label="订单回传" value="已对接" note="签约/续费/退款 API" ok />
+          {/* real 模式无「回传是否已对接」的数据源，不写死"已对接"误导；演示态保留 */}
+          {isRealApi
+            ? <ConfigItem label="订单回传" value="按接入配置" note="以开发者中心实际对接为准" />
+            : <ConfigItem label="订单回传" value="已对接" note="签约/续费/退款 API" ok />}
         </div>
       </Card>
 
@@ -137,7 +141,10 @@ export default function BrandDetail() {
           </Card>
           <Card>
             <CardTitle title="续费 LTV 曲线" desc="留存衰减 · 决定净 LTV" />
-            <AreaLine data={series.ltvCurve} tone="brand" height={120} />
+            {/* series.ltvCurve 是演示数据；real 模式无该品牌真实 LTV 数据源，给空态而非把演示曲线当真展示 */}
+            {isRealApi
+              ? <div className="grid h-[120px] place-items-center text-[12px] text-ink-4">暂无 LTV 数据</div>
+              : <AreaLine data={series.ltvCurve} tone="brand" height={120} />}
           </Card>
         </div>
       </div>

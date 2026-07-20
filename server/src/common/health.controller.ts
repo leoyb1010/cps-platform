@@ -1,4 +1,5 @@
-import { Controller, Get, Header, HttpCode, HttpStatus, ServiceUnavailableException } from '@nestjs/common'
+import { Controller, ForbiddenException, Get, Header, HttpCode, HttpStatus, Req, ServiceUnavailableException } from '@nestjs/common'
+import type { Request } from 'express'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
@@ -49,7 +50,15 @@ export class HealthController {
   @Get('metrics')
   @Header('Content-Type', 'text/plain; version=0.0.4')
   @ApiOperation({ summary: 'Prometheus 指标（进程 + HTTP 延迟直方图 + 业务计数）' })
-  metricsEndpoint() {
+  metricsEndpoint(@Req() req: Request) {
+    // P2-B13 纵深防御：/metrics 暴露资金业务指标。生产除 nginx 拦截外，配置 METRICS_TOKEN 后要求
+    //   Bearer/`?token=` 匹配，堵住绕过 nginx 直连 server:3001 抓取资金指标的口子。未配则维持现状（仅靠 nginx）。
+    const token = process.env.METRICS_TOKEN
+    if (token) {
+      const auth = req.headers['authorization'] || ''
+      const provided = auth.startsWith('Bearer ') ? auth.slice(7) : String((req.query?.token as string) ?? '')
+      if (provided !== token) throw new ForbiddenException('metrics 需授权')
+    }
     return this.metrics.render()
   }
 }

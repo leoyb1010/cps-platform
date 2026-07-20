@@ -131,7 +131,7 @@ export default function Products() {
                 return (
                   <div key={r.id} className="flex items-center justify-between rounded-lg border border-line p-2.5">
                     <div className="text-[12px] text-ink-2">{r.name} <span className="text-ink-4">满{p.minItems}件 {p.discountPct}%off</span></div>
-                    <button onClick={async () => { await bizApi.toggleBundleRule(r.id, !r.active); rulesApi.reload() }}><Badge tone={r.active ? 'good' : 'neutral'} dot>{r.active ? '生效' : '停用'}</Badge></button>
+                    <button onClick={async () => { try { const res = await bizApi.toggleBundleRule(r.id, !r.active); if (res.ok) rulesApi.reload(); else toast({ tone: 'alert', text: res.detail ?? '启停失败' }) } catch { toast({ tone: 'alert', text: '启停失败，请重试' }) } }}><Badge tone={r.active ? 'good' : 'neutral'} dot>{r.active ? '生效' : '停用'}</Badge></button>
                   </div>
                 )
               })}

@@ -19,6 +19,8 @@ import {
   BrandMark,
   TableShell,
   Th,
+  SortTh,
+  useSort,
   Td,
   Row,
   TONE,
@@ -41,6 +43,7 @@ import { money, yuan, cx } from '../lib/format'
 
 export default function Settlement() {
   const { settlements, agents } = useStore()
+  const sSort = useSort(settlements) // F5：结算单表头排序（流水/代理分润/对账差异等）
   const expert = useViewMode() === 'expert'
   const toast = useToast()
   const nav = useNavigate()
@@ -166,18 +169,18 @@ export default function Settlement() {
               <>
                 <Th className="pl-3">结算单 / 品牌</Th>
                 <Th>周期 / 路径</Th>
-                <Th right>流水 Gross</Th>
-                <Th right>平台费</Th>
-                <Th right>代理分润</Th>
+                <SortTh sortKey="gross" sort={sSort} right>流水 Gross</SortTh>
+                <SortTh sortKey="platformFee" sort={sSort} right>平台费</SortTh>
+                <SortTh sortKey="agentPayout" sort={sSort} right>代理分润</SortTh>
                 <Th right>逆向冲账</Th>
-                <Th right>冻结</Th>
-                <Th right>对账差异</Th>
-                <Th right>状态</Th>
+                <SortTh sortKey="frozen" sort={sSort} right>冻结</SortTh>
+                <SortTh sortKey="reconcileDiff" sort={sSort} right>对账差异</SortTh>
+                <SortTh sortKey="status" sort={sSort} right>状态</SortTh>
                 <Th right>操作</Th>
               </>
             }
           >
-            {settlements.map((s) => {
+            {sSort.sorted.map((s) => {
               const b = brandById(s.brandId)
               const st = SETTLE_STATUS[s.status]
               return (

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
-import { round2 } from '../common/money'
+import { round2, toYuan } from '../common/money'
 
 /**
  * 风险准备金分期释放服务。
@@ -55,7 +55,7 @@ export class ReserveReleaseService {
     // 释放额进入代理可提现池（原子递增）。不吞错：并发删代理等罕见失败让整个事务回滚，
     // 保证 frozen↓ 与 payoutPending↑ 要么同时发生要么都不发生（守恒式 II 不出缺口）。
     await tx.agent.update({ where: { id: rr.agentId }, data: { payoutPending: { increment: rr.amount } } })
-    return { ok: true, amount: rr.amount, settlementId: rr.settlementId, detail: `释放 ¥${rr.amount}（${rr.stage}）→ 代理 ${rr.agentId} 可提现池` }
+    return { ok: true, amount: rr.amount, settlementId: rr.settlementId, detail: `释放 ¥${toYuan(rr.amount)}（${rr.stage}）→ 代理 ${rr.agentId} 可提现池` }
   }
 
   /** 冻结一条计划行（投诉超阈/高风险）。scheduled → frozen，不动资金。 */

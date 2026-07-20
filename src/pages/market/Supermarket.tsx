@@ -4,11 +4,10 @@ import { marketApi, type MarketProduct, type Quote, type BundleTier } from '../.
 import { isRealApi } from '../../lib/http'
 import { money, cx } from '../../lib/format'
 import { resolveBrandLogo } from '../../lib/brandLogos'
-import { useCountUp } from '../../lib/useCountUp'
 import { useApi, bizApi } from '../../lib/adminApi'
 import { demoBundles, demoAgentsLite } from '../../lib/adminDemo'
 import { BILLING_CYCLE_LABEL as CYCLE } from '../../lib/data'
-import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row } from '../../components/ui/primitives'
+import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row, useCountUpValue } from '../../components/ui/primitives'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Select } from '../../components/ui/forms'
 import { useAnchoredPopover, DetailPopover } from '../../components/ui/popover'
@@ -77,7 +76,7 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
     return [...tiers].sort((a, b) => a.minItems - b.minItems).find((t) => t.minItems > n) ?? null
   }, [tiers, selected.length])
 
-  const animatedFinal = useCountUp(quote?.ok ? quote.finalPrice : 0)
+  const animatedFinal = useCountUpValue(quote?.ok ? quote.finalPrice : 0)
   const saved = quote?.ok ? quote.listPrice - quote.finalPrice : 0
 
   const toggle = (p: MarketProduct) => { setDone(null); setPaid(false); setSelected((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]) }

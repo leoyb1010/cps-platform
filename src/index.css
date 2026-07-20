@@ -377,6 +377,12 @@ table tbody td {
   animation: revUpSm 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
+/* F10 页面转场：outlet 内容随路由 key 变化重挂载时，轻微上移淡入（180ms，无 height 动画、无延迟，
+   财务高频翻页不拖沓）。reduced-motion 由全局 @media 兜底清零。 */
+.page-in {
+  animation: revUpSm 0.18s var(--ease-out) both;
+}
+
 /* 弹性弹入（选中勾选、徽标）——轻微过冲，质感更"实" */
 @keyframes popIn {
   0% {

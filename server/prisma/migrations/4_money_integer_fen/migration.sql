@@ -1,0 +1,36 @@
+-- P1-B7 金额精度：Float(元) → Int(整数分)。现有金额 ×100 一次性落定（ROUND 消除历史浮点尾差）。
+-- ⚠️ 生产执行前务必：①全库备份（docs/backup-recovery.md）②迁移前跑对账快照，迁移后比对总额守恒。回滚：col/100.0 复原。
+
+UPDATE "Brand" SET "gmvMtd" = ROUND("gmvMtd" * 100);
+UPDATE "Agent" SET "spendMtd" = ROUND("spendMtd" * 100);
+UPDATE "Agent" SET "payoutPending" = ROUND("payoutPending" * 100);
+UPDATE "Agent" SET "settledTotal" = ROUND("settledTotal" * 100);
+UPDATE "Agent" SET "deposit" = ROUND("deposit" * 100);
+UPDATE "MerchantAccount" SET "gmvMtd" = ROUND("gmvMtd" * 100);
+UPDATE "Order" SET "amount" = ROUND("amount" * 100);
+UPDATE "Settlement" SET "gross" = ROUND("gross" * 100);
+UPDATE "Settlement" SET "brandShare" = ROUND("brandShare" * 100);
+UPDATE "Settlement" SET "platformFee" = ROUND("platformFee" * 100);
+UPDATE "Settlement" SET "agentPayout" = ROUND("agentPayout" * 100);
+UPDATE "Settlement" SET "reserve" = ROUND("reserve" * 100);
+UPDATE "Settlement" SET "reversal" = ROUND("reversal" * 100);
+UPDATE "Settlement" SET "frozen" = ROUND("frozen" * 100);
+UPDATE "Settlement" SET "reconcileDiff" = ROUND("reconcileDiff" * 100);
+UPDATE "Settlement" SET "reserveReleased" = ROUND("reserveReleased" * 100);
+UPDATE "Settlement" SET "reserveClawedBack" = ROUND("reserveClawedBack" * 100);
+UPDATE "GrowthContract" SET "targetGmv" = ROUND("targetGmv" * 100);
+UPDATE "GrowthContract" SET "achievedGmv" = ROUND("achievedGmv" * 100);
+UPDATE "Subscription" SET "mrr" = ROUND("mrr" * 100);
+UPDATE "SignOrder" SET "amount" = ROUND("amount" * 100);
+UPDATE "ChargeRetry" SET "amount" = ROUND("amount" * 100);
+UPDATE "ReserveRelease" SET "amount" = ROUND("amount" * 100);
+UPDATE "ReserveRelease" SET "releasedAmount" = ROUND("releasedAmount" * 100);
+UPDATE "BarterDeal" SET "myQuota" = ROUND("myQuota" * 100);
+UPDATE "BarterDeal" SET "counterpartyQuota" = ROUND("counterpartyQuota" * 100);
+UPDATE "Product" SET "firstPrice" = ROUND("firstPrice" * 100);
+UPDATE "Product" SET "renewPrice" = ROUND("renewPrice" * 100);
+UPDATE "Bundle" SET "listPrice" = ROUND("listPrice" * 100);
+UPDATE "Bundle" SET "finalPrice" = ROUND("finalPrice" * 100);
+UPDATE "Claim" SET "spend" = ROUND("spend" * 100);
+UPDATE "Claim" SET "payout" = ROUND("payout" * 100);
+UPDATE "PayoutRequest" SET "amount" = ROUND("amount" * 100);

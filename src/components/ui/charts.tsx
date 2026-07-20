@@ -2,6 +2,25 @@ import { useId, useRef, useState } from 'react'
 import type { Tone } from '../../lib/data'
 import { toneVar } from './primitives'
 
+/* ── ChartEmpty（统一空态）───────────────────────── */
+// F2：数据点不足时不再渲染空白 SVG。给出坐标网格骨架 + 「暂无数据」文案 + 插画，
+// 保证真实模式聚合未接入/尚无数据时，用户看到明确空态而非大面积不明空白。root role="img"+aria-label 可访问。
+export function ChartEmpty({ height = 200, note = '暂无数据' }: { height?: number; note?: string }) {
+  return (
+    <div className="relative w-full overflow-hidden rounded-lg" style={{ height }} role="img" aria-label={note}>
+      <svg viewBox="0 0 640 200" preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-line" aria-hidden="true">
+        {[0, 0.25, 0.5, 0.75, 1].map((g) => (
+          <line key={g} x1="8" x2="632" y1={8 + g * 184} y2={8 + g * 184} stroke="currentColor" strokeWidth="1" strokeDasharray="3 4" opacity="0.5" />
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+        <img src="./img/empty-no-data.webp" alt="" className="h-16 w-auto opacity-80" />
+        <span className="text-[12px] text-ink-4">{note}</span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Sparkline ──────────────────────────────────── */
 
 export function Sparkline({
@@ -15,8 +34,13 @@ export function Sparkline({
   w?: number
   h?: number
 }) {
-  // 数据点不足（0/1 个）：除以 length-1 会得 NaN，返回同尺寸空位图
-  if (data.length < 2) return <svg width={w} height={h} className="overflow-visible" />
+  // 数据点不足（0/1 个）：除以 length-1 会得 NaN。内联迷你图不适合放插画空态，画一条虚线基线占位（保持行高稳定）。
+  if (data.length < 2)
+    return (
+      <svg width={w} height={h} className="overflow-visible" role="img" aria-label="暂无数据">
+        <line x1={0} x2={w} y1={h / 2} y2={h / 2} stroke="currentColor" className="text-line" strokeWidth={1} strokeDasharray="3 3" opacity={0.6} />
+      </svg>
+    )
   const min = Math.min(...data)
   const max = Math.max(...data)
   const span = max - min || 1
@@ -51,8 +75,8 @@ export function AreaLine({
   const padR = 8
   const padB = labels ? 22 : 8
   const padT = 8
-  // 数据点不足（0/1 个）：除以 length-1 会得 NaN，返回同尺寸空位图
-  if (data.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} />
+  // 数据点不足（0/1 个）：除以 length-1 会得 NaN。改统一空态（网格骨架 + 文案 + 插画）替代空白 SVG。
+  if (data.length < 2) return <ChartEmpty height={H} />
   // 加性留白（乘性 ×0.96/×1.04 在负值时反向放大，负数趋势会被裁掉）
   const min0 = Math.min(...data)
   const max0 = Math.max(...data)
@@ -69,7 +93,7 @@ export function AreaLine({
   const area = `${line} L${x(data.length - 1).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`
   const grid = [0, 0.25, 0.5, 0.75, 1]
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} role="img" aria-label="面积趋势图">
       <defs>
         <linearGradient id={`g-${id}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={toneVar[tone]} stopOpacity={0.16} />
@@ -91,7 +115,8 @@ export function AreaLine({
         <line x1={padL} x2={W - padR} y1={y(0)} y2={y(0)} stroke="var(--color-line-strong)" strokeWidth={1} strokeDasharray="4 3" />
       )}
       <path d={area} fill={`url(#g-${id})`} />
-      <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
+      {/* F6：non-scaling-stroke 让 preserveAspectRatio="none" 横向拉伸时线宽不变形 */}
+      <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r={3} fill={toneVar[tone]} />
       {labels &&
         labels.map((l, i) =>
@@ -127,8 +152,9 @@ export function Bars({
   height?: number
   format?: (v: number) => string
 }) {
-  // 空数组 Math.max(...[]) 得 -Infinity；负值柱高钳到 0，避免反向溢出
-  const max = (data.length ? Math.max(...data) : 0) * 1.08 || 1
+  // 空数据统一空态，替代此前空白柱区。
+  if (!data.length) return <ChartEmpty height={height} />
+  const max = Math.max(...data) * 1.08 || 1
   return (
     <div className="flex items-end gap-2" style={{ height }}>
       {data.map((v, i) => (
@@ -234,7 +260,7 @@ export function Meter({
           width: `${Math.min(100, value)}%`,
           background: toneVar[tone],
           transformOrigin: 'left',
-          animation: animate ? `growX .8s ${delay}s cubic-bezier(.45,0,.15,1) both` : undefined,
+          animation: animate ? `growX .8s ${delay}s var(--ease-draw) both` : undefined,
           transition: animate ? undefined : 'width .3s',
         }}
       />
@@ -337,7 +363,7 @@ export function CrosshairChart({
   const ih = VBH - padT - padB
   const n = a.data.length
   // 数据点不足（0/1 个）：除以 n-1 会得 NaN，返回同尺寸空位图（hooks 已全部调用完）
-  if (n < 2) return <div className="relative"><svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block' }} /></div>
+  if (n < 2) return <ChartEmpty height={230} />
   const xs = a.data.map((_, i) => padL + (i * iw) / (n - 1))
   const y = (v: number) => padT + ih * (1 - v / yMax)
   const gy = a.data.map(y)
@@ -363,7 +389,7 @@ export function CrosshairChart({
   return (
     <div ref={boxRef} className="relative">
       {/* preserveAspectRatio="none"：与鼠标定位/HTML tooltip 的满宽拉伸假设一致，避免非 588 宽度时 letterbox 漂移 */}
-      <svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }}>
+      <svg viewBox={`0 0 ${VBW} ${VBH}`} preserveAspectRatio="none" style={{ width: '100%', height: 230, display: 'block', overflow: 'visible' }} role="img" aria-label="十字准星趋势图">
         <defs>
           <linearGradient id={`cm-${id}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="var(--color-brand)" stopOpacity="0.14" />
@@ -379,8 +405,8 @@ export function CrosshairChart({
           </g>
         ))}
         <path style={{ animation: `fadeIn 1s .55s both` }} d={area} fill={`url(#cm-${id})`} />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s cubic-bezier(.45,0,.15,1) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" />
-        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s cubic-bezier(.45,0,.15,1) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .35s var(--ease-draw) both` }} d={line(gy)} fill="none" stroke="var(--color-brand)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path pathLength={1} style={{ strokeDasharray: 1, animation: `draw 1.1s .55s var(--ease-draw) both` }} d={line(ny)} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.5" vectorEffect="non-scaling-stroke" />
         {hi !== null && (
           <>
             <line x1={xs[hi]} x2={xs[hi]} y1={padT} y2={padT + ih} stroke="var(--color-brand)" strokeWidth="1" strokeDasharray="3 3" />
@@ -538,7 +564,7 @@ export function ForecastLine({
   height?: number
 }) {
   const id = useId().replace(/:/g, '')
-  if (data.length < 2) return <svg style={{ height }} className="w-full" />
+  if (data.length < 2) return <ChartEmpty height={height} />
   // 末段斜率外推 + 衰减（LTV 累计增速递减）
   const last = data[data.length - 1]
   const slope = last - data[data.length - 2]
@@ -569,17 +595,17 @@ export function ForecastLine({
   const bandDn = [data[data.length - 1], ...bandDnVals]
   const bandPath = `${bandUp.map((val, i) => `${i ? 'L' : 'M'}${x(projStart + i).toFixed(1)},${y(val).toFixed(1)}`).join(' ')} ${bandDn.map((val, i) => `L${x(projStart + bandDn.length - 1 - i).toFixed(1)},${y(bandDn[bandDn.length - 1 - i]).toFixed(1)}`).join(' ')} Z`
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} role="img" aria-label="预测趋势图">
       <defs><linearGradient id={`fc-${id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={toneVar[tone]} stopOpacity={0.14} /><stop offset="100%" stopColor={toneVar[tone]} stopOpacity={0} /></linearGradient></defs>
       {[0, 0.5, 1].map((g, i) => <line key={i} x1={padL} x2={W - padR} y1={padT + ih * g} y2={padT + ih * g} stroke="var(--color-line)" />)}
       {/* 历史面积 */}
       <path d={`${histPts} L${x(projStart).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`} fill={`url(#fc-${id})`} />
       {/* 预测区间带 */}
       <path d={bandPath} fill={toneVar[tone]} fillOpacity={0.1} />
-      {/* 历史实线 */}
-      <path d={histPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" />
+      {/* 历史实线（non-scaling-stroke 防满宽拉伸变形，F6） */}
+      <path d={histPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       {/* 预测虚线 */}
-      <path d={projPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} />
+      <path d={projPts} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeDasharray="5 3" opacity={0.7} vectorEffect="non-scaling-stroke" />
       <circle cx={x(data.length - 1)} cy={y(last)} r={3} fill={toneVar[tone]} />
       {labels && labels.map((l, i) => (i % 2 === 0 || i === labels.length - 1) ? <text key={i} x={x(i)} y={H - 6} fontSize={10} fill="var(--color-ink-4)" textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}>{l}</text> : null)}
     </svg>

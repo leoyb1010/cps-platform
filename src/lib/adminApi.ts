@@ -102,7 +102,7 @@ export const bizApi = {
   reviewProduct: (id: string, action: 'approve' | 'reject', note?: string) => http.post<Ok>(`/products/${id}/review`, { action, note }),
   bundleRules: <T = unknown>() => http.get<T>('/bundle-rules'),
   addBundleRule: (body: { name: string; kind: string; params?: Record<string, unknown>; active?: boolean }) => http.post<Ok & { id?: string }>('/bundle-rules', body),
-  toggleBundleRule: (id: string, active: boolean) => http.post<Ok>(`/bundle-rules/${id}`, { active }),
+  toggleBundleRule: (id: string, active: boolean) => http.patch<Ok>(`/bundle-rules/${id}`, { active }),
   // 订阅超市套餐台账 + 受理拆单履约（内部）
   bundles: <T = unknown>() => http.get<T>('/bundles'),
   fulfillBundle: (id: string, body: { agentId: string; type?: string; channel?: string }) =>

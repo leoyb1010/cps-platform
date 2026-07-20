@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, KeyRound, Activity, ShieldCheck, Upload, Play } from 'lucide-react'
+import { Copy, Check, KeyRound, Activity, ShieldCheck, Upload, Play, TriangleAlert } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button, TableShell, Th, Td, Row, Segmented } from '../../components/ui/primitives'
 import { Modal, useToast, Confirm } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
@@ -57,7 +57,7 @@ export function BrandDeveloper() {
             />
             {tab === 'cred' && <CredTab c={c} reload={reload} copy={copy} copied={copied} />}
             {tab === 'console' && <ConsoleTab endpoints={ENDPOINTS} baseUrl={c.apiBase} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
-            {tab === 'code' && <CodeTab endpoints={ENDPOINTS} baseUrl={c.apiBase} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
+            {tab === 'code' && <CodeTab endpoints={ENDPOINTS} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
             {tab === 'health' && <HealthTab />}
             {tab === 'logs' && <LogsTab />}
           </>
@@ -144,7 +144,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
       <Modal open={!!newPriv} onClose={() => setNewPriv(null)} title="RSA 密钥对已生成" width={560}>
         {newPriv && (
           <div className="space-y-3">
-            <p className="text-sm text-alert">⚠️ 私钥仅此一次显示，关闭后无法再次获取。请立即保存为 .pem 文件。</p>
+            <p className="flex items-start gap-1.5 text-sm text-alert"><TriangleAlert size={15} className="mt-0.5 shrink-0" /><span>私钥仅此一次显示，关闭后无法再次获取。请立即保存为 .pem 文件。</span></p>
             <Field label="私钥（PKCS8 PEM · 自留，绝不上传）">
               <div className="flex items-start gap-2">
                 <code className="flex-1 max-h-40 overflow-auto rounded-lg bg-surface-muted px-3 py-2 font-mono text-[11px] whitespace-pre-wrap">{newPriv.privateKey}</code>
@@ -218,13 +218,13 @@ function ConsoleTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { 
 }
 
 // ── SDK / 代码生成 ──
-function CodeTab({ endpoints, baseUrl: _baseUrl, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; baseUrl: string; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
+// SDK 示例统一指向测试环境基址（联调安全默认），故不接收生产 apiBase
+function CodeTab({ endpoints, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
   const [epIdx, setEpIdx] = useState(0)
   const [lang, setLang] = useState<string>('curl')
   const ep = endpoints[epIdx]
   const params = buildParams(ep.fields, {}, merchantId, custId, true)
   const input: CodeGenInput = { baseUrl: `https://dict-paycenter-test.youdao.com/client`, path: ep.path, method: ep.method, params }
-  void _baseUrl
   const gen = LANGS.find((l) => l.key === lang)!.gen
   const code = gen(input)
   return (

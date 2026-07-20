@@ -195,7 +195,7 @@ export default function SettlementRun() {
         <Card className="mt-4 border-good/30 bg-good-soft/30">
           <div className="flex flex-col items-center py-4 text-center">
             <CircleCheck size={36} className="text-good-ink" />
-            <div className="mt-2 text-[16px] font-semibold text-ink">本期结算完成 🎉</div>
+            <div className="mt-2 text-[16px] font-semibold text-ink">本期结算完成</div>
             <p className="mt-1 text-[12.5px] text-ink-3">全部步骤已走完。生成结算报告存档，或返回清结算查看明细。</p>
             <div className="mt-4 flex items-center gap-2">
               <Button variant="primary" onClick={genReport}><FileDown size={14} /> {reportReady ? '重新导出报告' : '生成本期结算报告'}</Button>
