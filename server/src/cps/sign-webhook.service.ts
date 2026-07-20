@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common'
+import type { Prisma } from '@prisma/client'
 import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { buildRsaSign } from '../youdao/rsa-signature'
 import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
 import { validatePublicCallbackUrl } from '../common/callback-url'
+import { sendAlert } from '../common/alert'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 // 模块级 logger（供自由函数 yuanToFen 用；类内另有 this.logger）
@@ -36,13 +38,30 @@ export class SignWebhookService {
   private readonly logger = new Logger('SignWebhook')
   constructor(private prisma: PrismaService) {}
 
-  async deliver(signOrderNo: string, status: number, fields: WebhookFields): Promise<void> {
-    const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } }).catch(() => null)
+  /**
+   * 事务内入队一条出站回调（P0-B3 事务化 outbox）：在调用方**资金事务内**落 SignCallbackLog(pending)，
+   * 与资金变更原子提交——进程若在「提交后、投递前」死亡，行仍在，cron sweep 会补投，回调零丢失。
+   * 事务内绝不做 HTTP / DNS（长事务持锁、外部副作用不可随事务回滚）：SSRF 校验与实际投递一律推迟到 sweep 的 attempt()。
+   * 幂等由调用方事务保证：idem.run 回放不重跑事务体，故同一动作只入队一次。
+   */
+  async enqueue(tx: Prisma.TransactionClient, signOrderNo: string, status: number, fields: WebhookFields): Promise<void> {
+    const so = await tx.signOrder.findUnique({ where: { id: signOrderNo } })
     if (!so) return
-    const brand = await this.prisma.brand.findUnique({ where: { id: so.brandId } }).catch(() => null)
+    const brand = await tx.brand.findUnique({ where: { id: so.brandId } })
     const callbackUrl = brand?.apiCallbackUrl || ''
+    const payload = this.buildSignedPayload(so, status, fields)
+    const logId = 'CB-' + shortId()
+    if (!callbackUrl) {
+      // 无回调地址：直接死信（无目标不可投），仍随资金事务原子落库（可在联调日志显式看到"未配置回调"）。
+      await tx.signCallbackLog.create({ data: { id: logId, signOrderNo: so.id, brandId: so.brandId, status, direction: 'outbound', payload: JSON.stringify(payload), callbackUrl: '', httpStatus: 0, ok: false, error: '未配置回调地址', deliveryStatus: 'dead', nextRetryAt: null } })
+      return
+    }
+    // pending + 立即到期（nextRetryAt=now）：下一轮 sweep（每分钟）首投；callbackUrl 快照防品牌改址后丢目标。
+    await tx.signCallbackLog.create({ data: { id: logId, signOrderNo: so.id, brandId: so.brandId, status, direction: 'outbound', payload: JSON.stringify(payload), callbackUrl, deliveryStatus: 'pending', nextRetryAt: new Date() } })
+  }
 
-    // 有道续费状态回调体：custOrderId/orderId/status/subMsg/effectiveTime(13位毫秒)/price(分 Long)/sign
+  // 构造有道续费状态回调体 + 平台私钥 RSA 签名（合作方用有道公钥验签）。custOrderId/orderId/status/subMsg/effectiveTime(13位毫秒)/price(分 Long)/sign
+  private buildSignedPayload(so: { id: string; custOrderId?: string | null }, status: number, fields: WebhookFields): Record<string, unknown> {
     const payload: Record<string, unknown> = {
       custOrderId: so.custOrderId || so.id,
       orderId: fields.orderNo ?? so.id, // status 0/1=签约单；2/4=代扣单；3/5=退款单
@@ -51,24 +70,8 @@ export class SignWebhookService {
       effectiveTime: (fields.operateTime ?? new Date()).getTime(), // 13 位毫秒级
       price: yuanToFen(fields.amount ?? 0), // 单位分
     }
-    // 平台私钥签名（合作方用有道公钥验签）
     payload.sign = buildRsaSign(payload, platformPrivateKey())
-
-    const logId = 'CB-' + shortId()
-    // 未配置回调地址：记死信（无目标不可重投），不报错。
-    if (!callbackUrl) {
-      await this.persist(logId, so.id, so.brandId, status, payload, '', { httpStatus: 0, ok: false, error: '未配置回调地址', deliveryStatus: 'dead', nextRetryAt: null })
-      return
-    }
-    const safeCallback = await validatePublicCallbackUrl(callbackUrl)
-    if (!safeCallback.ok) {
-      await this.persist(logId, so.id, so.brandId, status, payload, callbackUrl, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', nextRetryAt: null })
-      return
-    }
-
-    // 先落 outbox 行（pending），再首次投递；失败则转 retrying + 排下次退避重投。
-    await this.persist(logId, so.id, so.brandId, status, payload, safeCallback.url, { deliveryStatus: 'pending' })
-    await this.attempt(logId, safeCallback.url, payload)
+    return payload
   }
 
   private static readonly MAX_ATTEMPTS = 5
@@ -113,6 +116,8 @@ export class SignWebhookService {
       // P2-B6：attempts 原子 increment（下同）
       await this.update(id, { httpStatus, ok: false, error, deliveryStatus: 'dead', attempts: { increment: 1 }, nextRetryAt: null })
       this.logger.error(`[死信] 回调投递超 ${attemptNo} 次仍失败 ${id}：${error}（需人工介入）`)
+      // P1-B9：回调投递死信主动告警——合作方账务同步中断需人工介入。
+      void sendAlert('回调投递死信', `回调 ${id} 超 ${attemptNo} 次投递失败：${error}（需人工重推或核查合作方回调地址）`, 'critical')
       return
     }
     const backoff = SignWebhookService.BACKOFF_SEC[Math.min(attemptNo - 1, SignWebhookService.BACKOFF_SEC.length - 1)]
@@ -121,17 +126,19 @@ export class SignWebhookService {
   }
 
   /**
-   * 重投 sweep：扫到期的 retrying 行重新投递（cron 每分钟调）。
-   * 用 callbackUrl 快照重投（品牌改址不影响在途重投目标）；限批避免长事务。
+   * 投递 sweep（cron 每分钟调）：扫到期的 pending（事务内入队待首投）与 retrying（退避重投）行并投递。
+   * P0-B3：pending 覆盖「资金事务已提交、HTTP 投递尚未发生」的行——进程在两者间崩溃时由此补投，回调零丢失。
+   * 用 callbackUrl 快照投递（品牌改址不影响在途目标）；限批避免长事务。
    */
   async retrySweep(now = new Date(), limit = 50): Promise<{ swept: number; delivered: number; dead: number }> {
     // P2-B6：进程内互斥门闩——cron 每分钟触发，若上一轮未跑完则本轮直接跳过，
-    // 避免两轮 sweep 取到同批 retrying 行重复投递（回调重复）。
+    // 避免两轮 sweep 取到同批行重复投递（回调重复）。
     if (this.sweeping) return { swept: 0, delivered: 0, dead: 0 }
     this.sweeping = true
     try {
+      // createdAt 次序：同一签约单的多条回调（如首扣 1 签约→2 扣款）按入队序尽量顺序投递。
       const due = await this.prisma.signCallbackLog
-        .findMany({ where: { deliveryStatus: 'retrying', nextRetryAt: { lte: now } }, orderBy: { nextRetryAt: 'asc' }, take: limit })
+        .findMany({ where: { deliveryStatus: { in: ['pending', 'retrying'] }, nextRetryAt: { lte: now } }, orderBy: [{ nextRetryAt: 'asc' }, { createdAt: 'asc' }], take: limit })
         .catch(() => [])
       let delivered = 0, dead = 0
       for (const row of due) {
@@ -149,12 +156,6 @@ export class SignWebhookService {
 
   // P2-B6：sweep 进程内互斥门闩（模块单例，NestJS 默认 provider 为单例，进程内唯一）
   private sweeping = false
-
-  private async persist(id: string, signOrderNo: string, brandId: string, status: number, payload: Record<string, unknown>, callbackUrl: string, extra: Record<string, unknown>) {
-    await this.prisma.signCallbackLog.create({
-      data: { id, signOrderNo, brandId, status, direction: 'outbound', payload: JSON.stringify(payload), callbackUrl, ...extra },
-    }).catch((e) => this.logger.warn(`回调日志落库失败 ${signOrderNo}: ${e}`))
-  }
 
   private async update(id: string, data: Record<string, unknown>) {
     await this.prisma.signCallbackLog.update({ where: { id }, data }).catch((e) => this.logger.warn(`回调状态更新失败 ${id}: ${e}`))

@@ -72,21 +72,36 @@ export class ReserveReleaseService {
    */
   async clawback(tx: Prisma.TransactionClient, settlementId: string, amount: number): Promise<{ clawed: number }> {
     if (amount <= 0) return { clawed: 0 }
-    const rows = await tx.reserveRelease.findMany({ where: { settlementId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
-    let remain = amount
+    let remain = round2(amount)
     let clawed = 0
-    for (const rr of rows) {
-      if (remain <= 0) break
+    // P0-B4：原实现对 findMany 快照做 read-modify-write（部分追回写 amount:rr.amount-take、整行追回无 status 守卫）。
+    //   两笔并发退款对同一 scheduled 行各读同一 amount 再各自绝对量写 → 互相覆盖（lost update）；
+    //   整行分支还可能把并发 release 已翻走的行错误标记 clawed_back，直接打破守恒式 III。
+    //   改为循环认领：每轮取最早到期的 scheduled 行，用「期望 amount + status=scheduled」条件更新原子认领，
+    //   命中才计入；count===0 说明该行被并发 release/另一笔 clawback 改动，重读重试。MAX_ITER 防活锁。
+    let guardIter = 0
+    const MAX_ITER = 1000
+    while (remain > 0 && guardIter++ < MAX_ITER) {
+      const rr = await tx.reserveRelease.findFirst({ where: { settlementId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
+      if (!rr) break // 无更多未释放行可追偿（已释放部分不追，进 payoutPending/已提现）
       const take = Math.min(remain, rr.amount)
       if (take >= rr.amount) {
-        // 整行追回
-        await tx.reserveRelease.update({ where: { id: rr.id }, data: { status: 'clawed_back', holdReason: '退款逆向追偿' } })
+        // 整行追回：守卫 status=scheduled ∧ amount 未变，防并发 release 翻走该行或 amount 已被并发缩减
+        const c = await tx.reserveRelease.updateMany({
+          where: { id: rr.id, status: 'scheduled', amount: rr.amount },
+          data: { status: 'clawed_back', holdReason: '退款逆向追偿' },
+        })
+        if (c.count === 0) continue // 并发改动，重读重试
       } else {
-        // 部分追回：缩减该行计划额
-        await tx.reserveRelease.update({ where: { id: rr.id }, data: { amount: rr.amount - take } })
+        // 部分追回：从期望 amount 原子缩减 take（where 带期望 amount，两笔并发各读同值时仅一方命中，另一方 count=0 重试）
+        const c = await tx.reserveRelease.updateMany({
+          where: { id: rr.id, status: 'scheduled', amount: rr.amount },
+          data: { amount: round2(rr.amount - take) },
+        })
+        if (c.count === 0) continue // 并发改动，重读重试
       }
-      remain -= take
-      clawed += take
+      remain = round2(remain - take)
+      clawed = round2(clawed + take)
     }
     if (clawed > 0) {
       // 原子递增 reserveClawedBack + 递减 frozen，避免与并发 release 的 lost update（守恒式 II）。

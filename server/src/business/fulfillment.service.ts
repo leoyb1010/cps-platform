@@ -30,14 +30,23 @@ export class FulfillmentService {
         // P1-B3：原「读快照 c.achievedGmv + amount 再绝对量写」在并发下会丢失另一笔订单的累加（lost update）。
         //   改为 Prisma 原子 increment（DB 层加法天然串行，两笔并发订单各自如实累加）；金额先 round2 收口防裸浮点尾差。
         const inc = round2(o.amount)
-        // 一段式：原子累加 + active→fulfilling（匹配集限定 active/fulfilling，置 fulfilling 恒为合法跃迁）。update 回读到最新 achievedGmv。
-        const updated = await tx.growthContract.update({ where: { id: c.id }, data: { achievedGmv: { increment: inc }, status: 'fulfilling' } })
-        // 二段式：达标判定用「更新后回读值」而非事务外快照；仅当仍为 fulfilling 时条件推进 settling，
-        //   杜绝把已被并发回退/关闭的合约重新拉回，也避免 settling 达标后被继续累计拉回 fulfilling。
-        if (updated.targetGmv > 0 && gte(updated.achievedGmv, updated.targetGmv)) {
-          await tx.growthContract.updateMany({ where: { id: c.id, status: 'fulfilling' }, data: { status: 'settling' } })
+        // P0-B5：原 update({where:{id}}) 无状态守卫——findFirst 读到该合约与本次写之间，
+        //   运营若把合约置 closed/breached，无条件写会把它"复活"成 fulfilling 并继续累计 GMV。
+        //   收紧为条件 updateMany：仅当合约仍在 active/fulfilling 时才原子累加 + 置 fulfilling（合法跃迁）。
+        const bumped = await tx.growthContract.updateMany({
+          where: { id: c.id, status: { in: ['active', 'fulfilling'] } },
+          data: { achievedGmv: { increment: inc }, status: 'fulfilling' },
+        })
+        if (bumped.count > 0) {
+          // 命中才回读做达标判定（用更新后回读值而非事务外快照）；仅当仍为 fulfilling 时条件推进 settling，
+          //   杜绝把已被并发回退/关闭的合约重新拉回，也避免 settling 达标后被继续累计拉回 fulfilling。
+          const updated = await tx.growthContract.findUnique({ where: { id: c.id } })
+          if (updated && updated.targetGmv > 0 && gte(updated.achievedGmv, updated.targetGmv)) {
+            await tx.growthContract.updateMany({ where: { id: c.id, status: 'fulfilling' }, data: { status: 'settling' } })
+          }
+          matchedContractId = c.id
         }
-        matchedContractId = c.id
+        // bumped.count===0：合约已被并发关闭/违约，本单不累计、不复活（matchedContractId 保持 null）。
       }
 
       // 2. 订阅聚合（债5）：以 (brandId,agentId,plan) 唯一约束兜底并发（L1）。

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
+import { sendAlert } from '../common/alert'
 
 export interface ReconItem {
   id: string
@@ -109,6 +110,8 @@ export class ReconciliationService {
     const totalBad = mismatches.length + reserveMismatches.length
     if (totalBad > 0) {
       this.logger.warn(`对账异常：拆分不平 ${mismatches.length} 张、释放守恒不符 ${reserveMismatches.length} 项: ${JSON.stringify({ mismatches, reserveMismatches })}`)
+      // P1-B9：对账失衡（恒等式 I / 释放守恒 II/III/IV 不符）主动告警——资金账不平必须有人立即知道。
+      void sendAlert('对账失衡', `拆分不平 ${mismatches.length} 张、准备金释放守恒不符 ${reserveMismatches.length} 项（已写审计，详见 reconcile.run）`, 'critical')
       await this.audit.record({
         action: 'reconcile.run',
         resource: 'Reconciliation',

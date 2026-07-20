@@ -36,7 +36,7 @@ export function BrandDeveloper() {
   const { data, state, reload } = usePortalResource<DevConfig>(() => portalApi.developer<DevConfig>())
   const [tab, setTab] = useState<Tab>('cred')
   const [copied, setCopied] = useState('')
-  const copy = (text: string, tag: string) => { copyText(text).then((ok) => { if (ok) { setCopied(tag); setTimeout(() => setCopied(''), 1500) } }) }
+  const copy = (text: string, tag: string) => { void copyText(text).then((ok) => { if (ok) { setCopied(tag); setTimeout(() => setCopied(''), 1500) } }) }
 
   return (
     <div className="space-y-5">
@@ -57,7 +57,7 @@ export function BrandDeveloper() {
             />
             {tab === 'cred' && <CredTab c={c} reload={reload} copy={copy} copied={copied} />}
             {tab === 'console' && <ConsoleTab endpoints={ENDPOINTS} baseUrl={c.apiBase} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
-            {tab === 'code' && <CodeTab endpoints={ENDPOINTS} baseUrl={c.apiBase} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
+            {tab === 'code' && <CodeTab endpoints={ENDPOINTS} merchantId={c.merchantId ?? ''} custId={c.custId ?? ''} copy={copy} copied={copied} />}
             {tab === 'health' && <HealthTab />}
             {tab === 'logs' && <LogsTab />}
           </>
@@ -133,7 +133,7 @@ function CredTab({ c, reload, copy, copied }: { c: DevConfig; reload: () => void
       <Confirm
         open={regenOpen}
         onClose={() => setRegenOpen(false)}
-        onConfirm={() => { setRegenOpen(false); keygen() }}
+        onConfirm={() => { setRegenOpen(false); void keygen() }}
         title="重新生成 RSA 密钥"
         tone="alert"
         confirmText="仍要重新生成"
@@ -218,7 +218,8 @@ function ConsoleTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { 
 }
 
 // ── SDK / 代码生成 ──
-function CodeTab({ endpoints, baseUrl, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; baseUrl: string; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
+// SDK 示例统一指向测试环境基址（联调安全默认），故不接收生产 apiBase
+function CodeTab({ endpoints, merchantId, custId, copy, copied }: { endpoints: typeof ENDPOINTS; merchantId: string; custId: string; copy: (t: string, tag: string) => void; copied: string }) {
   const [epIdx, setEpIdx] = useState(0)
   const [lang, setLang] = useState<string>('curl')
   const ep = endpoints[epIdx]

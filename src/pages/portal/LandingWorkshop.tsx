@@ -222,7 +222,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 }
 
 function copy(text: string, toast: ReturnType<typeof useToast>) {
-  copyText(text).then((ok) => toast(ok ? { tone: 'good', text: '已复制' } : { tone: 'info', text }))
+  void copyText(text).then((ok) => toast(ok ? { tone: 'good', text: '已复制' } : { tone: 'info', text }))
 }
 
 function PageRow({ pg, onCopy, onDelete }: { pg: LandingPage; onCopy: (u: string) => void; onDelete: () => void }) {

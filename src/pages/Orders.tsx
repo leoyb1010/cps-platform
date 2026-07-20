@@ -52,7 +52,7 @@ const LC_BORDER: Record<'info' | 'good' | 'warn' | 'alert', string> = {
 }
 
 export default function Orders() {
-  const { orders } = useStore()
+  const { orders, ordersTruncated } = useStore()
   const toast = useToast()
   const [view, setView] = useState<'orders' | 'lifecycle'>('orders')
   const [f, setF] = useState<'all' | OrderType>('all')
@@ -236,7 +236,9 @@ export default function Orders() {
         </TableShell>
         <div className="flex items-center justify-between border-t border-line px-5 py-3 text-[12px] text-ink-3">
           <span>本页 {list.length} 笔 · 首单 {list.filter((o) => o.type === 'first').length}，续费 {list.filter((o) => o.type === 'renew').length}，退款 {list.filter((o) => o.type === 'refund').length}，拒付 {list.filter((o) => o.type === 'chargeback').length}</span>
-          <span className="text-ink-4">每 5 分钟刷新 · 完整数据见对账中心</span>
+          {isRealApi && ordersTruncated
+            ? <span className="text-warn-ink">仅展示最近 2000 条，更早订单请用筛选或到对账中心导出</span>
+            : <span className="text-ink-4">完整数据见对账中心</span>}
         </div>
       </Card>
       </>

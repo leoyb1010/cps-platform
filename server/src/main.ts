@@ -12,7 +12,11 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter'
 // 不再以 NODE_ENV!=='production' 单开关整体豁免：改为「检测到弱值即拒启」，
 // 仅在显式 ALLOW_WEAK_SECRETS=true 或 test 环境放行（保留本地 dev/e2e 便利，默认严格）。
 function assertSecrets() {
-  if (process.env.ALLOW_WEAK_SECRETS === 'true' || process.env.NODE_ENV === 'test') return
+  // 生产环境忽略 ALLOW_WEAK_SECRETS 旁路：否则误带该开关入生产即整体跳过密钥硬化
+  //（弱 JWT 可伪造 token、回退 demo 私钥可伪造回调）——即上轮 S2 想消除的"单开关"失效模式。
+  // dev/e2e 仍可用 ALLOW_WEAK_SECRETS/test 放行。
+  const isProd = process.env.NODE_ENV === 'production'
+  if (!isProd && (process.env.ALLOW_WEAK_SECRETS === 'true' || process.env.NODE_ENV === 'test')) return
   const weak = ['', 'CHANGE_ME', 'change-me-access', 'change-me-refresh', 'dev-access-secret-change-in-prod', 'dev-refresh-secret-change-in-prod']
   for (const k of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET']) {
     const v = process.env[k] || ''
@@ -42,6 +46,10 @@ async function bootstrap() {
   assertSecrets()
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   app.useLogger(app.get(Logger))
+  // 信任前置反代（nginx）注入的 X-Forwarded-For：否则 Express req.ip 恒为 nginx 容器 IP，
+  // 限流退化为「全体用户共享一个桶」——既能被单一来源打满触发全站 429（自我 DoS），
+  // 又让登录/改密的按 IP 反爆破形同虚设、取证 IP 失真。默认信任 1 跳（生产 server 仅内网可达）。
+  app.getHttpAdapter().getInstance().set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1))
   app.use(cookieParser())
   // 安全响应头；CSP 交给前端静态托管层，这里关掉以免误伤跨域 API
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }))

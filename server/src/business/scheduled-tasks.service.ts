@@ -8,6 +8,7 @@ import { ReconciliationService } from './reconciliation.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { CpsService } from '../cps/cps.service'
 import { SignWebhookService } from '../cps/sign-webhook.service'
+import { sendAlert } from '../common/alert'
 
 /**
  * 定时任务（端点先行 + cron 后挂）。
@@ -85,6 +86,8 @@ export class ScheduledTasksService implements OnModuleInit {
     } catch (e) {
       this.metrics.recordFundAction('cron.reserve-release', 'error')
       this.logger.warn(`[定时] 准备金到期释放任务异常：${e instanceof Error ? e.message : e}`)
+      // P1-B9：自主释放失败 = 到期准备金卡在冻结池无人知，主动告警。
+      void sendAlert('准备金到期释放异常', `定时释放任务失败：${e instanceof Error ? e.message : e}`, 'critical')
     }
   }
 

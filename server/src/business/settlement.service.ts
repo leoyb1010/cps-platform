@@ -55,10 +55,13 @@ export class SettlementService {
       const cur = await tx.settlement.findUnique({ where: { id: s.id }, select: { agentPayout: true } })
       share = Math.max(0, Math.min(rawShare, cur?.agentPayout ?? 0))
       if (share > 0) {
-        await tx.settlement.updateMany({
+        const h2 = await tx.settlement.updateMany({
           where: { id: s.id, agentPayout: { gte: share } },
           data: { reversal: { increment: share }, agentPayout: { decrement: share } },
         })
+        // 并发下回读与二次扣之间 agentPayout 又被扣穿 → count=0 实际没冲。
+        // 如实置 share=0，避免下方 reconcileDiff 虚增、以及把没冲成的额度误传给代理侧回收。
+        if (h2.count === 0) share = 0
       }
     }
     // P2-B2：status/reconcileDiff 收敛为独立条件更新，不在增量写里带回事务外快照 status——
@@ -94,8 +97,10 @@ export class SettlementService {
       const cur = await tx.agent.findUnique({ where: { id: a.id }, select: { payoutPending: true } })
       const take = Math.max(0, Math.min(share, cur?.payoutPending ?? 0))
       if (take > 0) {
-        await tx.agent.updateMany({ where: { id: a.id, payoutPending: { gte: take } }, data: { payoutPending: { decrement: take } } })
-        deducted = take
+        // 检查 count：并发下回读与此处扣减间 payoutPending 可能又被扣穿（count=0 实际一分没扣）。
+        // 只有真扣成才记 deducted，否则记 0——缺口全额进 shortfall 由准备金追偿，不漏回收。
+        const h2 = await tx.agent.updateMany({ where: { id: a.id, payoutPending: { gte: take } }, data: { payoutPending: { decrement: take } } })
+        deducted = h2.count > 0 ? take : 0
       }
     }
     const shortfall = round2(share - deducted)

@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import type { Response } from 'express'
+import { sendAlert } from './alert'
 
 // Prisma 已知错误码 → HTTP 状态。避免「记录不存在/唯一冲突」等被当作 500。
 function mapPrisma(code: string): { status: number; message: string } | null {
@@ -41,8 +42,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
     if (status >= 500) {
       this.logger.error(`[req:${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`)
+      // P1-B9：5xx（含资金类异常、审计写失败 fail-closed 抛出的 500）主动告警到企微/钉钉机器人。
+      //   fire-and-forget，不阻塞错误响应；未配 ALERT_WEBHOOK_URL 时 no-op。去抖在 sendAlert 内。
+      void sendAlert('服务 5xx 异常', `[req:${requestId ?? '-'}] ${exception instanceof Error ? exception.message : String(exception)}`, 'critical')
       // 外部错误聚合上报钩子：接入 Sentry 时在此 captureException（未配 SENTRY_DSN 时 no-op）。
-      // 资金类异常与审计写失败经此路径，是主动告警的接入点。
       // if (process.env.SENTRY_DSN) Sentry.captureException(exception, { tags: { requestId } })
     }
     res.status(status).json({ code: status, message, ...(requestId ? { requestId } : {}) })

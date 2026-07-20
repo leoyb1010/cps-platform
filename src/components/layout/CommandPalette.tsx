@@ -127,7 +127,7 @@ export function CommandPalette() {
   const go = (h: Hit) => {
     if (h.danger && h.run) { setConfirm(h); return } // 资金/状态类：先确认
     if (h.run) { h.run(); setOpen(false); return }
-    if (h.to) { nav(h.to); setOpen(false) }
+    if (h.to) { void nav(h.to); setOpen(false) }
   }
 
   return (

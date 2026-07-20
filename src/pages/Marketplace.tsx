@@ -41,7 +41,7 @@ export default function Marketplace() {
   const claim = (brandId: string, plan: string, brandName: string) => {
     const code = `${brandId}-A2041-dy-${Math.random().toString(36).slice(2, 7)}`
     const url = `https://t.linkve.cn/c/${code}`
-    copyText(url)
+    void copyText(url)
     addClaim({ brandId, plan, url, channel: '抖音' }) // 真实写入投放计划，可在「我的投放计划」看板查看
     setLink({ brand: brandName, plan, url })
     toast({ tone: 'good', text: '追踪链接已生成并复制' })
@@ -129,7 +129,7 @@ export default function Marketplace() {
             <div className="text-[12.5px] text-ink-3">{link.brand} · {link.plan}</div>
             <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-muted px-3 py-2.5">
               <span className="tnum flex-1 truncate text-[12.5px] text-ink">{link.url}</span>
-              <button onClick={() => { copyText(link.url) }} className="rounded-md bg-brand px-2 py-1 text-[11.5px] font-medium text-white hover:bg-brand-hover">复制</button>
+              <button onClick={() => { void copyText(link.url) }} className="rounded-md bg-brand px-2 py-1 text-[11.5px] font-medium text-white hover:bg-brand-hover">复制</button>
             </div>
             <div className="text-[11.5px] leading-relaxed text-ink-4">链接已绑定 代理×品牌×套餐×渠道 归因；落地页含连续包月告知与退订入口，素材需过审后投放。</div>
           </div>

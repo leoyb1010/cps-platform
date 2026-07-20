@@ -32,7 +32,8 @@ function blockedIpv4(host: string): boolean {
     inRange(host, '198.18.0.0', 15) ||
     inRange(host, '198.51.100.0', 24) ||
     inRange(host, '203.0.113.0', 24) ||
-    inRange(host, '224.0.0.0', 4)
+    inRange(host, '224.0.0.0', 4) ||
+    inRange(host, '240.0.0.0', 4) // Class E / 255.255.255.255 广播
   )
 }
 
@@ -40,11 +41,29 @@ function benchmarkIpv4(host: string): boolean {
   return inRange(host, '198.18.0.0', 15)
 }
 
+// IPv4-mapped IPv6 还原为点分 IPv4。覆盖点分(::ffff:1.2.3.4)与 hex(::ffff:0102:0304)两种形态——
+// Node 的 WHATWG URL 会把 [::ffff:169.254.169.254] 规范化成 hex ::ffff:a9fe:a9fe，仅认点分会被绕过。
+function mappedIpv4(h: string): string | null {
+  const dotted = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
+  if (dotted) return isIP(dotted[1]) === 4 ? dotted[1] : null
+  const hex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (hex) {
+    const hi = parseInt(hex[1], 16)
+    const lo = parseInt(hex[2], 16)
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`
+  }
+  return null
+}
+
 function blockedIpv6(host: string): boolean {
   const h = host.toLowerCase()
-  const mapped = h.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)
-  if (mapped) return blockedIpv4(mapped[1])
-  return h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80:')
+  const m = mappedIpv4(h)
+  if (m) return blockedIpv4(m)
+  if (h === '::' || h === '::1') return true // 未指定地址 / 环回
+  if (h.startsWith('fc') || h.startsWith('fd')) return true // 唯一本地地址 fc00::/7
+  if (/^fe[89ab]/.test(h)) return true // 链路本地 fe80::/10（原 'fe80:' 漏了 fe81–febf）
+  if (h.startsWith('ff')) return true // 组播 ff00::/8
+  return false
 }
 
 function blockedIp(host: string): boolean {

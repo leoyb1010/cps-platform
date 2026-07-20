@@ -88,6 +88,7 @@ export const marketDemo = {
   async pay(bundleId: string, _channel: string): Promise<{ ok: boolean; detail?: string; finalPrice?: number; paid?: boolean }> {
     await wait(420)
     void bundleId
+    void _channel
     return { ok: true, detail: '支付成功（演示）', paid: true }
   },
 }

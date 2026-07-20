@@ -69,6 +69,9 @@ model AuditLog {
   ip         String   @default("")
   ua         String   @default("")
   at         DateTime @default(now())
+
+  @@index([at]) // 审计流水默认按时间倒序列（热查询）
+  @@index([category, at]) // 按类目（fund/risk/…）筛选 + 时间倒序
 }
 
 // ── 组织 / 配置 ──────────────────────────────
@@ -244,6 +247,10 @@ model Ticket {
   note       String @default("") // 处理备注 / 回复内容
   handledBy  String @default("") // 处理方标识（brand:<id> / agent:<id> / ops）
   createdAt  DateTime @default(now())
+
+  @@index([brandId, status]) // 品牌工单列表按状态
+  @@index([agentId, status]) // 代理工单列表按状态
+  @@index([status]) // 平台按状态/监管口径统计
 }
 
 // ── 订阅增长交易（新）：增长合约 / 订阅聚合 / 准备金释放台账 ──
@@ -459,6 +466,9 @@ model Notification {
   link      String   @default("") // 前端 hash 路由
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([userId]) // 精确投递到用户的通知
+  @@index([scopeType, scopeId, createdAt]) // 按 scope 拉取 + 时间倒序（门户消息列表热查询）
 }
 
 // 代理领取投放 → 生成专属追踪链接。
@@ -501,4 +511,7 @@ model PayoutRequest {
   reviewNote String    @default("")
   createdAt  DateTime  @default(now())
   decidedAt  DateTime?
+
+  @@index([agentId, status]) // 代理-我的申请 / 按状态汇总（portal aggregate）
+  @@index([status, createdAt]) // 平台审批队列按状态 + 时间倒序
 }

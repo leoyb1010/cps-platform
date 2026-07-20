@@ -26,6 +26,7 @@ import { MetricsInterceptor } from './common/metrics.interceptor'
 import { IdempotencyService } from './common/idempotency.service'
 import { ReconciliationService } from './business/reconciliation.service'
 import { SettlementService } from './business/settlement.service'
+import { SettlementRunService } from './business/settlement-run.service'
 import { ScopeService } from './business/scope.service'
 import { ReserveReleaseService } from './business/reserve-release.service'
 import { FulfillmentService } from './business/fulfillment.service'
@@ -72,6 +73,7 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     IdempotencyService,
     ReconciliationService,
     SettlementService,
+    SettlementRunService,
     ScopeService,
     ReserveReleaseService,
     FulfillmentService,

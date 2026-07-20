@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common'
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, SetMetadata, UnauthorizedException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
@@ -37,6 +37,13 @@ export class AuthGuard implements CanActivate {
     if ((payload.tv ?? 0) !== currentTv) throw new UnauthorizedException('登录态已失效，请重新登录')
     const user = await this.auth.toAuthUser(payload.sub)
     if (!user) throw new UnauthorizedException('用户不存在或已停用')
+    // 首登强制改密的服务端闸：mustChangePassword=true 时只放行「改密 / 查我」，其余端点一律 403。
+    // 否则受邀成员拿临时密码登录后，绕过前端改密页(改地址栏/刷新恢复会话)即可长期使用临时口令。
+    if (user.mustChangePassword) {
+      const p: string = req.path || ''
+      const allowed = p.endsWith('/auth/change-password') || p.endsWith('/auth/me')
+      if (!allowed) throw new ForbiddenException('请先修改初始密码后再继续操作')
+    }
     req.user = user
     return true
   }

@@ -6,7 +6,9 @@ import { cx } from '../../lib/format'
 import { resolveBrandLogo } from '../../lib/brandLogos'
 
 /* ── replay / choreography epoch ─────────────────── */
-export const ReplayContext = createContext<{ epoch: number; replay: () => void }>({
+// epoch 作为「重播令牌」：值一变即让编排动效从 0 起跳。number（AppLayout 计数器）或 string（门户用 pathname）皆可，
+// 下游仅用 !== 比较，不参与运算。
+export const ReplayContext = createContext<{ epoch: number | string; replay: () => void }>({
   epoch: 0,
   replay: () => {},
 })
@@ -15,7 +17,7 @@ export const useReplay = () => useContext(ReplayContext)
 /* ── count-up hook (cubic ease-out, matches design) ─ */
 export function useCountUp(
   to: number,
-  opts?: { decimals?: number; prefix?: string; suffix?: string; duration?: number; epoch?: number; group?: boolean },
+  opts?: { decimals?: number; prefix?: string; suffix?: string; duration?: number; epoch?: number | string; group?: boolean },
 ) {
   const dec = opts?.decimals ?? 0
   const pre = opts?.prefix ?? ''

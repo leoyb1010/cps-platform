@@ -29,7 +29,6 @@ export function reportError(error: unknown, context?: Record<string, unknown>): 
     // 接入时：import('@sentry/react').then((S) => S.captureException(error, { extra: context }))
   }
   // 兜底：始终 console，保证本地/未接入环境仍可见
-  // eslint-disable-next-line no-console
   console.error('[monitor]', error, context ?? '')
 }
 

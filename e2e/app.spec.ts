@@ -48,31 +48,22 @@ test('退款联动：投诉工单退款后工单流转、活动流记录', async
   await login(page, 'risk') // 风控/售后有 ticket.handle
   await page.goto('/#/complaints')
   await expect(page.getByRole('heading', { name: '投诉工单' })).toBeVisible()
-  // 打开一个待处理工单的抽屉
-  const row = page.locator('table tbody tr').first()
-  await row.click()
+  // 首行 T-5521 在 mock 数据中固定为待处理 → 退款入口必然存在。
+  // 断言写死不做 if 条件（条件断言会在 UI 改坏时静默空测）。
+  await page.locator('table tbody tr').first().click()
   const drawer = page.getByRole('dialog')
   await expect(drawer).toBeVisible()
-  const refundBtn = drawer.getByRole('button', { name: /退款并冲账/ })
-  if (await refundBtn.count()) {
-    await refundBtn.click()
-    // 确认弹窗
-    const confirm = page.getByRole('button', { name: /确认|确定/ })
-    if (await confirm.count()) await confirm.first().click()
-    // 出现成功 toast 或抽屉关闭
-    await expect(page.getByText(/已退款|联动冲账/).first()).toBeVisible({ timeout: 5000 })
-  }
+  await drawer.getByRole('button', { name: /退款并冲账/ }).click()
+  await page.getByRole('button', { name: '确认退款' }).click()
+  await expect(page.getByText('已退款，联动冲账完成').first()).toBeVisible({ timeout: 5000 })
 })
 
 test('退出登录 → 回到登录页', async ({ page }) => {
   await login(page)
-  // 打开账户菜单（右上角头像）
-  await page.getByRole('button', { name: /账户|李运营|admin/ }).first().click().catch(() => {})
-  const logout = page.getByText('退出登录')
-  if (await logout.count()) {
-    await logout.click()
-    await expect(page).toHaveURL(/#\/login/)
-  }
+  // 账户菜单按钮以用户名（admin=李运营）为可访问名，确定性存在；不做条件断言
+  await page.getByRole('button', { name: /李运营/ }).first().click()
+  await page.getByText('退出登录').click()
+  await expect(page).toHaveURL(/#\/login/)
 })
 
 test('权限路由守卫：审计角色直链配置中心 → 弹回总览', async ({ page }) => {

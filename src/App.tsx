@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth, useCan, bootstrapAuth, getCurrentUser, shouldHydratePlatformStore } from './lib/auth'
 import { isRealApi } from './lib/http'
 import { hydrateFromServer } from './lib/store'
+import { reportError } from './lib/monitoring'
 import AppLayout from './components/layout/AppLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -69,6 +70,9 @@ function RequireScope({ allow, children }: { allow: 'platform' | 'brand' | 'agen
   const loc = useLocation()
   const loginPath = loc.pathname.startsWith('/portal') ? '/portal/login' : '/login'
   if (!user) return <Navigate to={loginPath} replace state={{ from: loc.pathname }} />
+  // 首登强制改密:登录页拦截只是第一道,直改地址栏/刷新恢复会话会绕过它。这里在所有受守卫路由再拦一道,
+  // 逼回改密页(与后端 AuthGuard 的 mustChangePassword 闸同口径,后端才是权威)。
+  if (user.mustChangePassword && loc.pathname !== '/change-password') return <Navigate to="/change-password" replace />
   const t = (user.scopeType ?? 'platform') as string
   if (!KNOWN_SCOPES.includes(t as (typeof KNOWN_SCOPES)[number])) return <Navigate to={loginPath} replace />
   if (t !== allow) return <Navigate to={homeForScope(user)} replace />
@@ -108,6 +112,7 @@ export default function App() {
     if (needsBootstrap)
       bootstrapAuth()
         .then((ok) => (ok && shouldHydratePlatformStore(getCurrentUser()) ? hydrateFromServer() : undefined))
+        .catch((e) => reportError(e, { at: 'bootstrapAuth' })) // 恢复失败按未登录处理，守卫会送回登录页
         .finally(() => setReady(true))
   }, [needsBootstrap])
   if (!ready) {

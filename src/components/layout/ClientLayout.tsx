@@ -161,8 +161,9 @@ export default function ClientLayout({ nav, branding }: { nav: PortalNavGroup[];
   // 订阅主题（useTheme）保证明暗切换时白标重算——暗底下 ink/hover 要提亮而非加深。
   useTheme()
   const wl = user?.scopeType === 'brand' ? brandTheme(user.scopeId, resolvedTheme() === 'dark') : {}
-  // 用路由路径作为 replay epoch 的种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
-  const epoch = loc.pathname.length
+  // 用路由路径本身作为 replay epoch 种子：进入/切换页面时让 CountUp 等编排动效从 0 起跳。
+  // F3：原用 pathname.length，同长度路径互切（如 /portal/agent ↔ /portal/brand）epoch 不变 → CountUp 不重播。
+  const epoch = loc.pathname
   return (
     <ReplayContext.Provider value={{ epoch, replay: () => {} }}>
       <div className="min-h-screen bg-canvas" style={wl}>

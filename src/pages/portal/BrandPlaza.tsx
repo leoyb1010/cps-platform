@@ -114,7 +114,7 @@ export function BrandPlaza() {
                 <Row k="额度" v={<span className="tnum">{r.quota}</span>} />
                 <Row k="期望换取" v={r.want} />
               </div>
-              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => { toast({ tone: 'good', text: '已复制意向到资源置换页（演示）' }); nav('/portal/brand/barter') }}>
+              <Button variant="primary" className="mt-3 w-full justify-center" onClick={() => { toast({ tone: 'good', text: '已复制意向到资源置换页（演示）' }); void nav('/portal/brand/barter') }}>
                 <Repeat size={14} /> 发起置换
               </Button>
             </Card>

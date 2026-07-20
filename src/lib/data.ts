@@ -779,14 +779,19 @@ const UNKNOWN_BRAND: Brand = { id: '?', name: '未知品牌', mark: '?', categor
  */
 let liveBrands: Brand[] = brands
 let liveAgents: Agent[] = agents
-export function __syncLiveEntities(next: { brands?: Brand[]; agents?: Agent[] }) {
+let liveMerchants: MerchantAccount[] = merchants
+export function __syncLiveEntities(next: { brands?: Brand[]; agents?: Agent[]; merchants?: MerchantAccount[] }) {
   if (next.brands) liveBrands = next.brands
   if (next.agents) liveAgents = next.agents
+  if (next.merchants) liveMerchants = next.merchants
 }
-export const brandById = (id: string): Brand => liveBrands.find((b) => b.id === id) ?? brands.find((b) => b.id === id) ?? UNKNOWN_BRAND
-export const agentById = (id: string) => liveAgents.find((a) => a.id === id) ?? agents.find((a) => a.id === id)
+// 只查活体注册表，命中不到即空态(UNKNOWN/undefined)。不再二级回退静态种子——
+// real 模式下 liveBrands 是服务端水合的真实集，回退种子会把编造的品牌费率/号池当真数据展示
+//(P1-F1 残漏）。mock 模式 liveBrands 启动即种子全集，此改动对演示态无影响。
+export const brandById = (id: string): Brand => liveBrands.find((b) => b.id === id) ?? UNKNOWN_BRAND
+export const agentById = (id: string) => liveAgents.find((a) => a.id === id)
 export const merchantsByBrand = (id: string) =>
-  merchants.filter((m) => m.brandId === id)
+  liveMerchants.filter((m) => m.brandId === id)
 
 export const months12 = [
   '7月', '8月', '9月', '10月', '11月', '12月',

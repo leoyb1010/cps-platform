@@ -8,6 +8,7 @@ import { IdempotencyService } from '../common/idempotency.service'
 import { MetricsService } from '../common/metrics.service'
 import { ReconciliationService } from './reconciliation.service'
 import { SettlementService } from './settlement.service'
+import { SettlementRunService } from './settlement-run.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { FulfillmentService } from './fulfillment.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
@@ -55,6 +56,16 @@ class SettlementQueryDto {
   @IsOptional() @IsArray() @IsString({ each: true }) periods?: string[]
   @IsOptional() @IsIn(['pending', 'cleared', 'reconciling', 'reversed']) status?: string
   @IsOptional() @IsString() @MaxLength(40) brandId?: string
+}
+// 结算跑批入参：账期标签（落库到 settlement.period）+ 订单聚合时间区间 [from, to)
+class SettlementRunDto {
+  @IsString() @MaxLength(40) period!: string
+  @IsISO8601() from!: string
+  @IsISO8601() to!: string
+}
+// 提现申请驳回入参：审批备注（可选）
+class PayoutRejectDto {
+  @IsOptional() @IsString() @MaxLength(200) reviewNote?: string
 }
 class NewBrandDto {
   @IsString() @MaxLength(60) name!: string
@@ -159,6 +170,7 @@ export class BusinessController {
     private metrics: MetricsService,
     private recon: ReconciliationService,
     private settle: SettlementService,
+    private settleRun: SettlementRunService,
     private reserve: ReserveReleaseService,
     private fulfillment: FulfillmentService,
     private sc: ScopeService,
@@ -169,6 +181,18 @@ export class BusinessController {
   runReconciliation(@CurrentUser() user: AuthUser) {
     this.assertPlatform(user)
     return this.recon.run()
+  }
+
+  // ── 结算跑批（P0-B1/B2 生产侧出账）：按账期聚合已履约订单 → 生成结算单 + 准备金释放计划 ──
+  //   幂等：同品牌同账期唯一，重复跑批只补齐缺失品牌、不覆盖已生成单。生成后建议随即触发 reconciliation/run 复核。
+  @Post('settlements/run') @RequirePerms('settlement.clear') @ApiOperation({ summary: '生成账期结算单 + 准备金释放计划（按已履约订单聚合，幂等跑批）' })
+  async runSettlement(@Body() dto: SettlementRunDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
+    const from = new Date(dto.from)
+    const to = new Date(dto.to)
+    if (isNaN(from.getTime()) || isNaN(to.getTime()) || from >= to) return { ok: false, detail: '账期区间非法（from 须早于 to）' }
+    const r = await this.settleRun.generatePeriod({ period: dto.period, from, to, actorName: user.name })
+    return { ok: true, detail: `账期「${dto.period}」跑批完成：新生成 ${r.generated} 张，跳过 ${r.skipped} 张`, ...r }
   }
 
   // ── 风险准备金分期释放（资金动作：幂等 + 审计 fail-closed + 条件更新防并发）──
@@ -299,13 +323,14 @@ export class BusinessController {
       return this.prisma.settlement.findMany({
         where,
         select: { id: true, brandId: true, period: true, gross: true, brandShare: true, reserve: true, status: true },
+        orderBy: { period: 'desc' }, take: LIST_CAP,
       })
     }
-    return this.prisma.settlement.findMany({ where })
+    return this.prisma.settlement.findMany({ where, orderBy: { period: 'desc' }, take: LIST_CAP })
   }
 
   @Get('tickets') @RequirePerms('ticket.read') @ApiOperation({ summary: '投诉工单（按 scope 收窄）' })
-  tickets(@CurrentUser() user: AuthUser) { return this.prisma.ticket.findMany({ where: this.scopeOwned(user) }) }
+  tickets(@CurrentUser() user: AuthUser) { return this.prisma.ticket.findMany({ where: this.scopeOwned(user), orderBy: { createdAt: 'desc' }, take: LIST_CAP }) }
 
   @Get('summary') @RequirePerms('dashboard.view') @ApiOperation({ summary: '经营总览汇总（风险条/待办派生 · 按 scope 收窄）' })
   async summary(@CurrentUser() user: AuthUser) {
@@ -315,22 +340,25 @@ export class BusinessController {
     const tWhere = this.scopeOwned(user)
     const sWhere = this.scope(user, 'brandId')
     const aWhere = this.scope(user, 'id-agent')
-    const [merchants, tickets, settlements, agents] = await Promise.all([
-      this.prisma.merchantAccount.findMany({ where: mWhere }),
-      this.prisma.ticket.findMany({ where: tWhere }),
-      this.prisma.settlement.findMany({ where: sWhere }),
-      this.prisma.agent.findMany({ where: aWhere }),
+    // P1-B11：改用 DB count/aggregate 而非 findMany+reduce——原实现把全量 scope 行拉进内存，
+    //   数据量大后既慢又占内存；且若为此加 take 上限会静默少算 reconcileDiff/pendingPayout 等资金总额。
+    //   聚合在 DB 侧完成，任意规模都有界且金额口径精确。
+    const [fused, suspended, maxComplaintAgg, regTickets, reconcileAgg, riskyAgents, payoutAgg] = await Promise.all([
+      this.prisma.merchantAccount.count({ where: { ...mWhere, state: 'fused' } }),
+      this.prisma.merchantAccount.count({ where: { ...mWhere, state: { in: ['throttled', 'paused'] } } }),
+      this.prisma.merchantAccount.aggregate({ where: mWhere, _max: { complaintRate: true } }),
+      this.prisma.ticket.count({ where: { ...tWhere, level: 'regulatory', status: { not: 'resolved' } } }),
+      this.prisma.settlement.aggregate({ where: sWhere, _sum: { reconcileDiff: true } }),
+      this.prisma.agent.count({ where: { ...aWhere, status: { not: 'active' } } }),
+      this.prisma.agent.aggregate({ where: aWhere, _sum: { payoutPending: true } }),
     ])
-    const fused = merchants.filter((m) => m.state === 'fused').length
-    const suspended = merchants.filter((m) => m.state === 'throttled' || m.state === 'paused').length
-    const reconcileDiff = settlements.reduce((a, s) => a + s.reconcileDiff, 0)
     return {
       pool: { fused, suspended },
-      maxComplaint: merchants.length ? Math.max(...merchants.map((m) => m.complaintRate)) : 0,
-      regTickets: tickets.filter((t) => t.level === 'regulatory' && t.status !== 'resolved').length,
-      reconcileDiff,
-      riskyAgents: agents.filter((a) => a.status !== 'active').length,
-      pendingPayout: agents.reduce((a, x) => a + x.payoutPending, 0),
+      maxComplaint: maxComplaintAgg._max.complaintRate ?? 0,
+      regTickets,
+      reconcileDiff: reconcileAgg._sum.reconcileDiff ?? 0,
+      riskyAgents,
+      pendingPayout: payoutAgg._sum.payoutPending ?? 0,
     }
   }
 
@@ -467,16 +495,49 @@ export class BusinessController {
       const amt = a.payoutPending
       // 资金动作：条件更新(防并发重复提现) + 审计同事务（fail-closed）
       return this.prisma.$transaction(async (tx) => {
-        const r = await tx.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: a.settledTotal + amt } })
+        // settledTotal 原子累加：不用事务外快照 a.settledTotal + amt（并发结算+准备金释放补回 payoutPending 时会少计）。
+        // payoutPending 仍绝对清零——where payoutPending:amt 守卫已保证这笔余额只被结算一次。
+        const r = await tx.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: { increment: amt } } })
         if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
-        // 结算即打款：把该代理仍挂 pending 的提现申请一并终结为 paid，避免与 payoutPending 脱钩
-        // 留下悬空记录（后续若接入"审批放款"流程，悬空的 pending 会造成重复打款）。
-        await tx.payoutRequest.updateMany({ where: { agentId: id, status: 'pending' }, data: { status: 'paid', decidedAt: new Date() } })
+        // P1-B6 人工闸：结算只终结「已审批(approved)」的提现申请为 paid，绝不再把未审批的 pending 一键放款——
+        //   未审批申请必须先经 approve/reject 端点人工过闸；未审批的 pending 保留待复核，不随结算静默出账。
+        await tx.payoutRequest.updateMany({ where: { agentId: id, status: 'approved' }, data: { status: 'paid', decidedAt: new Date() } })
         await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
         return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
       })
     }, id)
     return replayed ? { ...result, replayed: true } : result
+  }
+
+  // ── 提现申请审批（P1-B6 人工闸）：代理经 portal 发起申请(pending) → 平台 approve/reject → 结算只放款 approved ──
+  @Get('payout-requests') @RequirePerms('settlement.read') @ApiOperation({ summary: '提现申请列表（平台审批用；可按状态筛选）' })
+  async payoutRequests(@CurrentUser() user: AuthUser, @Query('status') status?: string) {
+    this.assertPlatform(user)
+    const where = status && ['pending', 'approved', 'rejected', 'paid'].includes(status) ? { status } : {}
+    return this.prisma.payoutRequest.findMany({ where, orderBy: { createdAt: 'desc' }, take: LIST_CAP })
+  }
+
+  @Post('payout-requests/:id/approve') @RequirePerms('settlement.clear') @ApiOperation({ summary: '审批通过提现申请（pending→approved，待结算放款）' })
+  async approvePayout(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
+    return this.prisma.$transaction(async (tx) => {
+      // 条件更新认领：仅 pending 可审批通过；并发/重复点击 count=0 幂等拒绝，不覆盖已决状态。
+      const r = await tx.payoutRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'approved', decidedAt: new Date() } })
+      if (r.count === 0) return { ok: false, detail: '申请不存在或非待审批状态' }
+      await this.audit.recordInTx(tx, { user, action: 'payout.approve', resource: 'PayoutRequest', resourceId: id, detail: `提现申请 ${id} 审批通过（待结算放款）` })
+      return { ok: true, detail: `提现申请 ${id} 已通过` }
+    })
+  }
+
+  @Post('payout-requests/:id/reject') @RequirePerms('settlement.clear') @ApiOperation({ summary: '驳回提现申请（pending→rejected，不放款）' })
+  async rejectPayout(@Param('id') id: string, @Body() dto: PayoutRejectDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
+    return this.prisma.$transaction(async (tx) => {
+      const r = await tx.payoutRequest.updateMany({ where: { id, status: 'pending' }, data: { status: 'rejected', reviewNote: dto.reviewNote ?? '', decidedAt: new Date() } })
+      if (r.count === 0) return { ok: false, detail: '申请不存在或非待审批状态' }
+      await this.audit.recordInTx(tx, { user, action: 'payout.reject', resource: 'PayoutRequest', resourceId: id, detail: `提现申请 ${id} 已驳回${dto.reviewNote ? '：' + dto.reviewNote : ''}` })
+      return { ok: true, detail: `提现申请 ${id} 已驳回` }
+    })
   }
 
   // ── 品牌：创建 / 状态 / 配置 ──────────────
@@ -646,7 +707,7 @@ export class BusinessController {
   // ── 订阅商品审核（内部）──
   @Get('products') @RequirePerms('product.read') @ApiOperation({ summary: '全平台订阅商品列表（审核视角，按 scope 收窄；含品牌名以免依赖前端 mock）' })
   async products(@CurrentUser() user: AuthUser) {
-    const rows = await this.prisma.product.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null }, orderBy: { createdAt: 'desc' } })
+    const rows = await this.prisma.product.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null }, orderBy: { createdAt: 'desc' }, take: LIST_CAP })
     // 附带品牌名/标识，审核台不再依赖前端 mock brandById（C1）
     const brandIds = [...new Set(rows.map((r) => r.brandId))]
     const brands = await this.prisma.brand.findMany({ where: { id: { in: brandIds } } })
@@ -695,7 +756,7 @@ export class BusinessController {
   // ── 增长合约（内部 CRUD，收敛前端 mock 到 Prisma 单源）──
   @Get('contracts') @RequirePerms('contract.read') @ApiOperation({ summary: '增长合约列表（内部全量，按 scope 收窄）' })
   contracts(@CurrentUser() user: AuthUser) {
-    return this.prisma.growthContract.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null }, orderBy: { createdAt: 'desc' } })
+    return this.prisma.growthContract.findMany({ where: { ...this.scope(user, 'brandId'), deletedAt: null }, orderBy: { createdAt: 'desc' }, take: LIST_CAP })
   }
 
   @Post('contracts') @RequirePerms('contract.write') @ApiOperation({ summary: '创建增长合约（内部）' })
@@ -747,7 +808,7 @@ export class BusinessController {
 
   // ── 资源置换（内部 CRUD）──
   @Get('barter') @RequirePerms('barter.view') @ApiOperation({ summary: '资源置换台账（按 scope 收窄）' })
-  barter(@CurrentUser() user: AuthUser) { return this.prisma.barterDeal.findMany({ where: this.barterScope(user), orderBy: { createdAt: 'desc' } }) }
+  barter(@CurrentUser() user: AuthUser) { return this.prisma.barterDeal.findMany({ where: this.barterScope(user), orderBy: { createdAt: 'desc' }, take: LIST_CAP }) }
 
   @Post('barter') @RequirePerms('barter.write') @ApiOperation({ summary: '创建资源置换单（内部）' })
   async addBarter(@Body() dto: NewBarterDto, @CurrentUser() user: AuthUser) {

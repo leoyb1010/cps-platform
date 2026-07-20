@@ -28,8 +28,7 @@ jobs:
   lint:
     name: 代码规范 (ESLint · 前端)
     runs-on: ubuntu-latest
-    # 存量告警较多，暂不阻断合并：先建立基线、逐步清零后再转阻断（见下方 note）
-    continue-on-error: true
+    # 2026-07-19 存量已清零（0 error 0 warning），按既定计划转为阻断
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -76,7 +76,7 @@ export default function ChangePassword() {
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              submit()
+              void submit()
             }}
             className="space-y-3.5"
           >

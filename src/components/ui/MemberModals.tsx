@@ -42,7 +42,7 @@ export function InviteMemberModal({ scopeOptions, onClose, onDone }: { scopeOpti
           <div className="rounded-lg border border-good/30 bg-good-soft/40 p-3.5 text-[12.5px] text-ink-2">账号 <b className="tnum">{created.account}</b> 已创建并分配角色。请将下方一次性临时密码转交本人，首次登录后建议修改。</div>
           <div className="flex items-center justify-between rounded-lg border border-line bg-surface-muted p-3">
             <span className="text-[12px] text-ink-3">临时密码</span>
-            <button onClick={() => { copyText(created.tempPassword); toast({ tone: 'good', text: '已复制' }) }} className="tnum rounded-md bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink ring-1 ring-line hover:ring-brand/40">{created.tempPassword}</button>
+            <button onClick={() => { void copyText(created.tempPassword); toast({ tone: 'good', text: '已复制' }) }} className="tnum rounded-md bg-surface px-3 py-1.5 text-[13px] font-semibold text-ink ring-1 ring-line hover:ring-brand/40">{created.tempPassword}</button>
           </div>
           <div className="text-[11px] text-ink-4">密码仅展示这一次，关闭后无法再次查看（仅以哈希存库）。</div>
         </div>

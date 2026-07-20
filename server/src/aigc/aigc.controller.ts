@@ -57,6 +57,14 @@ export class AigcController {
   private async proxy(req: Request, res: Response, prefix: '/api/factory/' | '/api/billing/') {
     // 取 cps 路由后缀（factory/xxx → xxx），拼到 agent-studio 的 /api/<prefix>/xxx
     const tail = req.path.replace(/^\/aigc\/(factory|billing)\//, '')
+    // 纵深防御：拒绝 ../（含 %2e 编码形态）穿越出 /api/factory|billing 前缀，
+    // 否则持 aigc.view 的用户可经代理打到 agent-studio 的任意路由
+    let decodedTail = tail
+    try { decodedTail = decodeURIComponent(tail) } catch { /* 非法编码按原文检查 */ }
+    if (decodedTail.includes('..')) {
+      res.status(400).json({ code: 400, message: '非法路径' })
+      return
+    }
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
     const target = this.base() + prefix + tail + qs
 
