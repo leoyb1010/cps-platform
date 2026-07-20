@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { UserPlus, ShieldX, ArrowUpDown, Ban } from 'lucide-react'
+import { UserPlus, ShieldX, Ban } from 'lucide-react'
 import {
   Card,
   CardTitle,
@@ -10,6 +10,8 @@ import {
   Segmented,
   TableShell,
   Th,
+  SortTh,
+  useSort,
   Td,
   Row,
   TONE,
@@ -38,10 +40,9 @@ export default function Agents() {
   const totalSpend = agents.reduce((s, a) => s + a.spendMtd, 0)
   const totalPayout = agents.reduce((s, a) => s + a.payoutPending, 0)
   const avgScore = Math.round(agents.reduce((s, a) => s + a.creditScore, 0) / (agents.length || 1))
-  // 信用分排序：null=保持 store 原序，点击表头在 desc/asc 间切换
-  const [scoreSort, setScoreSort] = useState<'asc' | 'desc' | null>(null)
   const filtered = agents.filter((a) => (f === 'all' ? true : a.status === f))
-  const list = scoreSort ? [...filtered].sort((x, y) => (scoreSort === 'asc' ? x.creditScore - y.creditScore : y.creditScore - x.creditScore)) : filtered
+  // F5：统一表头排序（信用分 / 消耗 / 首单 / ROI / 待结算），替代原信用分单列手搓排序。
+  const sort = useSort(filtered)
   const blacklist = agents.filter((a) => a.status === 'blacklist')
   const [review, setReview] = useState(false)
   const [blOpen, setBlOpen] = useState(false)
@@ -87,27 +88,19 @@ export default function Agents() {
             <>
               <Th className="pl-3">代理 / 类型</Th>
               <Th>开票</Th>
-              <Th className="w-32">
-                <button
-                  aria-label={`按信用分排序${scoreSort === 'desc' ? '（当前降序）' : scoreSort === 'asc' ? '（当前升序）' : ''}`}
-                  onClick={() => setScoreSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
-                  className="inline-flex items-center font-medium hover:text-ink"
-                >
-                  信用分 <ArrowUpDown size={11} className={cx('ml-0.5 inline', scoreSort ? 'text-ink' : 'text-ink-4')} />
-                </button>
-              </Th>
-              <Th right>本月消耗</Th>
-              <Th right>首单数</Th>
-              <Th right>ROI</Th>
+              <SortTh sortKey="creditScore" sort={sort} className="w-32">信用分</SortTh>
+              <SortTh sortKey="spendMtd" sort={sort} right>本月消耗</SortTh>
+              <SortTh sortKey="firstOrders" sort={sort} right>首单数</SortTh>
+              <SortTh sortKey="roi" sort={sort} right>ROI</SortTh>
               <Th right>续费率</Th>
               <Th right>投诉率</Th>
-              <Th right>待结算</Th>
+              <SortTh sortKey="payoutPending" sort={sort} right>待结算</SortTh>
               <Th right>状态</Th>
               <Th right>操作</Th>
             </>
           }
         >
-          {list.map((a) => {
+          {sort.sorted.map((a) => {
             const st = AGENT_STATUS[a.status]
             const stone = scoreTone(a.creditScore)
             const black = a.status === 'blacklist'
