@@ -8,19 +8,10 @@ import { validatePublicCallbackUrl } from '../common/callback-url'
 import { sendAlert } from '../common/alert'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
-// 模块级 logger（供自由函数 yuanToFen 用；类内另有 this.logger）
-const moduleLogger = new Logger('SignWebhook')
 
 // 出站回调字段（status 由调用方传有道枚举常量：0解约1签约2代扣3退款4代扣失败5退款失败）
+// P1-B7：amount 现为整数分（内部全链路分），回调 price 直接取用，无需再 元→分。
 type WebhookFields = { orderNo?: string; amount?: number; period?: number; operateTime?: Date; subMsg?: string }
-
-// 元→分（Long）。断言金额最多两位小数，避免浮点丢分（红线：对外金额精度）。
-function yuanToFen(yuan: number): number {
-  const cents = Math.round(yuan * 100)
-  // P3-5 容差校验：若 yuan 有 >2 位小数，round 后会与真实分值不一致（丢分）——记日志但不阻断（演示态价均两位）
-  if (Math.abs(yuan * 100 - cents) > 1e-6) moduleLogger.warn(`金额 ${yuan} 元超过两位小数，round 为 ${cents} 分可能丢分（对外精度）`)
-  return cents
-}
 
 // 平台级回调签名私钥（我方=有道，用它签出站回调，合作方用有道公钥验）。
 // 生产走 env/KMS；演示回退到 demo 私钥（与文档「有道平台公钥」对应）。
@@ -68,7 +59,7 @@ export class SignWebhookService {
       status,
       subMsg: fields.subMsg ?? '',
       effectiveTime: (fields.operateTime ?? new Date()).getTime(), // 13 位毫秒级
-      price: yuanToFen(fields.amount ?? 0), // 单位分
+      price: Math.round(fields.amount ?? 0), // 单位分（内部已是整数分，直接取用）
     }
     payload.sign = buildRsaSign(payload, platformPrivateKey())
     return payload

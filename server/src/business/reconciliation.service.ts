@@ -50,7 +50,7 @@ export class ReconciliationService {
     const BATCH = 500
     const mismatches: ReconItem[] = []
     const reserveMismatches: ReserveItem[] = []
-    const near = (a: number, b: number) => Math.abs(Math.round(a - b)) <= 1 // 1 元容差
+    const near = (a: number, b: number) => Math.round(a - b) === 0 // P1-B7：整数分精确，容差收紧到 0
     let checkedSettlements = 0
     let cursor: string | undefined
 
@@ -77,7 +77,7 @@ export class ReconciliationService {
         // ── 恒等式 I（计提，静态）：gross = brandShare + reserve + platformFee + agentPayout + reversal ──
         const allocated = s.brandShare + s.reserve + s.platformFee + s.agentPayout + s.reversal
         const diff = Math.round(s.gross - allocated)
-        if (Math.abs(diff) > 1) {
+        if (Math.abs(diff) > 0) { // P1-B7：整数分精确，恒等式 I 应严格相等
           mismatches.push({ id: s.id, brandId: s.brandId, gross: Math.round(s.gross), allocated: Math.round(allocated), diff })
         }
 

@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
+import { toYuan } from '../common/money' // P1-B7：内部分 → 对外元（支付参数口径）
 import { CpsService } from '../cps/cps.service'
 import { verifyRsaSign } from './rsa-signature'
 import { YD_CODE, ydErr, ydOk } from './youdao-codes'
@@ -79,8 +80,9 @@ export class YoudaoController {
     const orderId = r.data.signOrderNo
     // 回填有道字段（custOrderId 唯一标志、orderId 有道单号）
     await this.prisma.signOrder.update({ where: { id: orderId }, data: { custOrderId: dto.custOrderId, orderId } })
-    // 模拟支付参数（演示态）：真实为支付宝/微信下单串
-    const payInfo = { orderId, orderParam: `sandbox_pay_param&out_trade_no=${orderId}&total_amount=${(r.data as { amount?: number }).amount ?? ''}` }
+    // 模拟支付参数（演示态）：真实为支付宝/微信下单串。P1-B7：内部金额为分，total_amount 走支付宝口径（元）故 ÷100。
+    const amtFen = (r.data as { amount?: number }).amount
+    const payInfo = { orderId, orderParam: `sandbox_pay_param&out_trade_no=${orderId}&total_amount=${amtFen != null ? toYuan(amtFen) : ''}` }
     return ydOk({ isAuto: true, payInfo })
   }
 

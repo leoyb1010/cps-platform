@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { fromYuan, toYuan } from '../common/money' // P1-B7 元/分边界转换
 import { randomUUID, createHash } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
@@ -377,7 +378,7 @@ export class PortalController {
   async addBrandProduct(@Body() dto: PortalProductDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
     const id = 'PRD-' + randomUUID().slice(0, 6)
-    await this.prisma.product.create({ data: { id, brandId, name: dto.name, category: dto.category ?? '', description: dto.description ?? '', billingCycle: dto.billingCycle ?? 'continuous', firstPrice: dto.firstPrice, renewPrice: dto.renewPrice, defaultSharePct: dto.defaultSharePct ?? 30, status: 'draft', bundleEligible: dto.bundleEligible ?? true, exclusiveGroup: (dto.exclusiveGroup ?? '').slice(0, 40), tags: JSON.stringify(dto.tags ?? []) } })
+    await this.prisma.product.create({ data: { id, brandId, name: dto.name, category: dto.category ?? '', description: dto.description ?? '', billingCycle: dto.billingCycle ?? 'continuous', firstPrice: fromYuan(dto.firstPrice), renewPrice: fromYuan(dto.renewPrice), defaultSharePct: dto.defaultSharePct ?? 30, status: 'draft', bundleEligible: dto.bundleEligible ?? true, exclusiveGroup: (dto.exclusiveGroup ?? '').slice(0, 40), tags: JSON.stringify(dto.tags ?? []) } })
     await this.audit.record({ user, action: 'product.create', resource: 'Product', resourceId: id, detail: `品牌 ${brandId} 上架商品 ${dto.name}（草稿）` })
     return { ok: true, id }
   }
@@ -541,7 +542,7 @@ export class PortalController {
     const cp = await this.prisma.brand.findFirst({ where: { id: dto.counterpartyBrandId, deletedAt: null } })
     if (!cp) return { ok: false, detail: '对手品牌不存在' }
     const id = 'BD-' + randomUUID().slice(0, 6)
-    await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: brandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: dto.myQuota, counterpartyQuota: dto.counterpartyQuota, ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
+    await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: brandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: fromYuan(dto.myQuota), counterpartyQuota: fromYuan(dto.counterpartyQuota), ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
     await this.notify('brand', dto.counterpartyBrandId, 'contract', '收到资源置换提议', `${brandId} 向你发起 ${dto.resourceType} 置换`, '/portal/brand/barter')
     await this.audit.record({ user, action: 'barter.propose', resource: 'BarterDeal', resourceId: id, detail: `品牌 ${brandId} 发起置换 ${id}` })
     return { ok: true, id }
@@ -586,17 +587,18 @@ export class PortalController {
   @Post('agent/payout-requests') @RequirePerms('portal.agent.payouts') @ApiOperation({ summary: '代理发起提现申请' })
   async requestPayout(@Body() dto: PayoutRequestDto, @CurrentUser() user: AuthUser) {
     const agentId = this.scopeId(user, 'agent')
+    const amtFen = fromYuan(dto.amount) // P1-B7：入参元 → 整数分，与 payoutPending（分）同域比较/落库
     // 事务内聚合校验：已有 pending 申请总额 + 本次 ≤ payoutPending，防并发超额堆叠（S1）
     const out = await this.prisma.$transaction(async (tx) => {
       const agent = await tx.agent.findFirst({ where: { id: agentId, deletedAt: null } })
       if (!agent) return { ok: false, detail: '账户异常' }
       const agg = await tx.payoutRequest.aggregate({ where: { agentId, status: 'pending' }, _sum: { amount: true } })
       const pendingTotal = agg._sum.amount ?? 0
-      if (pendingTotal + dto.amount > agent.payoutPending) {
-        return { ok: false, detail: `申请金额超过可提现余额（余额 ¥${agent.payoutPending}，已申请待审 ¥${pendingTotal}）` }
+      if (pendingTotal + amtFen > agent.payoutPending) {
+        return { ok: false, detail: `申请金额超过可提现余额（余额 ¥${toYuan(agent.payoutPending)}，已申请待审 ¥${toYuan(pendingTotal)}）` }
       }
       const id = 'PR-' + randomUUID().slice(0, 6)
-      await tx.payoutRequest.create({ data: { id, agentId, amount: dto.amount, status: 'pending' } })
+      await tx.payoutRequest.create({ data: { id, agentId, amount: amtFen, status: 'pending' } })
       return { ok: true, id, detail: '提现申请已提交，等待平台审批' }
     })
     if (out.ok) {

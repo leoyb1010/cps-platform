@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { PrismaService } from '../prisma.service'
 import { AuditService } from '../audit/audit.service'
-import { sum, mul, minus, round2, splitProportional } from '../common/money'
+import { sum, mul, minus, round2, splitProportional, toYuan } from '../common/money'
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 
@@ -135,7 +135,7 @@ export class SettlementRunService {
         await this.audit.recordInTx(tx, {
           user: null, actorName: args.actorName ?? '结算跑批',
           action: 'settlement.generate', resource: 'Settlement', resourceId: settlementId,
-          detail: `生成结算单 ${settlementId} · ${brand.name} · ${args.period} · GMV ¥${gross} · 准备金 ¥${split.reserve}（${releaseRows.length} 期释放计划）`,
+          detail: `生成结算单 ${settlementId} · ${brand.name} · ${args.period} · GMV ¥${toYuan(gross)} · 准备金 ¥${toYuan(split.reserve)}（${releaseRows.length} 期释放计划）`,
           after: { gross, brandShare: split.brandShare, platformFee: split.platformFee, agentPayout: split.agentPayout, reserve: split.reserve },
         })
       })

@@ -12,7 +12,7 @@ import { SettlementRunService } from './settlement-run.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { FulfillmentService } from './fulfillment.service'
 import { RequirePerms, CurrentUser, type AuthUser } from '../rbac/rbac'
-import { splitProportional, sum } from '../common/money'
+import { splitProportional, sum, fromYuan, toYuan } from '../common/money'
 import { ScopeService } from './scope.service'
 
 // 防碰撞 ID：randomUUID 短码，避免 Date.now() 同毫秒生成相同主键 → 事务内 P2002
@@ -237,7 +237,7 @@ export class BusinessController {
         if (res.ok) { released++; amount += res.amount ?? 0 }
       }
       this.metrics.recordFundAction('reserve.release-due', 'ok')
-      return { ok: true, detail: `到期释放 ${released} 笔，合计 ¥${amount}`, released, amount, scanned: ids.length }
+      return { ok: true, detail: `到期释放 ${released} 笔，合计 ¥${toYuan(amount)}`, released, amount, scanned: ids.length }
     }, tenant)
     return replayed ? { ...result, replayed: true } : result
   }
@@ -392,7 +392,7 @@ export class BusinessController {
         const r = await tx.settlement.updateMany({ where: { id, status: { in: ['reconciling', 'cleared'] } }, data: { status: 'cleared', reconcileDiff: 0 } })
         if (r.count === 0) return { ok: false, detail: '该结算单当前状态不可核销（仅对账中/已结算可核销）' }
         // 审计记录被核销的差额值（事务外读取的核销前 reconcileDiff），便于事后追溯核销口径
-        await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异 ¥${target.reconcileDiff} 已人工核销`, before: { reconcileDiff: target.reconcileDiff }, after: { status: 'cleared', reconcileDiff: 0 } })
+        await this.audit.recordInTx(tx, { user, action: 'settlement.reconcile', resource: 'Settlement', resourceId: id, detail: `结算单 ${id} 对账差异 ¥${toYuan(target.reconcileDiff)} 已人工核销`, before: { reconcileDiff: target.reconcileDiff }, after: { status: 'cleared', reconcileDiff: 0 } })
         return { ok: true, detail: `结算单 ${id} 对账差异已人工核销` }
       })
     }, id)
@@ -443,7 +443,7 @@ export class BusinessController {
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金，
         //   不再对 share 全额再扣一次）。守恒式 II，不动 reserve/agentPayout。
         if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
-        await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${amount}，逆向冲账 ¥${share}，代理 ${t.agentId} 信用分 −4` })
+        await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${toYuan(amount)}，逆向冲账 ¥${toYuan(share)}，代理 ${t.agentId} 信用分 −4` })
         return true
       })
       if (!claimed) {
@@ -456,7 +456,7 @@ export class BusinessController {
       }
       this.metrics.recordFundAction('ticket.refund', 'ok')
       this.metrics.addRefundAmount(amount)
-      return { ok: true, detail: `工单 ${id} 已退款 ¥${amount}，联动冲账 ¥${share} 完成`, amount, share }
+      return { ok: true, detail: `工单 ${id} 已退款 ¥${toYuan(amount)}，联动冲账 ¥${toYuan(share)} 完成`, amount, share }
     }, id)
     return replayed ? { ...result, replayed: true } : result
   }
@@ -502,8 +502,8 @@ export class BusinessController {
         // P1-B6 人工闸：结算只终结「已审批(approved)」的提现申请为 paid，绝不再把未审批的 pending 一键放款——
         //   未审批申请必须先经 approve/reject 端点人工过闸；未审批的 pending 保留待复核，不随结算静默出账。
         await tx.payoutRequest.updateMany({ where: { agentId: id, status: 'approved' }, data: { status: 'paid', decidedAt: new Date() } })
-        await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款` })
-        return { ok: true, detail: `代理 ${id} 提现 ¥${amt} 已打款` }
+        await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${toYuan(amt).toLocaleString('zh-CN')} 已打款` })
+        return { ok: true, detail: `代理 ${id} 提现 ¥${toYuan(amt)} 已打款` }
       })
     }, id)
     return replayed ? { ...result, replayed: true } : result
@@ -625,7 +625,7 @@ export class BusinessController {
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
         if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
         // 审计同事务（fail-closed）
-        await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${amt}，逆向冲账 ¥${share}` })
+        await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${toYuan(amt)}，逆向冲账 ¥${toYuan(share)}` })
         return { amt, share }
       })
       if (!amount) {
@@ -819,7 +819,7 @@ export class BusinessController {
     const cp = await this.prisma.brand.findFirst({ where: { id: dto.counterpartyBrandId, deletedAt: null } })
     if (!cp) return { ok: false, detail: '对手品牌不存在或已删除' }
     const id = 'BD-' + shortId()
-    await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: dto.initiatorBrandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: dto.myQuota, counterpartyQuota: dto.counterpartyQuota, ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
+    await this.prisma.barterDeal.create({ data: { id, initiatorBrandId: dto.initiatorBrandId, counterpartyBrandId: dto.counterpartyBrandId, resourceType: dto.resourceType, myQuota: fromYuan(dto.myQuota), counterpartyQuota: fromYuan(dto.counterpartyQuota), ...(dto.invoiceStatus ? { invoiceStatus: dto.invoiceStatus } : {}), terms: JSON.stringify(dto.terms ?? {}) } })
     await this.audit.record({ user, action: 'barter.create', resource: 'BarterDeal', resourceId: id, detail: `置换单 ${id}` })
     return { ok: true, id }
   }
@@ -875,12 +875,13 @@ export class BusinessController {
   async ingest(@Body() dto: OrderIngestDto, @CurrentUser() user: AuthUser) {
     this.assertCreateAttribution(user, dto.brandId, dto.agentId)
     const id = 'O-' + shortId()
+    const amtFen = fromYuan(dto.amount) // P1-B7：入参元 → 整数分
     const res = await this.prisma.$transaction(async (tx) => {
       await tx.order.create({
-        data: { id, time: '实时', brandId: dto.brandId, agentId: dto.agentId, channel: dto.channel ?? 'wechat', type: dto.type, amount: dto.amount, plan: dto.plan, mid: 'M-RT', productId: dto.productId ?? null },
+        data: { id, time: '实时', brandId: dto.brandId, agentId: dto.agentId, channel: dto.channel ?? 'wechat', type: dto.type, amount: amtFen, plan: dto.plan, mid: 'M-RT', productId: dto.productId ?? null },
       })
       // 履约引擎：匹配合约累加 achievedGmv + 推进状态 + 订阅 upsert（事务内）
-      const r = await this.fulfillment.ingestOrder(tx as never, { id, brandId: dto.brandId, agentId: dto.agentId, productId: dto.productId, amount: dto.amount, type: dto.type, plan: dto.plan })
+      const r = await this.fulfillment.ingestOrder(tx as never, { id, brandId: dto.brandId, agentId: dto.agentId, productId: dto.productId, amount: amtFen, type: dto.type, plan: dto.plan })
       return { orderId: id, ...r }
     })
     await this.audit.record({ user, action: 'order.ingest', resource: 'Order', resourceId: id, detail: `履约订单 ${id} · ¥${dto.amount}${res.matchedContractId ? ` · 合约 ${res.matchedContractId} 累加` : ''}` })
@@ -998,7 +999,7 @@ export class BusinessController {
           out.push({ orderId: oid, productId: p.id, brandId: p.brandId, amount: alloc[i], matchedContractId: r.matchedContractId, subscriptionId: r.subscriptionId })
         }
         const totalAllocated = sum(out.map((r) => r.amount))
-        await this.audit.recordInTx(tx, { user, action: 'bundle.fulfill', resource: 'Bundle', resourceId: id, detail: `套餐 ${id} 受理 → 拆 ${out.length} 笔订单 ¥${totalAllocated} 经 ${dto.agentId} 履约` })
+        await this.audit.recordInTx(tx, { user, action: 'bundle.fulfill', resource: 'Bundle', resourceId: id, detail: `套餐 ${id} 受理 → 拆 ${out.length} 笔订单 ¥${toYuan(totalAllocated)} 经 ${dto.agentId} 履约` })
         return { ok: true, bundleId: id, orderIds: out.map((r) => r.orderId), matched: out, totalAllocated }
       })
     }, id)

@@ -23,6 +23,7 @@ import { MarketController } from './market/market.controller'
 import { HealthController } from './common/health.controller'
 import { MetricsService } from './common/metrics.service'
 import { MetricsInterceptor } from './common/metrics.interceptor'
+import { MoneyResponseInterceptor } from './common/money.interceptor'
 import { IdempotencyService } from './common/idempotency.service'
 import { ReconciliationService } from './business/reconciliation.service'
 import { SettlementService } from './business/settlement.service'
@@ -84,9 +85,10 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: PermsGuard },
-    // 拦截器：指标(先) → 审计(后)
+    // 拦截器：指标(先) → 审计 → 金额边界(分→元，最后作用于响应体)
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MoneyResponseInterceptor },
   ],
 })
 export class AppModule {

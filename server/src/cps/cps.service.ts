@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service'
 import { MetricsService } from '../common/metrics.service'
 import { SignWebhookService } from './sign-webhook.service'
 import { YD_STATUS } from '../youdao/youdao-status'
+import { toYuan } from '../common/money' // P1-B7：内部分 → 审计/展示元
 
 const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 
@@ -56,7 +57,7 @@ export class CpsService {
         status: 'signing', amount, currentPeriod: 0, extraInfo: args.extraInfo ?? '', appId: args.appId,
       },
     })
-    await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.sign', resource: 'SignOrder', resourceId: so, detail: `签约单 ${so} · 商品 ${product.id} · ¥${amount}` })
+    await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.sign', resource: 'SignOrder', resourceId: so, detail: `签约单 ${so} · 商品 ${product.id} · ¥${toYuan(amount)}` })
     // 模拟收银台链接（演示态）：前端 hash 路由，可在门户内展示签约确认页。
     const url = `/#/sign/${so}`
     return { code: 0, msg: 'success', data: { signOrderNo: so, url, amount } }
@@ -123,7 +124,7 @@ export class CpsService {
           },
         })
         if (advanced.count === 0) throw new Error(`签约单状态/期数已变更（期望 ${g.prevStatus}/${g.prevPeriod}），本次扣款回滚`)
-        await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge', resource: 'SignOrder', resourceId: so.id, detail: `${type === 'first' ? '首扣' : '续扣'} 第${period}期 · 订单 ${oid} · ¥${amount}` })
+        await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge', resource: 'SignOrder', resourceId: so.id, detail: `${type === 'first' ? '首扣' : '续扣'} 第${period}期 · 订单 ${oid} · ¥${toYuan(amount)}` })
         // P0-B3：出站回调事务内入队（与扣款原子提交，进程崩溃不丢回调）。
         //   首扣按业务时序先「签约成功(1)」后「扣款成功(2)」（period=0）；续扣仅推「扣款成功(2)」。
         if (type === 'first') {
@@ -181,7 +182,7 @@ export class CpsService {
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
         if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
-        await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.refund', resource: 'Order', resourceId: order.id, detail: `退款 ¥${amt} · 签约 ${signOrderNo} · 交易 ${extOrderNo} · 冲账 ¥${rev.share}` })
+        await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.refund', resource: 'Order', resourceId: order.id, detail: `退款 ¥${toYuan(amt)} · 签约 ${signOrderNo} · 交易 ${extOrderNo} · 冲账 ¥${toYuan(rev.share)}` })
         // P0-B3：退款回调(3)事务内入队（与逆向冲账原子提交，进程崩溃不丢回调）
         await this.webhook.enqueue(tx, signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: amt, period: order.period ?? 0, operateTime: new Date() })
         return { amt, share: rev.share, period: order.period }
@@ -273,7 +274,7 @@ export class CpsService {
             await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: so.brandId, agentId: so.agentId || '未知', productId: so.productId, amount: cr.amount, type: 'renew', plan: so.plan })
             await tx.signOrder.update({ where: { id: so.id }, data: { currentPeriod: period, nextChargeAt: new Date(now.getTime() + 30 * 86400000) } })
             await tx.chargeRetry.update({ where: { id: cr.id }, data: { status: 'succeeded', attempt: cr.attempt + 1, lastTriedAt: now } })
-            await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.retry', resource: 'ChargeRetry', resourceId: cr.id, detail: `补扣成功 第${period}期 · 订单 ${oid} · ¥${cr.amount}` })
+            await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.retry', resource: 'ChargeRetry', resourceId: cr.id, detail: `补扣成功 第${period}期 · 订单 ${oid} · ¥${toYuan(cr.amount)}` })
             // P0-B3：补扣成功回调(2)事务内入队（与补扣落账原子提交）
             await this.webhook.enqueue(tx, so.id, YD_STATUS.DEDUCT, { orderNo: ext, amount: cr.amount, period, operateTime: now })
             return { ext, period }

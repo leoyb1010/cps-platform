@@ -8,6 +8,7 @@ import { ReconciliationService } from './reconciliation.service'
 import { ReserveReleaseService } from './reserve-release.service'
 import { CpsService } from '../cps/cps.service'
 import { SignWebhookService } from '../cps/sign-webhook.service'
+import { toYuan } from '../common/money'
 import { sendAlert } from '../common/alert'
 
 /**
@@ -80,7 +81,7 @@ export class ScheduledTasksService implements OnModuleInit {
           if (res.ok) { released++; amount += res.amount ?? 0 }
         }
         this.metrics.recordFundAction('reserve.release-due', 'ok')
-        if (released > 0) this.logger.log(`[定时] 准备金到期释放 ${released} 笔，合计 ¥${amount}`)
+        if (released > 0) this.logger.log(`[定时] 准备金到期释放 ${released} 笔，合计 ¥${toYuan(amount)}`)
         return { released, amount }
       })
     } catch (e) {

@@ -5,6 +5,7 @@ import { createHash } from 'crypto'
 import { ROLE_PRESETS, SEED_USERS } from '../src/rbac/permissions'
 import { DEMO_RSA_PUBLIC } from '../src/youdao/demo-keys'
 import { pubHint } from '../src/youdao/rsa-signature'
+import { fenObj } from '../src/common/money' // P1-B7：种子金额字面量以元记，落库前统一 元→整数分
 
 const db = new PrismaClient()
 
@@ -199,28 +200,28 @@ async function main() {
     })
   }
   // business
-  for (const b of BRANDS) await db.brand.upsert({ where: { id: b.id }, update: b, create: b })
-  for (const a of AGENTS) await db.agent.upsert({ where: { id: a.id }, update: a, create: a })
-  for (const m of MERCHANTS) await db.merchantAccount.upsert({ where: { id: m.id }, update: m, create: m })
-  // 落 agentShareSnapshot = 成交时点代理分润占比（agentPayout/gross），供退款冲账按快照计算、不随后续退款漂移。
+  for (const b of BRANDS) { const v = fenObj(b); await db.brand.upsert({ where: { id: b.id }, update: v, create: v }) }
+  for (const a of AGENTS) { const v = fenObj(a); await db.agent.upsert({ where: { id: a.id }, update: v, create: v }) }
+  for (const m of MERCHANTS) { const v = fenObj(m); await db.merchantAccount.upsert({ where: { id: m.id }, update: v, create: v }) }
+  // 落 agentShareSnapshot = 成交时点代理分润占比（agentPayout/gross，比率对 ×100 不变，故用原始元值算即可）。
   // 显式归零 reserveReleased/reserveClawedBack（字面量省略时）：upsert 的 update 路径不会用 create-default，
   // 否则旧库残留的释放/追偿值不会被种子重置，导致守恒式 II/III 漂移（幂等性保障）。
   for (const s of SETTLEMENTS) {
-    const withSnap = {
+    const withSnap = fenObj({
       reserveReleased: 0, reserveClawedBack: 0,
       ...s,
       agentShareSnapshot: s.gross > 0 ? +(s.agentPayout / s.gross).toFixed(6) : 0,
-    }
+    })
     await db.settlement.upsert({ where: { id: s.id }, update: withSnap, create: withSnap })
   }
   for (const t of TICKETS) await db.ticket.upsert({ where: { id: t.id }, update: t, create: t })
-  for (const o of ORDERS) await db.order.upsert({ where: { id: o.id }, update: o, create: o })
+  for (const o of ORDERS) { const v = fenObj(o); await db.order.upsert({ where: { id: o.id }, update: v, create: v }) }
   // 订阅增长交易（新）：增长合约 / 订阅聚合 / 准备金释放台账
-  for (const c of CONTRACTS) await db.growthContract.upsert({ where: { id: c.id }, update: c, create: c })
-  for (const s of SUBSCRIPTIONS) await db.subscription.upsert({ where: { id: s.id }, update: s, create: s })
-  for (const rr of RESERVE_RELEASES) await db.reserveRelease.upsert({ where: { id: rr.id }, update: rr, create: rr })
-  for (const bd of BARTER_DEALS) await db.barterDeal.upsert({ where: { id: bd.id }, update: bd, create: bd })
-  for (const p of PRODUCTS) await db.product.upsert({ where: { id: p.id }, update: p, create: p })
+  for (const c of CONTRACTS) { const v = fenObj(c); await db.growthContract.upsert({ where: { id: c.id }, update: v, create: v }) }
+  for (const s of SUBSCRIPTIONS) { const v = fenObj(s); await db.subscription.upsert({ where: { id: s.id }, update: v, create: v }) }
+  for (const rr of RESERVE_RELEASES) { const v = fenObj(rr); await db.reserveRelease.upsert({ where: { id: rr.id }, update: v, create: v }) }
+  for (const bd of BARTER_DEALS) { const v = fenObj(bd); await db.barterDeal.upsert({ where: { id: bd.id }, update: v, create: v }) }
+  for (const p of PRODUCTS) { const v = fenObj(p); await db.product.upsert({ where: { id: p.id }, update: v, create: v }) }
   for (const br of BUNDLE_RULES) await db.bundleRule.upsert({ where: { id: br.id }, update: br, create: br })
   for (const n of NOTIFICATIONS) await db.notification.upsert({ where: { id: n.id }, update: n, create: n })
   // 有道对接演示凭证（youdao）：存 RSA 公钥（私钥见 demo-keys.ts 合作方自留）
