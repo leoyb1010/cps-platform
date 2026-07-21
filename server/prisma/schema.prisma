@@ -199,8 +199,11 @@ model Order {
   settlementId   String? // 原订单所属结算单快照；退款必须按此原账期冲账，禁止取品牌最新一期
   settlement     Settlement? @relation(fields: [settlementId], references: [id], onDelete: SetNull)
   refundedOrderId String? @unique // 退款单专用：指向被退的原扣款单 id。唯一约束=存储层"一原单至多一退"，兜底并发下两条退款路径同时通过应用层检查（NULL 不参与唯一，非退款单不受影响）
+  source          String? // P0-8 履约来源渠道（alipay/wechat_ext/… 由外部平台标识），与 externalOrderId 组成业务幂等键；内部散单为 null
+  externalOrderId String? // P0-8 外部平台订单号：同一 (source, externalOrderId) 只入一次，防履约重放重复累计 GMV/期数（NULL 不参与唯一，内部单不受约束）
   createdAt      DateTime @default(now())
 
+  @@unique([source, externalOrderId]) // P0-8 履约业务幂等键：外部平台重推同一单不重复入账（两列均 NULL 时不约束，内部单可自由散落）
   @@index([brandId])
   @@index([agentId])
   @@index([subscriptionId])
@@ -370,9 +373,14 @@ model SignCallbackLog {
   attempts    Int      @default(0)
   nextRetryAt DateTime? // 下次重投时间（指数退避）；null=不再重投
   callbackUrl String   @default("") // 目标地址快照，重投用（避免品牌改址后重投丢目标）
+  // P0-6 多实例认领租约：sweep 用条件 updateMany（CAS）认领到期行，写入 lockedBy+leaseUntil；
+  //   仅租约到期（leaseUntil<now 或空）的行可被认领，投递完成即释放。可移植（SQLite 无 FOR UPDATE SKIP LOCKED）。
+  lockedBy    String? // 认领该行的实例标识（instanceId）；null=空闲
+  leaseUntil  DateTime? // 租约到期时刻；> now 表示被某实例持有，其它实例跳过；崩溃后租约自然到期可回收
   createdAt   DateTime @default(now())
 
   @@index([deliveryStatus, nextRetryAt])
+  @@index([deliveryStatus, leaseUntil]) // P0-6 认领扫描：按状态 + 租约到期筛可认领行
 }
 
 // 风险准备金分期释放台账。本阶段仅立表 + 展示，不做释放资金动作、不改恒等式校验。
@@ -518,4 +526,18 @@ model PayoutRequest {
 
   @@index([agentId, status]) // 代理-我的申请 / 按状态汇总（portal aggregate）
   @@index([status, createdAt]) // 平台审批队列按状态 + 时间倒序
+}
+
+// P0-3 放款台账：每笔实际出账绑定唯一一条已审批 PayoutRequest，杜绝「按池清零」的额度脱钩。
+// payoutRequestId 唯一约束 = 存储层「一申请至多一放款」，兜底并发重复出账。金额恒等于对应申请审批额。
+model PayoutTransfer {
+  id              String   @id // PT-xxxx
+  agentId         String
+  payoutRequestId String   @unique // 绑定的提现申请（一申请至多一放款；重复 settle 命中唯一冲突不双花）
+  amount          Int // 放款金额（= 申请审批额，整数分）
+  status          String   @default("paid") // 状态机：transferring 出账中 → paid 已到账 / failed 失败退回可提现池。当前同步放款直接落 paid
+  settledAt       DateTime @default(now()) // 出账时刻
+  createdAt       DateTime @default(now())
+
+  @@index([agentId, status]) // 代理放款流水 / 按状态汇总
 }

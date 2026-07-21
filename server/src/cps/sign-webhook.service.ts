@@ -69,40 +69,8 @@ export class SignWebhookService {
     await this.attempt(row.id, row.callbackUrl, payload)
   }
 
-  async deliver(signOrderNo: string, status: number, fields: WebhookFields): Promise<void> {
-    const so = await this.prisma.signOrder.findUnique({ where: { id: signOrderNo } }).catch(() => null)
-    if (!so) return
-    const brand = await this.prisma.brand.findUnique({ where: { id: so.brandId } }).catch(() => null)
-    const callbackUrl = brand?.apiCallbackUrl || ''
-
-    // 有道续费状态回调体：custOrderId/orderId/status/subMsg/effectiveTime(13位毫秒)/price(分 Long)/sign
-    const payload: Record<string, unknown> = {
-      custOrderId: so.custOrderId || so.id,
-      orderId: fields.orderNo ?? so.id, // status 0/1=签约单；2/4=代扣单；3/5=退款单
-      status,
-      subMsg: fields.subMsg ?? '',
-      effectiveTime: (fields.operateTime ?? new Date()).getTime(), // 13 位毫秒级
-      price: Math.round(fields.amount ?? 0), // P1-B7：内部已整数分，直接取用（不再 元→分） // 单位分
-    }
-    // 平台私钥签名（合作方用有道公钥验签）
-    payload.sign = buildRsaSign(payload, platformPrivateKey())
-
-    const logId = 'CB-' + shortId()
-    // 未配置回调地址：记死信（无目标不可重投），不报错。
-    if (!callbackUrl) {
-      await this.persist(logId, so.id, so.brandId, status, payload, '', { httpStatus: 0, ok: false, error: '未配置回调地址', deliveryStatus: 'dead', nextRetryAt: null })
-      return
-    }
-    const safeCallback = await validatePublicCallbackUrl(callbackUrl)
-    if (!safeCallback.ok) {
-      await this.persist(logId, so.id, so.brandId, status, payload, callbackUrl, { httpStatus: 0, ok: false, error: safeCallback.detail, deliveryStatus: 'dead', nextRetryAt: null })
-      return
-    }
-
-    // 先落 outbox 行（pending），再首次投递；失败则转 retrying + 排下次退避重投。
-    await this.persist(logId, so.id, so.brandId, status, payload, safeCallback.url, { deliveryStatus: 'pending' })
-    await this.attempt(logId, safeCallback.url, payload)
-  }
+  // P0-6：原「提交后非事务 deliver()」已移除。所有资金/生命周期事件一律走事务内 enqueueInTx（与业务状态原子落库）
+  //   + 提交后 flushEnqueued 立即投递，崩溃遗漏由 retrySweep 兜底恢复；不再保留会绕过事务的旁路投递入口。
 
   private static readonly MAX_ATTEMPTS = 5
   // 指数退避（秒）：1min → 5min → 30min → 2h → 6h，覆盖合作方短时抖动到较长维护窗口
@@ -151,39 +119,50 @@ export class SignWebhookService {
    * 重投 sweep：扫到期的 retrying 行重新投递（cron 每分钟调）。
    * 用 callbackUrl 快照重投（品牌改址不影响在途重投目标）；限批避免长事务。
    */
+  // P0-6 多实例安全认领：实例标识（进程唯一）+ 租约时长。替代原「进程内布尔锁」——
+  //   布尔锁只在单进程内互斥，多副本部署时两进程仍各扫同批 retrying 行 → 回调重复投递。
+  private readonly instanceId = 'ins-' + randomUUID().replace(/-/g, '').slice(0, 8)
+  private static readonly LEASE_MS = 2 * 60 * 1000 // 租约 2 分钟：远大于单批投递耗时；持有者崩溃后到期自动可回收
+
   async retrySweep(now = new Date(), limit = 50): Promise<{ swept: number; delivered: number; dead: number }> {
-    // P2-B6：进程内互斥门闩——cron 每分钟触发，若上一轮未跑完则本轮直接跳过，
-    // 避免两轮 sweep 取到同批 retrying 行重复投递（回调重复）。
-    if (this.sweeping) return { swept: 0, delivered: 0, dead: 0 }
-    this.sweeping = true
-    try {
-      const due = await this.prisma.signCallbackLog
-        .findMany({
-          where: { deliveryStatus: { in: ['pending', 'retrying'] }, nextRetryAt: { lte: now } },
-          orderBy: { nextRetryAt: 'asc' }, take: limit,
+    // P0-6 DB 级认领（可移植 CAS 租约，SQLite/PG 通用；SQLite 无 FOR UPDATE SKIP LOCKED）：
+    //   逐行条件 updateMany 抢租约，仅认领「到期 + 租约空闲/过期」的行。多实例并发时同一行只有一个
+    //   实例 count=1 抢到、其余 count=0 跳过，杜绝多副本重复投递；持有者崩溃后 leaseUntil 到期可回收。
+    const leaseUntil = new Date(now.getTime() + SignWebhookService.LEASE_MS)
+    const candidates = await this.prisma.signCallbackLog
+      .findMany({
+        where: {
+          deliveryStatus: { in: ['pending', 'retrying'] },
+          nextRetryAt: { lte: now },
+          OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+        },
+        orderBy: { nextRetryAt: 'asc' }, take: limit,
+      })
+      .catch(() => [])
+    let swept = 0, delivered = 0, dead = 0
+    for (const row of candidates) {
+      // 抢租约（CAS）：仅当该行仍到期且租约空闲/过期时认领成功（写 lockedBy+leaseUntil）。并发输家 count=0 跳过。
+      const claim = await this.prisma.signCallbackLog
+        .updateMany({
+          where: {
+            id: row.id,
+            deliveryStatus: { in: ['pending', 'retrying'] },
+            OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+          },
+          data: { lockedBy: this.instanceId, leaseUntil },
         })
-        .catch(() => [])
-      let delivered = 0, dead = 0
-      for (const row of due) {
-        const payload = JSON.parse(row.payload || '{}') as Record<string, unknown>
-        await this.attempt(row.id, row.callbackUrl, payload)
-        const after = await this.prisma.signCallbackLog.findUnique({ where: { id: row.id } }).catch(() => null)
-        if (after?.deliveryStatus === 'delivered') delivered++
-        else if (after?.deliveryStatus === 'dead') dead++
-      }
-      return { swept: due.length, delivered, dead }
-    } finally {
-      this.sweeping = false
+        .catch(() => ({ count: 0 }))
+      if (claim.count === 0) continue // 被其它实例抢走或状态已变
+      swept++
+      const payload = JSON.parse(row.payload || '{}') as Record<string, unknown>
+      await this.attempt(row.id, row.callbackUrl, payload)
+      // 释放租约：delivered/dead 终态本就不再入选；转 retrying 的行释放后，等 nextRetryAt 到期可被任意实例再认领。
+      await this.prisma.signCallbackLog.updateMany({ where: { id: row.id }, data: { lockedBy: null, leaseUntil: null } }).catch(() => {})
+      const after = await this.prisma.signCallbackLog.findUnique({ where: { id: row.id } }).catch(() => null)
+      if (after?.deliveryStatus === 'delivered') delivered++
+      else if (after?.deliveryStatus === 'dead') dead++
     }
-  }
-
-  // P2-B6：sweep 进程内互斥门闩（模块单例，NestJS 默认 provider 为单例，进程内唯一）
-  private sweeping = false
-
-  private async persist(id: string, signOrderNo: string, brandId: string, status: number, payload: Record<string, unknown>, callbackUrl: string, extra: Record<string, unknown>) {
-    await this.prisma.signCallbackLog.create({
-      data: { id, signOrderNo, brandId, status, direction: 'outbound', payload: JSON.stringify(payload), callbackUrl, ...extra },
-    }).catch((e) => this.logger.warn(`回调日志落库失败 ${signOrderNo}: ${e}`))
+    return { swept, delivered, dead }
   }
 
   private async update(id: string, data: Record<string, unknown>) {

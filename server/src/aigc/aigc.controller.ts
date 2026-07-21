@@ -1,7 +1,7 @@
 import { All, Controller, Req, Res } from '@nestjs/common'
 import { ApiExcludeController } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHmac } from 'crypto'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../prisma.service'
 import { RequirePerms, type AuthUser } from '../rbac/rbac'
@@ -20,6 +20,22 @@ export class AigcController {
 
   private base(): string {
     return this.cfg.get<string>('AIGC_SERVICE_URL') || 'http://127.0.0.1:48787'
+  }
+
+  private internalSecret(): string {
+    return this.cfg.get<string>('AIGC_INTERNAL_SECRET') || ''
+  }
+
+  // P0-7：把 CPS 登录态映射为可信租户工作区 id（客户端无法伪造——服务端按 scope 生成 + HMAC 签名注入）。
+  //   brand / agent 各自独立工作区；平台员工共用 platform 工作区。下游按 workspaceId 隔离作业/积分。
+  private tenantWorkspace(user: AuthUser): string {
+    if (user.scopeType === 'brand' && user.scopeId) return `brand-${user.scopeId}`
+    if (user.scopeType === 'agent' && user.scopeId) return `agent-${user.scopeId}`
+    return 'platform'
+  }
+
+  private signTenant(workspaceId: string, userId: string, secret: string): string {
+    return createHmac('sha256', secret).update(`${workspaceId}\n${userId}`).digest('hex')
   }
 
   // 生成成功后在 CPS 侧建 Asset 归属记录（债5）：素材挂到发起方品牌/代理。
@@ -65,19 +81,41 @@ export class AigcController {
       res.status(400).json({ code: 400, message: '非法路径' })
       return
     }
-    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : ''
+    const user = (req as Request & { user?: AuthUser }).user
+
+    // P0-7：剥离客户端传入的 workspaceId/userId（query + body）——租户身份一律由服务端按登录态注入，
+    //   客户端不得自选租户。即便这里漏删，下游 agent-studio 也只认签名服务端头，无法被冒用（纵深防御）。
+    const rawQs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?') + 1) : ''
+    const params = new URLSearchParams(rawQs)
+    params.delete('workspaceId'); params.delete('userId')
+    const qs = params.toString() ? `?${params.toString()}` : ''
     const target = this.base() + prefix + tail + qs
+
+    const fwdBody: Record<string, unknown> = { ...((req.body as Record<string, unknown>) ?? {}) }
+    delete fwdBody.workspaceId; delete fwdBody.userId
+
+    // 可信租户头：按登录 scope 生成 workspaceId + HMAC 签名注入。需两侧配 AIGC_INTERNAL_SECRET；
+    //   未配则不注入签名头，下游落隔离的 default 工作区（不泄漏他人租户，仅失去多租户隔离粒度）。
+    const headers: Record<string, string> = { 'content-type': 'application/json' }
+    const secret = this.internalSecret()
+    if (user && secret) {
+      const ws = this.tenantWorkspace(user)
+      const uid = user.id || 'cps-user'
+      headers['x-internal-workspace-id'] = ws
+      headers['x-internal-user-id'] = uid
+      headers['x-internal-sign'] = this.signTenant(ws, uid, secret)
+    }
 
     try {
       const upstream = await fetch(target, {
         method: req.method,
-        headers: { 'content-type': 'application/json' },
-        body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body ?? {}),
+        headers,
+        body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(fwdBody),
       })
       const text = await upstream.text()
       // 生成成功 → 在 CPS 侧建 Asset 归属（仅 factory/generate，且有客户 scope）
-      if (upstream.ok && tail === 'generate' && (req as Request & { user?: AuthUser }).user?.scopeId) {
-        await this.recordAsset((req as Request & { user: AuthUser }).user, req.body ?? {}, text)
+      if (upstream.ok && tail === 'generate' && user?.scopeId) {
+        await this.recordAsset(user, req.body ?? {}, text)
       }
       res.status(upstream.status)
       res.setHeader('content-type', upstream.headers.get('content-type') || 'application/json')

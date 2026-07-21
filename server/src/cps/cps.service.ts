@@ -70,16 +70,9 @@ export class CpsService {
     if (so.status === 'unsigned' || so.status === 'expired') return { ok: false, detail: '签约单已失效' }
     // 首扣幂等键强制绑定签约单（忽略调用方任意键），确保二次首扣——无论携带何种 Idempotency-Key——都命中同一键回放首次结果，
     // 绝不以 period=0 再次落单、双计 GMV。续扣走 renewCharge。
-    // deferDeductWebhook=true：首扣的「扣款成功(2)」回调不在 charge 内部推，改由这里在「签约成功(1)」之后推，
-    // 保证合作方按业务时序先收签约后收扣款（P3-4）。guard 传首扣期望前置（signing/0），条件更新防复活/双扣（P1-B2）。
-    const r = await this.charge(so.id, 0, 'first', `first:${so.id}`, { prevStatus: 'signing', prevPeriod: 0 }, true)
-    // 签约成功回调（1）→ 扣款成功回调（2），先 1 后 2（仅首次，回放不重推）。
-    if (r.ok && !(r as { replayed?: boolean }).replayed) {
-      await this.webhook.deliver(so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
-      const rr = r as { extOrderNo?: string; amount?: number }
-      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: rr.extOrderNo, amount: rr.amount, period: 0, operateTime: new Date() })
-    }
-    return r
+    // P0-6：签约(1)+扣款(2) webhook 均在 charge 的业务事务内 enqueueInTx 入队、提交后按序 flush（先 1 后 2，P3-4），
+    //   不再「提交后独立 deliver」——进程若在提交后崩溃，outbox 行已随扣款原子落库，retrySweep 可恢复不丢事件。
+    return this.charge(so.id, 0, 'first', `first:${so.id}`, { prevStatus: 'signing', prevPeriod: 0 })
   }
 
   // ── 模拟续扣：currentPeriod+1，落续费 Order(renew)，推 webhook(2) ──
@@ -98,9 +91,11 @@ export class CpsService {
     type: 'first' | 'renew',
     idemKey?: string,
     guard?: { prevStatus: string; prevPeriod: number },
-    deferDeductWebhook = false,
   ) {
     const key = idemKey ?? `${signOrderNo}:${period}`
+    // P0-6：webhook 出账事件在扣款事务内入队，事务提交后按业务时序 flush（首扣先签约1后扣款2；续扣仅扣款2）。
+    let signOutboxId: string | null = null
+    let deductOutboxId: string | null = null
     // 幂等键绑定签约单：外部调用方把同一 Idempotency-Key 复用到另一张签约单时各自执行，
     // 而非静默回放首单结果（否则第二张签约单"看似扣款成功"实际没扣）。
     const { result, replayed } = await this.idem.run(key, 'cps.charge', async () => {
@@ -133,13 +128,17 @@ export class CpsService {
         })
         if (advanced.count === 0) throw new Error(`签约单状态/期数已变更（期望 ${g.prevStatus}/${g.prevPeriod}），本次扣款回滚`)
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge', resource: 'SignOrder', resourceId: so.id, detail: `${type === 'first' ? '首扣' : '续扣'} 第${period}期 · 订单 ${oid} · ¥${toYuan(amount)}` })
+        // P0-6：出账事件同事务入队（与订单/期数推进原子提交）。首扣含签约(1)+扣款(2)；续扣仅扣款(2)。
+        if (type === 'first') signOutboxId = await this.webhook.enqueueInTx(tx, so.id, YD_STATUS.SIGNING, { amount: 0, period: 0, operateTime: new Date() })
+        deductOutboxId = await this.webhook.enqueueInTx(tx, so.id, YD_STATUS.DEDUCT, { orderNo: ext, amount, period, operateTime: new Date() })
         return { ok: true, detail: '扣款成功', signOrderNo: so.id, orderId: oid, extOrderNo: ext, period, amount }
       })
     }, signOrderNo)
     if (result.ok && !replayed) {
       this.metrics.recordFundAction('cps.charge', 'ok')
-      // 扣款成功回调（2）：续扣在此直接推；首扣 deferDeductWebhook=true，改由 confirmAndFirstCharge 在签约(1)之后推（P3-4）。
-      if (!deferDeductWebhook) await this.webhook.deliver(signOrderNo, YD_STATUS.DEDUCT, { orderNo: result.extOrderNo, amount: result.amount, period, operateTime: new Date() })
+      // 事务已提交，按业务时序 flush：首扣先签约(1) 后扣款(2)；续扣仅扣款(2)。崩溃遗漏由 retrySweep 兜底恢复。
+      if (type === 'first') await this.webhook.flushEnqueued(signOutboxId)
+      await this.webhook.flushEnqueued(deductOutboxId)
     }
     return replayed ? { ...result, replayed: true } : result
   }
@@ -157,11 +156,16 @@ export class CpsService {
       if (existing) return { ok: false, detail: '已有进行中的补扣任务' }
       const cr = 'CR-' + shortId()
       const txn = 'TXN' + shortId() // 本次代扣交易号：DEDUCT_FAIL(4) 回调 orderId 用它（与代扣成功 2 的 orderId 语义一致），便于合作方按期次关联
-      await this.prisma.chargeRetry.create({
-        data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
+      // P0-6：补扣队列落库 + 审计 + 扣款失败(4) webhook 入队收进同一事务原子提交（原为三条独立写，中途崩溃会状态撕裂）。
+      let outboxId: string | null = null
+      await this.prisma.$transaction(async (tx) => {
+        await tx.chargeRetry.create({
+          data: { id: cr, signOrderNo: so.id, brandId: so.brandId, amount: so.amount, period, attempt: 0, status: 'pending', reason, nextRetryAt: new Date() },
+        })
+        await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
+        outboxId = await this.webhook.enqueueInTx(tx, so.id, YD_STATUS.DEDUCT_FAIL, { orderNo: txn, amount: so.amount, period, operateTime: new Date(), subMsg: reason })
       })
-      await this.audit.record({ user: null, actorName: 'CPS对接', action: 'cps.charge.fail', resource: 'SignOrder', resourceId: so.id, detail: `扣款失败 ${reason} · 进补扣队列 ${cr}` })
-      await this.webhook.deliver(so.id, YD_STATUS.DEDUCT_FAIL, { orderNo: txn, amount: so.amount, period, operateTime: new Date(), subMsg: reason })
+      await this.webhook.flushEnqueued(outboxId) // 提交后立即投递；崩溃遗漏由 retrySweep 兜底
       return { ok: true, detail: '已记录扣款失败并进入补扣队列', retryId: cr }
     })
     return result
@@ -170,6 +174,7 @@ export class CpsService {
   // ── 退款（幂等）：按 signOrderNo+extOrderNo 反查 Order，走既有逆向冲账，恒等式不破 ──
   async refund(signOrderNo: string, extOrderNo: string, idemKey?: string) {
     const key = idemKey ?? `${signOrderNo}:${extOrderNo}`
+    let outboxId: string | null = null // P0-6：退款(3) webhook outbox 行 id，事务内入队、提交后 flush
     const { result, replayed } = await this.idem.run(key, 'cps.refund', async () => {
       const r = await this.prisma.$transaction(async (tx) => {
         const order = await tx.order.findFirst({ where: { signOrderNo, extOrderNo, type: { in: ['first', 'renew'] } } })
@@ -185,6 +190,8 @@ export class CpsService {
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
         if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.refund', resource: 'Order', resourceId: order.id, detail: `退款 ¥${toYuan(amt)} · 签约 ${signOrderNo} · 交易 ${extOrderNo} · 冲账 ¥${toYuan(rev.share)}` })
+        // P0-6：退款(3) webhook 与冲账/追偿同事务入队（原为提交后独立 deliver，崩溃会丢事件）。
+        outboxId = await this.webhook.enqueueInTx(tx, signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: amt, period: order.period ?? 0, operateTime: new Date() })
         return { amt, share: rev.share, period: order.period }
       })
       if (!r) {
@@ -195,7 +202,7 @@ export class CpsService {
       this.metrics.addRefundAmount(r.amt)
       return { ok: true, detail: '退款成功', amount: r.amt, share: r.share, period: r.period }
     }, signOrderNo)
-    if (result.ok && !replayed) await this.webhook.deliver(signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: result.amount, period: result.period ?? 0, operateTime: new Date() })
+    if (result.ok && !replayed) await this.webhook.flushEnqueued(outboxId) // 提交后立即投递；崩溃遗漏由 retrySweep 兜底
     return replayed ? { ...result, replayed: true } : result
   }
 
@@ -276,6 +283,7 @@ export class CpsService {
       if (outcome === 'success') {
         // 补扣成功：走 ingestOrder 落续费单（恒等式安全），推进签约单期数，推 webhook(2)，补扣单完成
         const period = cr.period
+        let deductOutboxId: string | null = null // P0-6：补扣成功扣款(2) webhook outbox 行 id，事务内入队、提交后 flush
         const r = await this.idem.run(`${cr.id}:${cr.attempt}`, 'cps.retry', async () => {
           return this.prisma.$transaction(async (tx) => {
             // 先在事务内认领补扣行。进程崩溃后幂等占位被回收重跑、并发 sweep、
@@ -301,11 +309,13 @@ export class CpsService {
             await this.fulfillment.ingestOrder(tx as never, { id: oid, brandId: so.brandId, agentId: so.agentId || '未知', productId: so.productId, amount: cr.amount, type: 'renew', plan: so.plan })
             await tx.chargeRetry.updateMany({ where: { id: cr.id, status: 'processing', attempt: cr.attempt }, data: { status: 'succeeded', attempt: { increment: 1 }, lastTriedAt: now } })
             await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.retry', resource: 'ChargeRetry', resourceId: cr.id, detail: `补扣成功 第${period}期 · 订单 ${oid} · ¥${toYuan(cr.amount)}` })
+            // P0-6：补扣成功的扣款(2) webhook 与续费单同事务入队（原为提交后独立 deliver，崩溃会丢事件）。
+            deductOutboxId = await this.webhook.enqueueInTx(tx, so.id, YD_STATUS.DEDUCT, { orderNo: ext, amount: cr.amount, period, operateTime: now })
             return { executed: true as const, ext, period }
           })
         })
         if (r.result.executed) {
-          if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.deliver(so.id, YD_STATUS.DEDUCT, { orderNo: r.result.ext, amount: cr.amount, period: r.result.period, operateTime: now }) }
+          if (!r.replayed) { this.metrics.recordFundAction('cps.retry', 'ok'); await this.webhook.flushEnqueued(deductOutboxId) }
           succeeded++
         }
       } else {
