@@ -267,6 +267,83 @@ describe('资金幂等 + 并发', () => {
   })
 })
 
+// P0-3：提现放款必须按「已审批申请」逐笔精确出账，不再一键清零整个可提现池。
+describe('提现按申请精确放款（P0-3）', () => {
+  it('settle 只放款已审批申请额、池按额精确递减（非清零），并置申请为 paid', async () => {
+    const su = await token('admin')
+    const at = await token('agent') // 代理 A-2041
+    const before = (await request(httpServer).get('/portal/agent/payouts').set('Authorization', `Bearer ${at}`).expect(200)).body
+    const poolBefore = before.payoutPending // 元（响应经拦截器分→元）
+    const settledBefore = before.settledTotal
+    expect(poolBefore).toBeGreaterThan(1000) // 池远大于将申请的 ¥1000，用以验证「不清整池」
+
+    // 代理申请部分提现 ¥1000 → 平台审批通过
+    const reqRes = await request(httpServer).post('/portal/agent/payout-requests').set('Authorization', `Bearer ${at}`).send({ amount: 1000 })
+    expect([200, 201]).toContain(reqRes.status)
+    expect(reqRes.body.ok).toBe(true)
+    const prId = reqRes.body.id
+    const appr = await request(httpServer).post(`/payout-requests/${prId}/approve`).set('Authorization', `Bearer ${su}`)
+    expect([200, 201]).toContain(appr.status)
+    expect(appr.body.ok).toBe(true)
+
+    // 平台放款：应精确放款 ¥1000（审批额），而非清零整个 ¥poolBefore 池
+    const settle = await request(httpServer).post('/agents/A-2041/settle').set('Authorization', `Bearer ${su}`)
+    expect([200, 201]).toContain(settle.status)
+    expect(settle.body.ok).toBe(true)
+    expect(settle.body.paid).toBe(1000) // 精确等于审批额
+    expect(settle.body.count).toBe(1)
+
+    // 池只减 ¥1000（不清零）；已结累加 ¥1000
+    const after = (await request(httpServer).get('/portal/agent/payouts').set('Authorization', `Bearer ${at}`).expect(200)).body
+    expect(after.payoutPending).toBe(poolBefore - 1000)
+    expect(after.settledTotal).toBe(settledBefore + 1000)
+
+    // 申请置 paid（放款台账已绑定该申请）
+    const paidReqs = (await request(httpServer).get('/payout-requests?status=paid').set('Authorization', `Bearer ${su}`).expect(200)).body
+    expect(paidReqs.some((r: { id: string }) => r.id === prId)).toBe(true)
+  })
+
+  it('无已审批申请时 settle 不放款（审批闸有实义，不再随池静默出账）', async () => {
+    const su = await token('admin')
+    // A-1188 有可提现余额但无任何已审批申请 → 放款应被拒（ok:false），池不动
+    const r = await request(httpServer).post('/agents/A-1188/settle').set('Authorization', `Bearer ${su}`)
+    expect([200, 201]).toContain(r.status)
+    expect(r.body.ok).toBe(false)
+  })
+})
+
+// P0-8：外部平台履约重推是常态，同一 (source, externalOrderId) 只入一次，绝不重复累计 GMV / 期数。
+describe('履约 ingest 业务幂等（P0-8）', () => {
+  it('同一 (source, externalOrderId) 重推只入一次，返回既有单', async () => {
+    const su = await token('admin')
+    const ext = 'EXT-' + Math.random().toString(36).slice(2)
+    const body = { brandId: 'youdao', agentId: 'A-2041', type: 'first', amount: 29.9, plan: '词典 VIP', source: 'alipay', externalOrderId: ext }
+    const r1 = await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`).send(body)
+    expect([200, 201]).toContain(r1.status)
+    expect(r1.body.ok).toBe(true)
+    const id1 = r1.body.orderId
+    expect(id1).toBeTruthy()
+
+    // 重推同一外部单（模拟超时重试 / 对账补推）→ 命中业务键去重，不新建、不重复入账
+    const r2 = await request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`).send(body)
+    expect([200, 201]).toContain(r2.status)
+    expect(r2.body.ok).toBe(true)
+    expect(r2.body.deduped).toBe(true)
+    expect(r2.body.orderId).toBe(id1)
+  })
+
+  it('不同 externalOrderId 各自入账（业务键不误伤正常单）', async () => {
+    const su = await token('admin')
+    const mk = (ext: string) => request(httpServer).post('/fulfillment/ingest').set('Authorization', `Bearer ${su}`)
+      .send({ brandId: 'youdao', agentId: 'A-2041', type: 'first', amount: 12, plan: '词典 VIP', source: 'alipay', externalOrderId: ext })
+    const a = await mk('EXT-A-' + Math.random().toString(36).slice(2))
+    const b = await mk('EXT-B-' + Math.random().toString(36).slice(2))
+    expect(a.body.orderId).not.toBe(b.body.orderId)
+    expect(a.body.deduped).toBeUndefined()
+    expect(b.body.deduped).toBeUndefined()
+  })
+})
+
 describe('输入校验 + 错误映射（F1/F3/F5）', () => {
   it('F1: 品牌配置越界(feeRate<0 / period<1 / reservePct>100) 被拒 400', async () => {
     const su = await token('admin')

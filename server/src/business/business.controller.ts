@@ -102,6 +102,9 @@ class OrderIngestDto {
   @IsNumber() @Min(0.01) amount!: number
   @IsString() @MaxLength(60) plan!: string
   @IsOptional() @IsIn(['wechat', 'alipay', 'bank']) channel?: string
+  // P0-8 履约业务幂等键：外部平台来源 + 其订单号。二者齐备则同一单只入一次（重放不重复累计 GMV/期数）。
+  @IsOptional() @IsString() @MaxLength(40) source?: string
+  @IsOptional() @IsString() @MaxLength(80) externalOrderId?: string
 }
 class BundleRuleDto {
   @IsString() @MaxLength(60) name!: string
@@ -487,24 +490,38 @@ export class BusinessController {
     return { ok: true, detail: `代理 ${id} 已更新` }
   }
 
-  @Post('agents/:id/settle') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '代理提现结算（待结算清零→计入累计已结）· 幂等' })
+  @Post('agents/:id/settle') @RequirePerms('settlement.clear') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '代理提现放款：按已审批申请逐笔精确出账（每笔绑定 PayoutTransfer 台账，杜绝按池清零的额度脱钩）· 幂等' })
   async settleAgent(@Param('id') id: string, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     this.assertOwns(user, null, id)
     const { result, replayed } = await this.idem.run(idemKey, 'agent.settle', async () => {
-      const a = await this.prisma.agent.findUnique({ where: { id } })
-      if (!a || a.payoutPending <= 0) return { ok: false, detail: '无可结算金额' }
-      const amt = a.payoutPending
-      // 资金动作：条件更新(防并发重复提现) + 审计同事务（fail-closed）
+      // P0-3：放款额严格等于「已审批申请额之和」，不再一键清零整个 payoutPending 池。
+      //   审批闸从此有实义——只有 approve 过的申请金额才出账；池中未申请 / 未审批部分原样保留。
+      //   每笔出账绑定唯一 PayoutTransfer，可审计「哪次申请对应哪笔放款」，并兜底并发重复出账。
+      const approved = await this.prisma.payoutRequest.findMany({ where: { agentId: id, status: 'approved' }, orderBy: { createdAt: 'asc' } })
+      if (approved.length === 0) return { ok: false, detail: '无已审批的提现申请可放款' }
+      // 资金动作：逐笔条件扣减(防透支/防并发重复) + 审计同事务（fail-closed）
       return this.prisma.$transaction(async (tx) => {
-        // settledTotal 原子累加：不用事务外快照 a.settledTotal + amt（并发结算+准备金释放补回 payoutPending 时会少计）。
-        // payoutPending 仍绝对清零——where payoutPending:amt 守卫已保证这笔余额只被结算一次。
-        const r = await tx.agent.updateMany({ where: { id, payoutPending: amt }, data: { payoutPending: 0, settledTotal: { increment: amt } } })
-        if (r.count === 0) return { ok: false, detail: '提现状态已变更，请刷新重试' }
-        // P1-B6 人工闸：结算只终结「已审批(approved)」的提现申请为 paid，绝不再把未审批的 pending 一键放款——
-        //   未审批申请必须先经 approve/reject 端点人工过闸；未审批的 pending 保留待复核，不随结算静默出账。
-        await tx.payoutRequest.updateMany({ where: { agentId: id, status: 'approved' }, data: { status: 'paid', decidedAt: new Date() } })
-        await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 提现结算 ¥${toYuan(amt).toLocaleString('zh-CN')} 已打款` })
-        return { ok: true, detail: `代理 ${id} 提现 ¥${toYuan(amt)} 已打款` }
+        let paidTotal = 0
+        const paidReqIds: string[] = []
+        for (const req of approved) {
+          // ① 条件扣减：仅当可提现池 ≥ 本申请审批额时，原子扣减该额 + 累加已结（绝不透支）。
+          //   池不足（审批后被退款追偿缩水等）→ 跳过本申请、保留 approved 待复核，继续尝试后续更小申请。
+          const claim = await tx.agent.updateMany({
+            where: { id, payoutPending: { gte: req.amount } },
+            data: { payoutPending: { decrement: req.amount }, settledTotal: { increment: req.amount } },
+          })
+          if (claim.count === 0) continue
+          // ② 申请 approved→paid（CAS）：并发另一路已放款则 count=0 → 抛错回滚本次扣减，绝不重复出账。
+          const mark = await tx.payoutRequest.updateMany({ where: { id: req.id, status: 'approved' }, data: { status: 'paid', decidedAt: new Date() } })
+          if (mark.count === 0) throw new Error(`提现申请 ${req.id} 已被并发放款，事务安全回滚`)
+          // ③ 落放款台账：payoutRequestId 唯一约束 = 存储层「一申请至多一放款」，重复出账在此触发 P2002 回滚。
+          await tx.payoutTransfer.create({ data: { id: 'PT-' + shortId(), agentId: id, payoutRequestId: req.id, amount: req.amount, status: 'paid', settledAt: new Date() } })
+          paidTotal += req.amount
+          paidReqIds.push(req.id)
+        }
+        if (paidTotal === 0) return { ok: false, detail: '可提现余额不足以覆盖任一已审批申请，未放款（申请保留待复核）' }
+        await this.audit.recordInTx(tx, { user, action: 'agent.settle', resource: 'Agent', resourceId: id, detail: `代理 ${id} 放款 ¥${toYuan(paidTotal).toLocaleString('zh-CN')}（${paidReqIds.length} 笔申请：${paidReqIds.join(', ')}）` })
+        return { ok: true, paid: toYuan(paidTotal), count: paidReqIds.length, detail: `代理 ${id} 放款 ¥${toYuan(paidTotal)}（${paidReqIds.length} 笔申请）已打款` }
       })
     }, id)
     return replayed ? { ...result, replayed: true } : result
@@ -873,21 +890,43 @@ export class BusinessController {
 
   // ── 正向订单写入（履约入口）：触发履约引擎累加 + 订阅 upsert ──
   // 这是 achievedGmv 唯一被推进的入口；绝不触碰结算恒等式五项。
-  @Post('fulfillment/ingest') @RequirePerms('contract.write') @ApiOperation({ summary: '正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）' })
-  async ingest(@Body() dto: OrderIngestDto, @CurrentUser() user: AuthUser) {
+  @Post('fulfillment/ingest') @RequirePerms('contract.write') @ApiHeader({ name: 'Idempotency-Key', required: false }) @ApiOperation({ summary: '正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）· 幂等（业务键 source+externalOrderId / Idempotency-Key 双重去重）' })
+  async ingest(@Body() dto: OrderIngestDto, @CurrentUser() user: AuthUser, @Headers('idempotency-key') idemKey?: string) {
     this.assertCreateAttribution(user, dto.brandId, dto.agentId)
-    const id = 'O-' + shortId()
-    const amtFen = fromYuan(dto.amount) // P1-B7：入参元 → 整数分
-    const res = await this.prisma.$transaction(async (tx) => {
-      await tx.order.create({
-        data: { id, time: '实时', brandId: dto.brandId, agentId: dto.agentId, channel: dto.channel ?? 'wechat', type: dto.type, amount: amtFen, plan: dto.plan, mid: 'M-RT', productId: dto.productId ?? null },
-      })
-      // 履约引擎：匹配合约累加 achievedGmv + 推进状态 + 订阅 upsert（事务内）
-      const r = await this.fulfillment.ingestOrder(tx as never, { id, brandId: dto.brandId, agentId: dto.agentId, productId: dto.productId, amount: amtFen, type: dto.type, plan: dto.plan })
-      return { orderId: id, ...r }
-    })
-    await this.audit.record({ user, action: 'order.ingest', resource: 'Order', resourceId: id, detail: `履约订单 ${id} · ¥${dto.amount}${res.matchedContractId ? ` · 合约 ${res.matchedContractId} 累加` : ''}` })
-    return { ok: true, ...res }
+    // P0-8：外部平台履约重推是常态（超时重试 / 对账补推）。业务键 (source, externalOrderId) 是权威去重锚——
+    //   即便调用方漏带或换了 Idempotency-Key，同一外部单也只入一次，绝不重复累计 GMV / 期数（唯一约束 + 应用层预检双保险）。
+    //   Idempotency-Key（传输层）叠加去重并按业务键 bind 隔离，防同键跨单串结果。
+    const hasBizKey = !!(dto.source && dto.externalOrderId)
+    const bizWhere = { source: dto.source ?? null, externalOrderId: dto.externalOrderId ?? null }
+    const { result, replayed } = await this.idem.run(idemKey, 'order.ingest', async () => {
+      // 业务键预检：命中既有单直接返回，不重复入账（覆盖调用方漏带 Idempotency-Key 的常见重推）。
+      if (hasBizKey) {
+        const dup = await this.prisma.order.findFirst({ where: bizWhere, select: { id: true } })
+        if (dup) return { orderId: dup.id, deduped: true as const }
+      }
+      const id = 'O-' + shortId()
+      const amtFen = fromYuan(dto.amount) // P1-B7：入参元 → 整数分
+      try {
+        const res = await this.prisma.$transaction(async (tx) => {
+          await tx.order.create({
+            data: { id, time: '实时', brandId: dto.brandId, agentId: dto.agentId, channel: dto.channel ?? 'wechat', type: dto.type, amount: amtFen, plan: dto.plan, mid: 'M-RT', productId: dto.productId ?? null, source: dto.source ?? null, externalOrderId: dto.externalOrderId ?? null },
+          })
+          // 履约引擎：匹配合约累加 achievedGmv + 推进状态 + 订阅 upsert（事务内）
+          const r = await this.fulfillment.ingestOrder(tx as never, { id, brandId: dto.brandId, agentId: dto.agentId, productId: dto.productId, amount: amtFen, type: dto.type, plan: dto.plan })
+          return { orderId: id, ...r }
+        })
+        await this.audit.record({ user, action: 'order.ingest', resource: 'Order', resourceId: id, detail: `履约订单 ${id} · ¥${dto.amount}${res.matchedContractId ? ` · 合约 ${res.matchedContractId} 累加` : ''}` })
+        return res
+      } catch (e) {
+        // 并发竞态兜底：另一路同 (source, externalOrderId) 已抢先入库触发唯一冲突 → 返回既有单，不报错、不重复入账。
+        if (hasBizKey && (e as { code?: string }).code === 'P2002') {
+          const dup = await this.prisma.order.findFirst({ where: bizWhere, select: { id: true } })
+          if (dup) return { orderId: dup.id, deduped: true as const }
+        }
+        throw e
+      }
+    }, hasBizKey ? `${dto.source}:${dto.externalOrderId}` : undefined)
+    return replayed ? { ok: true, ...result, replayed: true } : { ok: true, ...result }
   }
 
   // ── 外部投诉接入（可信中继）：支付宝 / 12315 / 黑猫 等平台工单 → 落 Ticket ──

@@ -271,6 +271,31 @@
         ]
       }
     },
+    "/settlements/run": {
+      "post": {
+        "operationId": "BusinessController_runSettlement",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettlementRunDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "生成账期结算单 + 准备金释放计划（按已履约订单聚合，幂等跑批）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
     "/reserve-releases": {
       "get": {
         "operationId": "BusinessController_reserveReleases",
@@ -765,7 +790,89 @@
             "description": ""
           }
         },
-        "summary": "代理提现结算（待结算清零→计入累计已结）· 幂等",
+        "summary": "代理提现放款：按已审批申请逐笔精确出账（每笔绑定 PayoutTransfer 台账，杜绝按池清零的额度脱钩）· 幂等",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/payout-requests": {
+      "get": {
+        "operationId": "BusinessController_payoutRequests",
+        "parameters": [
+          {
+            "name": "status",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "提现申请列表（平台审批用；可按状态筛选）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/payout-requests/{id}/approve": {
+      "post": {
+        "operationId": "BusinessController_approvePayout",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "审批通过提现申请（pending→approved，待结算放款）",
+        "tags": [
+          "business"
+        ]
+      }
+    },
+    "/payout-requests/{id}/reject": {
+      "post": {
+        "operationId": "BusinessController_rejectPayout",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutRejectDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "驳回提现申请（pending→rejected，不放款）",
         "tags": [
           "business"
         ]
@@ -1287,7 +1394,24 @@
     "/fulfillment/ingest": {
       "post": {
         "operationId": "BusinessController_ingest",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1303,7 +1427,7 @@
             "description": ""
           }
         },
-        "summary": "正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）",
+        "summary": "正向订单写入：履约累加 + 订阅聚合（写权限，不动结算恒等式）· 幂等（业务键 source+externalOrderId / Idempotency-Key 双重去重）",
         "tags": [
           "business"
         ]
@@ -2494,6 +2618,10 @@
         "type": "object",
         "properties": {}
       },
+      "SettlementRunDto": {
+        "type": "object",
+        "properties": {}
+      },
       "ReserveFreezeDto": {
         "type": "object",
         "properties": {}
@@ -2503,6 +2631,10 @@
         "properties": {}
       },
       "AgentStatusDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "PayoutRejectDto": {
         "type": "object",
         "properties": {}
       },
