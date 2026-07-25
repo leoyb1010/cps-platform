@@ -179,7 +179,10 @@ export default function SettlementRun() {
                     <div className="text-[12.5px]"><b className="text-ink">{a.name}</b> <span className="text-ink-4">· 信用分 {a.creditScore}</span></div>
                     <div className="flex items-center gap-2">
                       <span className="tnum text-[13px] font-semibold text-brand">{money(a.payoutPending)}</span>
-                      <Button variant="soft" onClick={() => { settleAgent(a.id); toast({ tone: 'good', text: `${a.name} 提现已打款` }) }}>批准</Button>
+                      <Button variant="soft" onClick={() => {
+                        // 批准=审批该代理待审申请并放款；按真实结果提示（失败由 mirror:failed 提示）
+                        void settleAgent(a.id).then((r) => { if (r.ok) toast({ tone: 'good', text: `${a.name} 提现已打款${r.paid != null ? ` ¥${r.paid.toLocaleString('zh-CN')}` : ''}` }) })
+                      }}>批准</Button>
                     </div>
                   </div>
                 ))}

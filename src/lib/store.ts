@@ -714,16 +714,42 @@ export function setMerchantState(id: string, next: MerchantState, label: string)
   mirror(() => bizApi.setMerchant(id, next, label), '号池干预')
 }
 
-// 代理提现结算：待结算清零 → 计入累计已结
-export function settleAgent(id: string) {
+/**
+ * 代理提现放款。
+ *
+ * 演示(mock)模式：待结算池清零 → 计入累计已结（演示态产品行为，保持不变）。
+ *
+ * 真实模式：后端已改为「按已审批(approved)申请逐笔精确出账」（P0-3），不再清整个可提现池——
+ *   直接调 settle 会因无 approved 申请而被拒。故平台一键放款需先过审批闸：
+ *   拉该代理待审申请 → 逐笔 approve → settle → 回读服务端真值覆盖乐观更新（放款额以后端为准）。
+ *   返回 Promise 供调用方按真实结果提示，不再提前弹「已打款」。
+ */
+export function settleAgent(id: string): Promise<{ ok: boolean; paid?: number; detail?: string }> {
   const a = state.agents.find((x) => x.id === id)
-  if (!a || a.payoutPending <= 0) return
+  if (!a || a.payoutPending <= 0) return Promise.resolve({ ok: false, detail: '无可结算金额' })
   const amt = a.payoutPending
   const agents = state.agents.map((x) => (x.id === id ? { ...x, payoutPending: 0, settledTotal: x.settledTotal + amt } : x))
   const activity = logActivity(state, `代理 ${id} 提现结算 ¥${amt.toLocaleString('zh-CN')} 已打款`, 'good')
   commit({ ...state, agents, activity })
   emit('agent:settled', { id, amt })
-  mirror(() => bizApi.settleAgent(id, newIdemKey()), '代理提现')
+  if (!isRealApi) return Promise.resolve({ ok: true, paid: amt })
+  return (async () => {
+    try {
+      // ① 审批闸：把该代理的待审申请逐笔批准（人工闸仍在——admin 的这一次点击即批准动作）
+      const pending = await bizApi.payoutRequests<Array<{ id: string; agentId: string; status: string }>>('pending')
+      for (const r of pending.filter((x) => x.agentId === id)) await bizApi.approvePayout(r.id)
+      // ② 放款：后端按已审批申请额逐笔精确出账
+      const r = await bizApi.settleAgent(id, newIdemKey())
+      if (!r.ok) throw new Error(r.detail || '放款被服务端拒绝')
+      await hydrateFromServer() // 以服务端真值覆盖乐观清零（实际放款额可能小于整池）
+      return { ok: true, paid: r.paid, detail: r.detail }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      emit('mirror:failed', { label: '代理提现', message })
+      await hydrateFromServer().catch(() => { /* 已尽力 */ })
+      return { ok: false, detail: message }
+    }
+  })()
 }
 
 // 代理：限流 / 冻结 / 恢复

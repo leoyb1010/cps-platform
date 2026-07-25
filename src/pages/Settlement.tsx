@@ -271,7 +271,11 @@ export default function Settlement() {
                     <Td right>
                       <button
                         disabled={!canPay}
-                        onClick={() => { if (canPay) { settleAgent(a.id); toast({ tone: 'good', text: `${a.name} 提现已打款` }) } }}
+                        onClick={() => {
+                          if (!canPay) return
+                          // 按真实放款结果提示（真实模式放款额=已审批申请额，可能小于整池；失败由 mirror:failed 提示）
+                          void settleAgent(a.id).then((r) => { if (r.ok) toast({ tone: 'good', text: `${a.name} 提现已打款${r.paid != null ? ` ¥${r.paid.toLocaleString('zh-CN')}` : ''}` }) })
+                        }}
                         className={cx('rounded-md px-2 py-1 text-[12px] font-medium', canPay ? 'text-ink hover:bg-surface-sunken' : 'cursor-not-allowed text-ink-4')}
                       >
                         {a.status === 'frozen' ? '已冻结' : a.payoutPending > 0 ? '结算' : '已结清'}

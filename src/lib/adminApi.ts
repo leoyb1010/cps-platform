@@ -92,7 +92,12 @@ export const bizApi = {
   setMerchant: (id: string, state: string, label?: string) => http.post<Ok>(`/merchants/${id}/state`, { state, label }),
   addMerchant: (body: { brandId: string; channel: string; weight: number }) => http.post<Ok & { id?: string }>('/merchants', body),
   setAgent: (id: string, status: string) => http.post<Ok>(`/agents/${id}/status`, { status }),
-  settleAgent: (id: string, idem?: string) => http.post<Ok>(`/agents/${id}/settle`, undefined, idemHdr(idem)),
+  // 代理放款：后端按「已审批(approved)申请」逐笔精确出账（P0-3），不再清整个可提现池。
+  //   故放款前必须先过审批闸——平台一键放款走 payoutRequests → approvePayout → settleAgent。
+  settleAgent: (id: string, idem?: string) => http.post<Ok & { paid?: number; count?: number }>(`/agents/${id}/settle`, undefined, idemHdr(idem)),
+  payoutRequests: <T = unknown[]>(status?: string) => http.get<T>(`/payout-requests${status ? `?status=${status}` : ''}`),
+  approvePayout: (id: string) => http.post<Ok>(`/payout-requests/${id}/approve`),
+  rejectPayout: (id: string, reviewNote?: string) => http.post<Ok>(`/payout-requests/${id}/reject`, { reviewNote }),
   addBrand: (body: { name: string; category: string; feeRate: number; period: number; reservePct: number; path: string }) => http.post<Ok & { id?: string }>('/brands', body),
   setBrandStatus: (id: string, status: string, label?: string) => http.patch<Ok>(`/brands/${id}/status`, { status, label }),
   setBrandConfig: (id: string, body: { feeRate?: number; period?: number; reservePct?: number; path?: string }) => http.patch<Ok>(`/brands/${id}/config`, body),
