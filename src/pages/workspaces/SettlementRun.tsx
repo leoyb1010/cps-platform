@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Check, ChevronRight, ArrowLeft, FileDown, CircleCheck, Landmark, GitCompareArrows, Wallet, ShieldCheck } from 'lucide-react'
 import { PageHeader, Card, Badge, Button } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
-import { useStore, reconcileSettlement, clearSettlement, settleAgent } from '../../lib/store'
+import { useStore, reconcileSettlement, clearSettlement, settleAgent, releaseReserveDue } from '../../lib/store'
 import { money, cx, downloadText, csvCell } from '../../lib/format'
 import { brandById } from '../../lib/data'
 import { isRealApi } from '../../lib/http'
@@ -159,7 +159,14 @@ export default function SettlementRun() {
           <StepCard n={4} step={STEPS[3]} done={isDone('reserve')} active={activeIdx === 3}>
             <div className="flex items-center justify-between">
               <div className="text-[13px] text-ink-2">在账冻结 <b className="tnum">{money(frozen)}</b> · 到期部分释放进代理可提现池</div>
-              {!isDone('reserve') && <Button variant="primary" busyMs={500} onClick={() => { markDone('reserve'); toast({ tone: 'good', text: '到期准备金已释放' }) }}>释放到期准备金</Button>}
+              {!isDone('reserve') && <Button variant="primary" busyMs={500} onClick={() => {
+                // 真实调后端批量释放（此前仅本地打勾+假 toast，资金动作从未发生）；失败由 mirror:failed 提示
+                void releaseReserveDue().then((r) => {
+                  if (!r.ok) return
+                  markDone('reserve')
+                  toast({ tone: 'good', text: r.released != null ? `到期准备金已释放 ${r.released} 笔${r.amount ? ` · 合计 ¥${r.amount.toLocaleString('zh-CN')}` : ''}` : '到期准备金已释放' })
+                })
+              }}>释放到期准备金</Button>}
             </div>
           </StepCard>
         )}

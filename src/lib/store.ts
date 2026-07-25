@@ -770,6 +770,29 @@ export function clearSettlement(id: string) {
   mirror(() => bizApi.clearSettlement(id, newIdemKey()), '发起结算')
 }
 
+/**
+ * 释放到期准备金（scheduled→released，进代理可提现池）。
+ * 演示模式：无本地准备金计划模型，仅作动作回执（演示态行为）。
+ * 真实模式：调后端批量释放端点并回读真值——此前工作台这一步只在本地打勾 + 弹绿 toast，
+ *   资金动作从未发生却报「已释放」，属假成功。
+ */
+export function releaseReserveDue(): Promise<{ ok: boolean; released?: number; amount?: number; detail?: string }> {
+  if (!isRealApi) return Promise.resolve({ ok: true })
+  return (async () => {
+    try {
+      const r = await bizApi.releaseReserveDue(newIdemKey())
+      if (!r.ok) throw new Error(r.detail || '准备金释放被服务端拒绝')
+      await hydrateFromServer() // 释放会改代理可提现池，回读真值
+      return { ok: true, released: r.released, amount: r.amount, detail: r.detail }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      emit('mirror:failed', { label: '准备金释放', message })
+      await hydrateFromServer().catch(() => { /* 已尽力 */ })
+      return { ok: false, detail: message }
+    }
+  })()
+}
+
 // 对账差异核销
 export function reconcileSettlement(id: string) {
   const settlements = state.settlements.map((s) => (s.id === id ? { ...s, status: 'cleared' as const, reconcileDiff: 0 } : s))

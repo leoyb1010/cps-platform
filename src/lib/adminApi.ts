@@ -96,6 +96,8 @@ export const bizApi = {
   //   故放款前必须先过审批闸——平台一键放款走 payoutRequests → approvePayout → settleAgent。
   settleAgent: (id: string, idem?: string) => http.post<Ok & { paid?: number; count?: number }>(`/agents/${id}/settle`, undefined, idemHdr(idem)),
   payoutRequests: <T = unknown[]>(status?: string) => http.get<T>(`/payout-requests${status ? `?status=${status}` : ''}`),
+  // 准备金到期释放（scheduled→released，进代理可提现池）。amount 经全局拦截器已转元。
+  releaseReserveDue: (idem?: string) => http.post<Ok & { released?: number; amount?: number; scanned?: number }>('/reserve/release-due', undefined, idemHdr(idem)),
   approvePayout: (id: string) => http.post<Ok>(`/payout-requests/${id}/approve`),
   rejectPayout: (id: string, reviewNote?: string) => http.post<Ok>(`/payout-requests/${id}/reject`, { reviewNote }),
   addBrand: (body: { name: string; category: string; feeRate: number; period: number; reservePct: number; path: string }) => http.post<Ok & { id?: string }>('/brands', body),
