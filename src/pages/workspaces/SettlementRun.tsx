@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Check, ChevronRight, ArrowLeft, FileDown, CircleCheck, Landmark, GitCompareArrows, Wallet, ShieldCheck } from 'lucide-react'
 import { PageHeader, Card, Badge, Button } from '../../components/ui/primitives'
 import { useToast } from '../../components/ui/overlays'
-import { useStore, reconcileSettlement, clearSettlement, settleAgent, releaseReserveDue } from '../../lib/store'
+import { useStore, reconcileSettlement, clearSettlement, settleAgent, releaseReserveDue, runReconciliation, runSettlementBatch } from '../../lib/store'
 import { money, cx, downloadText, csvCell } from '../../lib/format'
 import { brandById } from '../../lib/data'
 import { isRealApi } from '../../lib/http'
@@ -25,6 +25,14 @@ const STEPS: { id: StepId; icon: typeof Check; title: string; hint: string }[] =
 
 // 按模式分键：演示/真实两套数据各自有独立的结算进度（store 持久化早已按模式分键，进度也要对齐）
 const RUN_KEY = isRealApi ? 'cps-settle-run-v1-real' : 'cps-settle-run-v1'
+/** 本期账期区间：当月 1 日 00:00 → 次月 1 日 00:00（后端要求 from < to，period 作幂等键）。 */
+function currentPeriodRange(now: Date = new Date()): { period: string; from: string; to: string } {
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const period = `${y}-${String(m + 1).padStart(2, '0')}`
+  return { period, from: new Date(y, m, 1).toISOString(), to: new Date(y, m + 1, 1).toISOString() }
+}
+
 function loadDone(): StepId[] {
   try {
     const r = sessionStorage.getItem(RUN_KEY)
@@ -102,7 +110,14 @@ export default function SettlementRun() {
         <StepCard n={1} step={STEPS[0]} done={isDone('reconcile')} active={activeIdx === 0}>
           <div className="flex items-center justify-between">
             <div className="text-[13px] text-ink-2">已平 <b className="tnum">{settlements.length - diffs.length}</b> · 差异 <b className="tnum text-warn-ink">{diffs.length}</b></div>
-            {!isDone('reconcile') && <Button variant="primary" busyMs={500} onClick={() => { markDone('reconcile'); toast({ tone: 'good', text: '对账已拉取' }) }}>拉取对账</Button>}
+            {!isDone('reconcile') && <Button variant="primary" busyMs={500} onClick={() => {
+              // 真实跑后端对账（恒等式 I + 守恒 II/III/IV），此前仅本地打勾；差异不算失败，照常进入②逐笔核销
+              void runReconciliation().then((r) => {
+                if (r.failed) return // 请求失败：mirror:failed 已提示，不打勾
+                markDone('reconcile')
+                toast({ tone: r.bad ? 'warn' : 'good', text: r.checked != null ? `对账完成：核对 ${r.checked} 张${r.bad ? ` · 发现 ${r.bad} 处差异` : ' · 恒等式全平'}` : '对账已拉取' })
+              })
+            }}>拉取对账</Button>}
           </div>
         </StepCard>
 
@@ -140,15 +155,28 @@ export default function SettlementRun() {
               {/* 空态必须可跳过：上一期已全部结清（或从清结算页先操作过）时，这一步曾是死锁——
                   disabled 按钮没有任何前进出口，Checklist 永远走不完。与 ②⑤ 两步的空态出口对齐。 */}
               {!isDone('clear') && (
-                pending.length === 0 ? (
-                  <Button variant="ghost" onClick={() => markDone('clear')}>无待结算，下一步</Button>
-                ) : (
-                  <Button variant="primary" busyMs={600} onClick={() => {
-                    pending.forEach((p) => clearSettlement(p.id))
-                    markDone('clear')
-                    toast({ tone: 'good', text: `已发起 ${pending.length} 笔结算` })
-                  }}>批量发起结算（{pending.length}）</Button>
-                )
+                <div className="flex items-center gap-2">
+                  {/* 结算跑批（真实模式）：按已履约订单聚合生成本期结算单 + 准备金释放计划。
+                      后端幂等（同品牌同账期唯一），重复跑只补齐缺失品牌。此前后端有能力但前端无入口。 */}
+                  {isRealApi && (
+                    <Button variant="soft" busyMs={600} onClick={() => {
+                      const { period, from, to } = currentPeriodRange()
+                      void runSettlementBatch(period, from, to).then((r) => {
+                        if (!r.ok) return
+                        toast({ tone: 'good', text: `账期 ${period} 跑批完成：新生成 ${r.generated ?? 0} 张，跳过 ${r.skipped ?? 0} 张` })
+                      })
+                    }}>生成本期结算单</Button>
+                  )}
+                  {pending.length === 0 ? (
+                    <Button variant="ghost" onClick={() => markDone('clear')}>无待结算，下一步</Button>
+                  ) : (
+                    <Button variant="primary" busyMs={600} onClick={() => {
+                      pending.forEach((p) => clearSettlement(p.id))
+                      markDone('clear')
+                      toast({ tone: 'good', text: `已发起 ${pending.length} 笔结算` })
+                    }}>批量发起结算（{pending.length}）</Button>
+                  )}
+                </div>
               )}
             </div>
           </StepCard>

@@ -98,6 +98,10 @@ export const bizApi = {
   payoutRequests: <T = unknown[]>(status?: string) => http.get<T>(`/payout-requests${status ? `?status=${status}` : ''}`),
   // 准备金到期释放（scheduled→released，进代理可提现池）。amount 经全局拦截器已转元。
   releaseReserveDue: (idem?: string) => http.post<Ok & { released?: number; amount?: number; scanned?: number }>('/reserve/release-due', undefined, idemHdr(idem)),
+  // 触发对账：跑恒等式 I + 释放守恒 II/III/IV，差异写审计
+  runReconciliation: <T = unknown>() => http.post<T>('/reconciliation/run'),
+  // 结算跑批：按账期聚合已履约订单 → 生成结算单 + 准备金释放计划（幂等，同品牌同账期唯一）
+  runSettlement: (body: { period: string; from: string; to: string }) => http.post<Ok & { generated?: number; skipped?: number }>('/settlements/run', body),
   approvePayout: (id: string) => http.post<Ok>(`/payout-requests/${id}/approve`),
   rejectPayout: (id: string, reviewNote?: string) => http.post<Ok>(`/payout-requests/${id}/reject`, { reviewNote }),
   addBrand: (body: { name: string; category: string; feeRate: number; period: number; reservePct: number; path: string }) => http.post<Ok & { id?: string }>('/brands', body),

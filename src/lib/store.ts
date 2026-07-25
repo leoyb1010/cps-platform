@@ -771,6 +771,46 @@ export function clearSettlement(id: string) {
 }
 
 /**
+ * 拉取对账：跑恒等式 I + 释放守恒 II/III/IV 校验，差异写审计。
+ * 注意后端 ok 语义是「对账无差异」，不是「请求成功」——差异不算失败，照常进入下一步逐笔核销。
+ * 此前工作台这一步只本地打勾 + 弹「对账已拉取」，从不真正校验。
+ */
+export function runReconciliation(): Promise<{ ok: boolean; checked?: number; bad?: number; failed?: boolean; detail?: string }> {
+  if (!isRealApi) return Promise.resolve({ ok: true })
+  return (async () => {
+    try {
+      const r = await bizApi.runReconciliation<{ ok: boolean; checkedSettlements: number; mismatches?: unknown[]; reserveMismatches?: unknown[] }>()
+      const bad = (r.mismatches?.length ?? 0) + (r.reserveMismatches?.length ?? 0)
+      await hydrateFromServer() // 对账可能改写差异字段，回读真值
+      return { ok: r.ok, checked: r.checkedSettlements, bad }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      emit('mirror:failed', { label: '拉取对账', message })
+      return { ok: false, failed: true, detail: message }
+    }
+  })()
+}
+
+/**
+ * 结算跑批：按账期聚合已履约订单 → 生成结算单 + 准备金释放计划（后端幂等，同品牌同账期唯一）。
+ */
+export function runSettlementBatch(period: string, from: string, to: string): Promise<{ ok: boolean; generated?: number; skipped?: number; detail?: string }> {
+  if (!isRealApi) return Promise.resolve({ ok: true })
+  return (async () => {
+    try {
+      const r = await bizApi.runSettlement({ period, from, to })
+      if (!r.ok) throw new Error(r.detail || '结算跑批被服务端拒绝')
+      await hydrateFromServer() // 跑批生成新结算单，回读
+      return { ok: true, generated: r.generated, skipped: r.skipped, detail: r.detail }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      emit('mirror:failed', { label: '结算跑批', message })
+      return { ok: false, detail: message }
+    }
+  })()
+}
+
+/**
  * 释放到期准备金（scheduled→released，进代理可提现池）。
  * 演示模式：无本地准备金计划模型，仅作动作回执（演示态行为）。
  * 真实模式：调后端批量释放端点并回读真值——此前工作台这一步只在本地打勾 + 弹绿 toast，
