@@ -17,6 +17,7 @@ import { EmptyState } from '../components/ui/forms'
 import { SETTLE_PATH_LABEL, SETTLE_PATH_TONE, brandById } from '../lib/data'
 import { useStore, addClaim } from '../lib/store'
 import { pct, cx, copyText } from '../lib/format'
+import { isRealApi } from '../lib/http'
 
 const CATS = ['全部', '工具 / 知识', '音视频 / 泛娱乐', '生活服务 / 电商']
 
@@ -39,12 +40,18 @@ export default function Marketplace() {
   const list = cat === '全部' ? live : live.filter((b) => b.category === cat)
 
   const claim = (brandId: string, plan: string, brandName: string) => {
+    // 真实模式：追踪链接的落库归属在代理门户（portalApi.createClaim）。平台侧选品页仅供预览，
+    // 不用 Math.random 拼一个不可用的假链接并弹成功——那会误导运营以为链接可投放。
+    if (isRealApi) {
+      toast({ tone: 'warn', text: '真实模式下追踪链接由代理在门户「选品投放」领取（此处为平台侧选品预览，不生成链接）' })
+      return
+    }
     const code = `${brandId}-A2041-dy-${Math.random().toString(36).slice(2, 7)}`
     const url = `https://t.linkve.cn/c/${code}`
     void copyText(url)
-    addClaim({ brandId, plan, url, channel: '抖音' }) // 真实写入投放计划，可在「我的投放计划」看板查看
+    addClaim({ brandId, plan, url, channel: '抖音' }) // 演示模式：本地写入投放计划，可在「我的投放计划」看板查看
     setLink({ brand: brandName, plan, url })
-    toast({ tone: 'good', text: '追踪链接已生成并复制' })
+    toast({ tone: 'good', text: '追踪链接已生成并复制（演示）' })
   }
 
   return (

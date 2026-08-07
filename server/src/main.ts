@@ -50,6 +50,13 @@ async function bootstrap() {
   assertSecrets()
   const app = await NestFactory.create(AppModule, { bufferLogs: true })
   app.useLogger(app.get(Logger))
+  // 反向代理信任跳数：生产走 nginx 反代（nginx.conf 注入 X-Forwarded-For/X-Real-IP）。
+  // 不设则 Express trust proxy=false → req.ip 恒为 nginx 容器 IP，导致：
+  //   ① @nestjs/throttler 默认按 req.ip 限流 → 登录 10/min、改密 5/min、全局 120/min 全塌成「全平台共享一个桶」，
+  //      任意一人打满即可锁死所有账户登录（可用性攻击）；
+  //   ② 审计日志与 refreshToken.ip 全部记成 nginx IP，资金平台溯源失效。
+  // 默认信任 1 跳（nginx）；多层代理可用 TRUST_PROXY_HOPS 调整；直连（无代理）时无 XFF，退回 socket IP，安全。
+  app.getHttpAdapter().getInstance().set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1))
   app.use(cookieParser())
   // 安全响应头；CSP 交给前端静态托管层，这里关掉以免误伤跨域 API
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }))

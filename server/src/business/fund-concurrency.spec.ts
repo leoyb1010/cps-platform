@@ -44,7 +44,7 @@ describe('资金 CAS 竞争回归', () => {
       settlement: { update: settlementUpdate },
     }
     const service = new ReserveReleaseService({} as never)
-    const result = await service.clawback(tx as never, 'S1', 80)
+    const result = await service.clawback(tx as never, 'S1', 'AG-X', 80)
     expect(result.clawed).toBe(60)
     expect(settlementUpdate).toHaveBeenCalledWith({
       where: { id: 'S1' },

@@ -69,15 +69,20 @@ export class ReserveReleaseService {
    * 逆向追偿：退款时优先从未释放的 scheduled 行冲减 amount（按 dueAt 早→晚）。
    * 命中行转 clawed_back，settlement.reserveClawedBack 累加。返回实际追回额。
    * 不动已释放部分（已进可提现池/已提现）。
+   *
+   * 必须按 agentId 收窄追偿目标：一张结算单常聚合同账期**多个代理**的订单，reserve 释放行按各自
+   * agentId 分属不同代理（schema:391）。现金侧扣减（applyAgentRefundImpact）本就按退款订单的 agentId
+   * 精确执行，追偿侧若只按 settlementId 取「最早到期行」，会拿代理 B 的准备金抵代理 A 的退款——
+   * 结算单级恒等式仍成立、对账全绿、告警不触发，但代理 B 永久少拿本属自己的释放额（静默资损）。
    */
-  async clawback(tx: Prisma.TransactionClient, settlementId: string, amount: number): Promise<{ clawed: number }> {
+  async clawback(tx: Prisma.TransactionClient, settlementId: string, agentId: string, amount: number): Promise<{ clawed: number }> {
     if (amount <= 0) return { clawed: 0 }
     let remain = amount
     let clawed = 0
     // 每轮只处理当前最早的一行，并以 status+amount 做 CAS。与另一笔 clawback 或
     // releaseRow 竞争失败时重新读取；只有真正认领成功的金额才进入 settlement 累计。
     for (let attempt = 0; remain > 0 && attempt < 1000; attempt++) {
-      const rr = await tx.reserveRelease.findFirst({ where: { settlementId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
+      const rr = await tx.reserveRelease.findFirst({ where: { settlementId, agentId, status: 'scheduled' }, orderBy: { dueAt: 'asc' } })
       if (!rr) break
       const take = Math.min(remain, rr.amount)
       let won

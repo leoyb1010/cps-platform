@@ -67,7 +67,7 @@ export default function Products() {
         </>}
       />
 
-      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示数据 · 审核/受理操作为本地演示，连接真实后端后为服务端权威</div>}
+      {!isRealApi && <div className="mb-4 rounded-lg border border-dashed border-line bg-surface-muted px-3.5 py-2 text-[11.5px] text-ink-3">演示数据 · 审核/受理/组合规则为服务端权威写操作，演示模式下需连接后端方可提交（切换 real 模式联调）</div>}
 
       {/* 套餐受理 Tab：复用超市的套餐台账（用户组的套餐 → 受理拆单履约） */}
       {tab === 'fulfill' ? <BundlesPanel /> : (

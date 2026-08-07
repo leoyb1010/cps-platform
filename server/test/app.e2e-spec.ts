@@ -1687,6 +1687,13 @@ describe('多租户越权矩阵', () => {
       const scoped = (await request(httpServer).get('/summary').set('Authorization', `Bearer ${t}`).expect(200)).body
       expect(scoped.pendingPayout).toBeLessThanOrEqual(platform.pendingPayout)
     })
+    it('/audit-logs：brandaudit 虽持 audit.read，也必须 403（审计日志无租户维度，非平台账户零可见）', async () => {
+      // 回归锚：审计日志是平台级横切视图，表无 brandId/scopeId 可收窄；
+      // 若仅靠 PermsGuard 放行 audit.read，brand-scope 账户即可读到全平台跨租户结算/提现/冲账金额。
+      const t = await token('brandaudit')
+      await request(httpServer).get('/audit-logs').set('Authorization', `Bearer ${t}`).expect(403)
+      await request(httpServer).get('/audit-logs?category=fund').set('Authorization', `Bearer ${t}`).expect(403)
+    })
   })
 
   // ── B. 代理数据级隔离（agent/U-007：portal 端点是其唯一数据入口）──

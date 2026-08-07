@@ -18,7 +18,7 @@
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
 ![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
 ![API](https://img.shields.io/badge/API-107_端点-FF6B35?style=flat-square)
-![测试](https://img.shields.io/badge/测试-253_自动化用例-4CAF50?style=flat-square)
+![测试](https://img.shields.io/badge/测试-269_自动化用例-4CAF50?style=flat-square)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions_×7-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
@@ -152,7 +152,20 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 ## 🔐 安全与质量（Review）
 
-经过**九轮对抗式安全与产品自审**（含多角色真实试用、独立子代理三路并行审计 + 两轮深度复测），累计定位并修复 **80+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+经过**十轮对抗式安全与产品自审**（含多角色真实试用、独立子代理四路并行审计 + 多轮深度复测），累计定位并修复 **95+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
+
+**第十轮（v13）四路并行对抗审计（资金 / RBAC / CPS 支付 / 前端动线）**（详见 [`docs/CPS平台-商业化评审与打分-2026-08-07.md`](docs/)）：
+
+| 级别 | 发现 | 修复 |
+|---|---|---|
+| 🔴 P0 | 未设 trust proxy → nginx 反代后限流塌成「全平台共享一桶」，一人打满锁死所有登录；审计 IP 全记 nginx | 设 `trust proxy`（env 可配，默认信任 1 跳），限流恢复按真实客户端 IP |
+| 🔴 P0 | 合约 `targetGmv` 漏 `fromYuan()`，元写进整数分列 → 成交到目标 1% 即自动判达标进结算 | 两个创建端点补 `fromYuan()`，与 seed / fulfillment 同域 |
+| 🔴 P0 | 品牌下架只置 `deletedAt`，被清退品牌账号仍能登录改 RSA 密钥/回调地址 | 下架联动停用门户账号 + bump tokenVersion，token 立即失效 |
+| 🔴 P0 | `/audit-logs` 漏 scope 收窄，brand-scope 审计账户可读全平台跨租户资金流水 | 审计表无租户维度 → 强制仅平台账户可查 + 新增越区 e2e |
+| 🟠 P1 | 准备金逆向追偿只按 settlementId、缺 agentId → 多代理结算单场景把代理 B 准备金抵代理 A 退款（静默资损、对账全绿） | `clawback` 加 agentId 精确追偿 + 多代理隔离回归测试 |
+| 🟠 P1 | 合约未校验商品归属、CPS 退款幂等键未绑交易号（复用键漏退返回成功） | productId 归属 403 校验；幂等键纳入 extOrderNo |
+| 🟡 P2 | 提现审批闸只统计 pending 可超额、门户自定义时间段 500/静默全零、工单端点泄漏代理 ID 明文 | 闸含 approved；日期解析取日界根治；工单字段白名单脱敏 |
+| 🟡 前端 | real 模式渠道明细/素材 KPI/选品链接展示假数据或假动作 | Analytics/Aigc/Marketplace 加 real 守卫（空态/占位），Products 横幅纠正矛盾文案 |
 
 **第九轮（v12）资金并发、安全重放与 real 模式清零复测**（详见 [`docs/多角色对抗审计报告-2026-07-13-修复复测.md`](docs/多角色对抗审计报告-2026-07-13-修复复测.md)）：
 
@@ -232,7 +245,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏（手机号/商户号）· 审计旁路落盘。
 
-**测试矩阵**：后端 199（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 253 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
+**测试矩阵**：后端 215（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 269 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
 
 ---
 

@@ -173,7 +173,10 @@ export class CpsService {
 
   // ── 退款（幂等）：按 signOrderNo+extOrderNo 反查 Order，走既有逆向冲账，恒等式不破 ──
   async refund(signOrderNo: string, extOrderNo: string, idemKey?: string) {
-    const key = idemKey ?? `${signOrderNo}:${extOrderNo}`
+    // 幂等键始终纳入 extOrderNo：合作方自带 Idempotency-Key 时，若把同一键复用到不同交易号（extOrderNo），
+    // 不绑定内容会命中首笔结果直接回放——第二笔实际没退却返回成功（终端用户漏收退款）。
+    // 绑定后：同一笔退款重试（同 signOrderNo+extOrderNo）回放；不同交易号各自执行。
+    const key = idemKey ? `${signOrderNo}:${extOrderNo}:${idemKey}` : `${signOrderNo}:${extOrderNo}`
     let outboxId: string | null = null // P0-6：退款(3) webhook outbox 行 id，事务内入队、提交后 flush
     const { result, replayed } = await this.idem.run(key, 'cps.refund', async () => {
       const r = await this.prisma.$transaction(async (tx) => {
@@ -187,8 +190,8 @@ export class CpsService {
         await tx.order.create({ data: { id: 'O-' + shortId(), time: '现在', brandId: order.brandId, agentId: order.agentId, channel: order.channel, type: 'refund', amount: -amt, plan: order.plan, mid: order.mid, signOrderNo, extOrderNo, period: order.period, settlementId: originalSettlement?.id ?? null, refundedOrderId: order.id } })
         const rev = await this.settle.applyRefundReversal(tx, { settlement: originalSettlement, amount: amt })
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share: rev.share, withCredit: false })
-        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
-        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
+        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。按 order.agentId 精确追偿。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, order.agentId, impact.shortfall)
         await this.audit.recordInTx(tx, { user: null, actorName: 'CPS对接', action: 'cps.refund', resource: 'Order', resourceId: order.id, detail: `退款 ¥${toYuan(amt)} · 签约 ${signOrderNo} · 交易 ${extOrderNo} · 冲账 ¥${toYuan(rev.share)}` })
         // P0-6：退款(3) webhook 与冲账/追偿同事务入队（原为提交后独立 deliver，崩溃会丢事件）。
         outboxId = await this.webhook.enqueueInTx(tx, signOrderNo, YD_STATUS.REFUND, { orderNo: extOrderNo, amount: amt, period: order.period ?? 0, operateTime: new Date() })

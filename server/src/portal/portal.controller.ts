@@ -252,7 +252,10 @@ export class PortalController {
   @RequirePerms('portal.brand.tickets')
   async brandTickets(@CurrentUser() user: AuthUser) {
     const id = this.scopeId(user, 'brand')
-    return this.prisma.ticket.findMany({ where: { brandId: id }, orderBy: [{ status: 'asc' }, { slaLeftMin: 'asc' }] })
+    const rows = await this.prisma.ticket.findMany({ where: { brandId: id }, orderBy: [{ status: 'asc' }, { slaLeftMin: 'asc' }] })
+    // 字段白名单：脱敏关联代理明文（对齐 brandOrders 的「渠道#」脱敏）、去平台内部处置标识 owner/handledBy。
+    // handlePlan/note 是品牌↔代理↔平台协作字段（前端回复框据此加载），保留。
+    return rows.map((t) => ({ id: t.id, time: t.time, source: t.source, level: t.level, status: t.status, slaLeftMin: t.slaLeftMin, brandId: t.brandId, orderId: t.orderId, reason: t.reason, handlePlan: t.handlePlan, note: t.note, createdAt: t.createdAt }))
   }
 
   // 工单处置共享逻辑（品牌/代理回复同一套：assertOwns + 登记处置字段 + SLA 冻结 + 审计）。
@@ -284,7 +287,9 @@ export class PortalController {
   @RequirePerms('portal.agent.tickets')
   async agentTickets(@CurrentUser() user: AuthUser) {
     const agentId = this.scopeId(user, 'agent')
-    return this.prisma.ticket.findMany({ where: { agentId }, orderBy: [{ status: 'asc' }, { slaLeftMin: 'asc' }] })
+    const rows = await this.prisma.ticket.findMany({ where: { agentId }, orderBy: [{ status: 'asc' }, { slaLeftMin: 'asc' }] })
+    // 字段白名单：去平台内部处置标识 owner/handledBy；保留 handlePlan/note（协作回复字段）与 brandId（代理需知所属品牌）。
+    return rows.map((t) => ({ id: t.id, time: t.time, source: t.source, level: t.level, status: t.status, slaLeftMin: t.slaLeftMin, brandId: t.brandId, agentId: t.agentId, orderId: t.orderId, reason: t.reason, handlePlan: t.handlePlan, note: t.note, createdAt: t.createdAt }))
   }
 
   // ── 代理：协助处理工单（登记处理办法 / 回复 / 状态）──
@@ -542,6 +547,12 @@ export class PortalController {
   @Post('contracts') @RequirePerms('portal.brand.contracts') @ApiOperation({ summary: '品牌发起增长合约（挂单，待代理接单）' })
   async proposeContract(@Body() dto: PortalContractDto, @CurrentUser() user: AuthUser) {
     const brandId = this.scopeId(user, 'brand')
+    // 商品归属校验：proposeBarter 校验了对手品牌、createClaim 校验了品牌 live，唯独此处缺了 productId 归属。
+    // 不校验则品牌可发起引用他方商品的合约，fulfillment 按 productId 匹配时可能错配到他方履约链路。
+    if (dto.productId) {
+      const owned = await this.prisma.product.findFirst({ where: { id: dto.productId, brandId } })
+      if (!owned) throw new ForbiddenException('引用的商品不存在或不属于当前品牌')
+    }
     const id = 'GC-' + randomUUID().slice(0, 6)
     // L3 修复：品牌发起合约一律 open 挂单 + agentId 留空，由代理 claim 主动接单。
     // 绝不允许品牌单方把任意代理直接置 active（绕过代理同意）。
@@ -552,7 +563,7 @@ export class PortalController {
       agentSharePct: Math.min(100, Math.max(0, sp.agentSharePct ?? 30)),
       ...(sp.feePct != null ? { feePct: Math.min(100, Math.max(0, sp.feePct)) } : {}),
     }
-    await this.prisma.growthContract.create({ data: { id, brandId, agentId: null, productId: dto.productId ?? null, status: 'open', settleModel: dto.settleModel, settleParams: JSON.stringify(clampedParams), userLimit: JSON.stringify(dto.userLimit ?? {}), ltvWindow: dto.ltvWindow ?? 'D30', ...(dto.complaintLiability ? { complaintLiability: dto.complaintLiability } : {}), ...(dto.reservePct != null ? { reservePct: dto.reservePct } : {}), targetGmv: dto.targetGmv ?? 0 } })
+    await this.prisma.growthContract.create({ data: { id, brandId, agentId: null, productId: dto.productId ?? null, status: 'open', settleModel: dto.settleModel, settleParams: JSON.stringify(clampedParams), userLimit: JSON.stringify(dto.userLimit ?? {}), ltvWindow: dto.ltvWindow ?? 'D30', ...(dto.complaintLiability ? { complaintLiability: dto.complaintLiability } : {}), ...(dto.reservePct != null ? { reservePct: dto.reservePct } : {}), targetGmv: fromYuan(dto.targetGmv ?? 0) } })
     await this.audit.record({ user, action: 'contract.propose', resource: 'GrowthContract', resourceId: id, detail: `品牌 ${brandId} 发起合约 ${id}（挂单）` })
     return { ok: true, id }
   }
@@ -616,10 +627,12 @@ export class PortalController {
     const out = await this.prisma.$transaction(async (tx) => {
       const agent = await tx.agent.findFirst({ where: { id: agentId, deletedAt: null } })
       if (!agent) return { ok: false, detail: '账户异常' }
-      const agg = await tx.payoutRequest.aggregate({ where: { agentId, status: 'pending' }, _sum: { amount: true } })
+      // 已审批未放款（approved）也占用余额：payoutPending 直到 settleAgent 实际放款才扣减，
+      // 若只统计 pending，approve 后其额度从占用汇总消失 → 可再申请超额，审批闸形同虚设。
+      const agg = await tx.payoutRequest.aggregate({ where: { agentId, status: { in: ['pending', 'approved'] } }, _sum: { amount: true } })
       const pendingTotal = agg._sum.amount ?? 0
       if (pendingTotal + amtFen > agent.payoutPending) {
-        return { ok: false, detail: `申请金额超过可提现余额（余额 ¥${toYuan(agent.payoutPending)}，已申请待审 ¥${toYuan(pendingTotal)}）` }
+        return { ok: false, detail: `申请金额超过可提现余额（余额 ¥${toYuan(agent.payoutPending)}，已申请待审/待放款 ¥${toYuan(pendingTotal)}）` }
       }
       const id = 'PR-' + randomUUID().slice(0, 6)
       await tx.payoutRequest.create({ data: { id, agentId, amount: amtFen, status: 'pending' } })

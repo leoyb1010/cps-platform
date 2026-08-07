@@ -445,8 +445,8 @@ export class BusinessController {
         share = rev.share
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: t.agentId, share, withCredit: true })
         // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金，
-        //   不再对 share 全额再扣一次）。守恒式 II，不动 reserve/agentPayout。
-        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
+        //   不再对 share 全额再扣一次）。守恒式 II，不动 reserve/agentPayout。按 t.agentId 精确追偿，不误伤同单其他代理。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, t.agentId, impact.shortfall)
         await this.audit.recordInTx(tx, { user, action: 'ticket.refund', resource: 'Ticket', resourceId: id, detail: `工单 ${id} 已退款 ¥${toYuan(amount)}，逆向冲账 ¥${toYuan(share)}，代理 ${t.agentId} 信用分 −4` })
         return true
       })
@@ -602,8 +602,14 @@ export class BusinessController {
     this.assertOwns(user, id)
     const r = await this.prisma.brand.updateMany({ where: { id, deletedAt: null }, data: { deletedAt: new Date() } })
     if (r.count === 0) return { ok: false, detail: '品牌不存在或已删除' }
-    await this.audit.record({ user, action: 'brand.delete', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 已软删除（下架）` })
-    return { ok: true, detail: `品牌 ${id} 已下架` }
+    // 下架即断访问：联动停用该品牌所有门户账号并 bump tokenVersion，使其已签发的 access token 立即失效；
+    // refresh 轮换亦会因 status!=='active' 返回过期。否则被清退品牌仍能登录改 RSA 密钥/回调地址、读自身订单结算。
+    const disabled = await this.prisma.user.updateMany({
+      where: { scopeType: 'brand', scopeId: id, status: 'active' },
+      data: { status: 'disabled', tokenVersion: { increment: 1 } },
+    })
+    await this.audit.record({ user, action: 'brand.delete', resource: 'Brand', resourceId: id, detail: `品牌 ${id} 已软删除（下架），联动停用 ${disabled.count} 个门户账号` })
+    return { ok: true, detail: `品牌 ${id} 已下架，同时停用 ${disabled.count} 个门户账号` }
   }
 
   // ── 号池：新增 ─────────────────────────
@@ -641,8 +647,8 @@ export class BusinessController {
         const rev = await this.settle.applyRefundReversal(tx, { settlement: originalSettlement, amount: amt })
         const share = rev.share
         const impact = await this.settle.applyAgentRefundImpact(tx, { agentId: order.agentId, share, withCredit: false })
-        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。
-        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, impact.shortfall)
+        // 逆向追偿：仅追偿分润回收未从 payoutPending 扣足的缺口（P2-B5：同一笔回收优先现金池、不足才动准备金）。按 order.agentId 精确追偿。
+        if (rev.settlement && impact) await this.reserve.clawback(tx, rev.settlement.id, order.agentId, impact.shortfall)
         // 审计同事务（fail-closed）
         await this.audit.recordInTx(tx, { user, action: 'order.refund', resource: 'Order', resourceId: id, detail: `订单 ${id} 已退款 ¥${toYuan(amt)}，逆向冲账 ¥${toYuan(share)}` })
         return { amt, share }
@@ -787,7 +793,7 @@ export class BusinessController {
         id, brandId: dto.brandId, agentId: dto.agentId ?? null, productId: dto.productId ?? null,
         status: dto.agentId ? 'active' : 'open', settleModel: dto.settleModel,
         settleParams: JSON.stringify(dto.settleParams ?? {}), ltvWindow: dto.ltvWindow ?? 'D30',
-        targetGmv: dto.targetGmv ?? 0, signedAt: dto.agentId ? new Date() : null,
+        targetGmv: fromYuan(dto.targetGmv ?? 0), signedAt: dto.agentId ? new Date() : null,
         userLimit: JSON.stringify(dto.userLimit ?? {}),
         ...(dto.complaintLiability ? { complaintLiability: dto.complaintLiability } : {}),
         ...(dto.reservePct != null ? { reservePct: dto.reservePct } : {}),

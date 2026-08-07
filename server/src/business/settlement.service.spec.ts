@@ -51,7 +51,7 @@ describe('P2-B5 · 退款回收去重（payoutPending 优先、缺口才动准�
     await prisma.$transaction(async (tx) => {
       const impact = await settle.applyAgentRefundImpact(tx, { agentId: 'AG-A', share, withCredit: false })
       expect(impact?.shortfall).toBe(0) // 现金池够扣，无缺口
-      if (impact) await reserve.clawback(tx, 'ST-A', impact.shortfall)
+      if (impact) await reserve.clawback(tx, 'ST-A', 'AG-A', impact.shortfall)
     })
 
     const a = await prisma.agent.findUnique({ where: { id: 'AG-A' } })
@@ -75,7 +75,7 @@ describe('P2-B5 · 退款回收去重（payoutPending 优先、缺口才动准�
     await prisma.$transaction(async (tx) => {
       const impact = await settle.applyAgentRefundImpact(tx, { agentId: 'AG-B', share, withCredit: false })
       expect(impact?.shortfall).toBe(30) // 现金只够扣 20，缺口 30
-      if (impact) await reserve.clawback(tx, 'ST-B', impact.shortfall)
+      if (impact) await reserve.clawback(tx, 'ST-B', 'AG-B', impact.shortfall)
     })
 
     const a = await prisma.agent.findUnique({ where: { id: 'AG-B' } })

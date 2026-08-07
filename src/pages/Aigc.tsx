@@ -107,8 +107,8 @@ export default function Aigc() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card mark><Stat label="素材实验" value={String(total + gens.length)} sub={<span>接入 CPS 投放链路</span>} /></Card>
         <Card mark><Stat label="积分余额" value={int(credits ?? aigcCredits)} sub={<span>{credits != null ? '素材引擎实时' : '按量计费 · 软件服务'}</span>} /></Card>
-        <Card mark><Stat label="平均点击率" value={`${avgCtr.toFixed(1)}%`} sub={<span>CTR</span>} /></Card>
-        <Card mark><Stat label="最高素材 LTV" value={`¥${bestLtv}`} hint="按净 LTV 排名，不只看点击率" sub={<span>转化闭环排名</span>} /></Card>
+        <Card mark><Stat label="平均点击率" value={isRealApi ? '—' : `${avgCtr.toFixed(1)}%`} sub={<span>{isRealApi ? '待投放回流接入' : 'CTR'}</span>} /></Card>
+        <Card mark><Stat label="最高素材 LTV" value={isRealApi ? '—' : `¥${bestLtv}`} hint="按净 LTV 排名，不只看点击率" sub={<span>{isRealApi ? '待 LTV 回流接入' : '转化闭环排名'}</span>} /></Card>
       </div>
 
       {gens.length > 0 && (
@@ -132,7 +132,7 @@ export default function Aigc() {
 
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">
-          <CardTitle title="素材实验台" desc="素材 → 投放 → 转化数据回流，按 LTV 排名" />
+          <CardTitle title="素材实验台" desc={isRealApi ? '演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中' : '素材 → 投放 → 转化数据回流，按 LTV 排名'} />
           <span className="mb-3.5 text-[12px] text-ink-4">平均转化率 {avgCvr.toFixed(1)}%</span>
         </div>
         <TableShell

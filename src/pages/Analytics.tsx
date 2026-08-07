@@ -228,6 +228,9 @@ export default function Analytics() {
         )}
 
         {view === 'channel' && (
+          isRealApi ? (
+            <AggPending className="m-2" title="渠道明细接入中" body="渠道级消耗占比 / CPA / 首单 ROI / 续费依赖服务端投放平台回传聚合，接入后此处展示真实渠道明细（真实模式不展示演示数字）。" />
+          ) : (
           <TableShell className="px-2 pb-2" head={<><Th className="pl-3">投放渠道</Th><Th right>消耗占比</Th><Th right>CPA</Th><Th right>首单 ROI</Th><Th right>续费率</Th></>}>
             {[
               { c: '巨量引擎', share: 42, cpa: 38, roi: 1.74, ren: 65 },
@@ -245,6 +248,7 @@ export default function Analytics() {
               </Row>
             ))}
           </TableShell>
+          )
         )}
       </Card>
       )}

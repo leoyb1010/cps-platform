@@ -28,8 +28,9 @@ export function presetToRange(v: PeriodValue, now: Date = new Date()): { from?: 
   if (v.preset === 'custom') {
     // 显式 +08:00：把用户输入的日界当北京 00:00 / 23:59.999，折回 UTC ISO 与 createdAt 对齐
     return {
-      from: v.from ? new Date(v.from + 'T00:00:00.000' + TZ).toISOString() : undefined,
-      to: v.to ? new Date(v.to + 'T23:59:59.999' + TZ).toISOString() : undefined,
+      // 只取日界 YYYY-MM-DD：DTO 若放行完整时间戳（含 T…Z），直接拼接会得到 Invalid Date → toISOString() 抛错。
+      from: v.from ? new Date(String(v.from).slice(0, 10) + 'T00:00:00.000' + TZ).toISOString() : undefined,
+      to: v.to ? new Date(String(v.to).slice(0, 10) + 'T23:59:59.999' + TZ).toISOString() : undefined,
     }
   }
   const { y, m, day } = bjParts(now)
@@ -50,8 +51,8 @@ export function presetToMonthKeys(v: PeriodValue, now: Date = new Date()): strin
   }
   if (v.from && v.to) {
     const out: string[] = []
-    const s = bjParts(new Date(v.from + 'T00:00:00.000' + TZ))
-    const e = bjParts(new Date(v.to + 'T00:00:00.000' + TZ))
+    const s = bjParts(new Date(String(v.from).slice(0, 10) + 'T00:00:00.000' + TZ))
+    const e = bjParts(new Date(String(v.to).slice(0, 10) + 'T00:00:00.000' + TZ))
     for (let idx = s.y * 12 + s.m; idx <= e.y * 12 + e.m && out.length < 36; idx++) {
       out.push(monthKey(Math.floor(idx / 12), idx % 12))
     }

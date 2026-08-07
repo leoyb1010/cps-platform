@@ -55,7 +55,7 @@ describe('P0-B4 · clawback 跨行追偿、守卫已释放行、守恒式 III', 
     // 追偿 150：按 dueAt 早→晚，吃满 RR-C1(100) + RR-C2 部分(50)
     let clawed = 0
     await prisma.$transaction(async (tx) => {
-      clawed = (await reserve.clawback(tx, 'ST-CB', 150)).clawed
+      clawed = (await reserve.clawback(tx, 'ST-CB', 'AG-C', 150)).clawed
     })
     expect(clawed).toBe(150)
     const s = await prisma.settlement.findUnique({ where: { id: 'ST-CB' } })
@@ -80,7 +80,7 @@ describe('P0-B4 · clawback 跨行追偿、守卫已释放行、守恒式 III', 
     // 追偿 150：只能吃 scheduled 的 RR-D2(100)，released 的 RR-D1 不动 → 实际只追回 100
     let clawed = 0
     await prisma.$transaction(async (tx) => {
-      clawed = (await reserve.clawback(tx, 'ST-CB2', 150)).clawed
+      clawed = (await reserve.clawback(tx, 'ST-CB2', 'AG-D', 150)).clawed
     })
     expect(clawed).toBe(100) // 已释放部分不追（进 payoutPending/已提现，不可再从冻结池扣）
     const d1 = await prisma.reserveRelease.findUnique({ where: { id: 'RR-D1' } })
@@ -88,6 +88,27 @@ describe('P0-B4 · clawback 跨行追偿、守卫已释放行、守恒式 III', 
     const s = await prisma.settlement.findUnique({ where: { id: 'ST-CB2' } })
     expect(s?.reserveClawedBack).toBe(100)
     expect(s?.frozen).toBe(0) // 100 − 100
+  })
+
+  it('多代理同结算单：追偿只吃退款代理的释放行，不误伤同单其他代理（P1 跨代理错配回归）', async () => {
+    await seedBrand()
+    await prisma.settlement.create({ data: { id: 'ST-MC', period: '24MC', brandId: 'CB', gross: 1000, brandShare: 400, platformFee: 200, agentPayout: 400, reserve: 400, reserveReleased: 0, reserveClawedBack: 0, frozen: 400 } })
+    // 同一结算单聚合两个代理，各自 scheduled 释放行；代理 Y 的行 dueAt 更早——旧实现按 settlementId 取「最早到期」会先吃 AG-Y。
+    await prisma.reserveRelease.create({ data: { id: 'RR-Y1', settlementId: 'ST-MC', agentId: 'AG-Y', stage: 'D7_init', amount: 200, dueAt: new Date('2026-01-01'), status: 'scheduled' } })
+    await prisma.reserveRelease.create({ data: { id: 'RR-X1', settlementId: 'ST-MC', agentId: 'AG-X', stage: 'D7_init', amount: 200, dueAt: new Date('2026-02-01'), status: 'scheduled' } })
+
+    // 追偿代理 X 的缺口 150：必须只吃 AG-X 的行，AG-Y 的更早行不得被触碰。
+    let clawed = 0
+    await prisma.$transaction(async (tx) => {
+      clawed = (await reserve.clawback(tx, 'ST-MC', 'AG-X', 150)).clawed
+    })
+    expect(clawed).toBe(150)
+    const y = await prisma.reserveRelease.findUnique({ where: { id: 'RR-Y1' } })
+    expect(y?.status).toBe('scheduled') // 代理 Y 的准备金原样，未被拿去抵代理 X 的退款（旧 bug 会先吃 AG-Y）
+    expect(y?.amount).toBe(200)
+    const x = await prisma.reserveRelease.findUnique({ where: { id: 'RR-X1' } })
+    expect(x?.status).toBe('scheduled')
+    expect(x?.amount).toBe(50) // 200 − 150 部分缩减，只动 AG-X
   })
 })
 
