@@ -67,7 +67,10 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
     // 定时任务调度（准备金到期释放、对账）。任务体在 ScheduledTasksService，测试环境内部跳过自动触发。
-    ScheduleModule.forRoot(),
+    // 测试环境不注册调度器：@Cron 的定时器句柄会让 e2e fork 在全部用例通过后仍无法退出，
+    // 表现为「测试全绿但套件挂起」（发布门禁因此不可用）。ScheduledTasksService 内部本就有
+    // NODE_ENV=test 的 enabled 闸挡住方法体，这里连句柄一起去掉，双保险且可确定性退出。
+    ...(process.env.NODE_ENV === 'test' ? [] : [ScheduleModule.forRoot()]),
   ],
   controllers: [AuthController, AuditController, MembersController, BusinessController, AigcController, PortalController, MarketController, CpsController, YoudaoController, HealthController],
   providers: [

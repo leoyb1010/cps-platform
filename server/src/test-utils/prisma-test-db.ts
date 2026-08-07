@@ -28,7 +28,8 @@ function runPrisma(args: string[], databaseUrl: string) {
     // 直接执行本地 prisma 二进制，不经 npx：整套测试有多个套件各调一次建库，
     // 每次 npx 都要做包解析并在 ~/.npm/_npx 抢锁——并发/负载下会阻塞，
     // 表现为「完整套件跑到一半无进展」（单文件跑却很快）。直调二进制既快又无锁竞争。
-    execFileSync(prismaBin, args, { cwd: serverRoot, env, encoding: 'utf8', stdio: 'pipe', timeout: 120_000 })
+    // 同上：stdout 丢弃只留 stderr，避免子进程写满管道缓冲与父进程互等而死锁。
+    execFileSync(prismaBin, args, { cwd: serverRoot, env, encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: 120_000, maxBuffer: 32 * 1024 * 1024 })
   } catch (e) {
     const err = e as { message?: string; stdout?: string; stderr?: string }
     const detail = [err.stdout, err.stderr].filter(Boolean).join('\n').trim()

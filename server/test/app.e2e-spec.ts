@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { resolve } from 'node:path'
 import { Test } from '@nestjs/testing'
 import { ValidationPipe, type INestApplication } from '@nestjs/common'
 import request from 'supertest'
@@ -54,7 +55,19 @@ beforeAll(async () => {
   // 绝对路径临时库避免 schema 相对路径残留；seed 子进程沿用同一个 DATABASE_URL。
   databaseUrl = resetPrismaTestDb('e2e-test')
   const env = { ...process.env, DATABASE_URL: databaseUrl }
-  execFileSync('npx', ['ts-node', 'prisma/seed.ts'], { env, encoding: 'utf8', stdio: 'pipe' })
+  // 直调本地 ts-node，不经 npx：npx 每次都要做包解析并抢 ~/.npm/_npx 锁，
+  // 连续/并发跑整套时会阻塞甚至让种子进程超时半途退出——表现为「每轮失败的用例都不一样」。
+  // 显式 timeout + 失败时抛出 stdout/stderr，避免种子静默不全导致后续用例莫名 400/500。
+  const tsNodeBin = resolve(__dirname, '..', 'node_modules', '.bin', 'ts-node')
+  try {
+    // stdout 直接丢弃、只保留 stderr：种子脚本输出量大，用 stdio:'pipe' 接管两条流时，
+    // 管道缓冲写满会让子进程阻塞在 write 上、父进程又在等它退出 —— 经典死锁，
+    // 表现为「种子已写完库但套件卡住不动」。maxBuffer 同时放大，避免 stderr 撑爆。
+    execFileSync(tsNodeBin, ['prisma/seed.ts'], { cwd: resolve(__dirname, '..'), env, encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], timeout: 120_000, maxBuffer: 32 * 1024 * 1024 })
+  } catch (e) {
+    const err = e as { message?: string; stdout?: string; stderr?: string }
+    throw new Error(`e2e 种子灌入失败：${[err.stdout, err.stderr].filter(Boolean).join('\n').trim() || err.message}`)
+  }
   const { AppModule } = await import('../src/app.module')
   const { AllExceptionsFilter } = await import('../src/common/all-exceptions.filter')
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile()

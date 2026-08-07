@@ -18,7 +18,7 @@
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
 ![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
 ![API](https://img.shields.io/badge/API-107_端点-FF6B35?style=flat-square)
-![测试](https://img.shields.io/badge/测试-283_自动化用例-4CAF50?style=flat-square)
+![测试](https://img.shields.io/badge/测试-288_自动化用例-4CAF50?style=flat-square)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions_×7-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
@@ -168,7 +168,20 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 | 🟡 P2 | 提现审批闸只统计 pending 可超额、门户自定义时间段 500/静默全零、工单端点泄漏代理 ID 明文 | 闸含 approved；日期解析取日界根治；工单字段白名单脱敏 |
 | 🟡 前端 | real 模式渠道明细/素材 KPI/选品链接展示假数据或假动作 | Analytics/Aigc/Marketplace 加 real 守卫（空态/占位），Products 横幅纠正矛盾文案 |
 
-**第十轮补充 · 逼近满分优化**：在上述修复之上，补齐 **15 个双租户越权矩阵 e2e**（资金写 403 / 横切读零可见 / scoped 读收窄 / 门户读归属，把权限隔离从「代码当前正确」升级为「回归可证」）；修门户查询无上限（防高频代理 OOM）；产出 [PG 金额 BigInt 迁移方案](docs/PG金额BigInt迁移方案.md)。后端测试增至 **229**，详见 [商业化评审与打分报告](docs/CPS平台-商业化评审与打分-2026-08-07.md)（综合 8.6 → 8.9）。
+**第十轮补充 · 逼近满分优化**：在上述修复之上，补齐 **15 个双租户越权矩阵 e2e**（资金写 403 / 横切读零可见 / scoped 读收窄 / 门户读归属，把权限隔离从「代码当前正确」升级为「回归可证」）；修门户查询无上限（防高频代理 OOM）；产出 [PG 金额 BigInt 迁移方案](docs/PG金额BigInt迁移方案.md)。
+
+**第十一轮（v14）· 压力测试 + 外部多角色对抗审计整改**（对抗审计 62 项中 61 项通过、无越权发现）：
+
+| 级别 | 发现 | 修复与验证 |
+|---|---|---|
+| 🔴 P0 | **访问令牌与刷新令牌进入请求日志**——读日志即可接管任意账户（Pino 无 `redact`） | `common/log-redact.ts` 统一脱敏（`remove:true` 不可逆），覆盖 Authorization/Cookie/Set-Cookie/密码/私钥。**实证**：真实 204 字符 token 打 3 个受保护接口后日志出现 **0 次**，请求日志仍正常 |
+| 🔴 P1 | **幂等与业务非原子**：op 已提交但结果写失败时也删占位 → 重试会二次执行资金操作 | 已提交则保留占位并标记 `__committed_unknown__` 绝不重跑，且把真实结果返回调用方；新增故障注入回归 |
+| 🟠 P1 | 20 路并发清算出现 9 个 500（锁竞争被当未知错误） | Prisma 争用码 + socket timeout/事务过期 → **409/503 + `retryable` + `Retry-After`**；争用告警降为 warn |
+| 🟠 P2 | 完整测试套件曾挂起 >3 分钟，无法作发布门禁 | 根因是测试建库/灌种子经 `npx` 抢 `~/.npm/_npx` 锁 → 改直调本地二进制；2 个资金套件迁移共享 helper。**全量 234 测试 11 秒稳定通过** |
+| 🟡 P2 | 认证每请求读两次用户表 / `/metrics` 未强制 token | 合并为单次 `loadForAuth`；生产强制 `METRICS_TOKEN`（缺失拒启）+ 常量时间比较 + 不再接受 `?token=` |
+| 🟡 P2 | 过载时 SIGTERM 10 秒内无法退出 | 关停看门狗（`SHUTDOWN_GRACE_MS`，默认 15s）使关停时长可预期 |
+
+后端测试增至 **234**，详见 [商业化评审与打分报告](docs/CPS平台-商业化评审与打分-2026-08-07.md)（综合 8.6 → 8.9 → **9.2**）。
 
 **第九轮（v12）资金并发、安全重放与 real 模式清零复测**（详见 [`docs/多角色对抗审计报告-2026-07-13-修复复测.md`](docs/多角色对抗审计报告-2026-07-13-修复复测.md)）：
 
@@ -248,7 +261,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏（手机号/商户号）· 审计旁路落盘。
 
-**测试矩阵**：后端 229（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 283 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
+**测试矩阵**：后端 234（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 288 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
 
 ---
 

@@ -80,6 +80,24 @@ async function bootstrap() {
   // 配合 app.close() 等待在途请求完成，避免部署时截断资金事务。
   app.enableShutdownHooks()
 
+  // 关停看门狗：压测实测过载时 SIGTERM 后 10s 仍无法退出（在途请求/连接排空卡住），
+  // 编排器随后 SIGKILL —— 那才是真正会截断在途事务的路径。这里给一个确定性的上限：
+  // 超时即主动退出，让"关停时长"可预期，且早于 K8s 默认 30s terminationGracePeriod。
+  const shutdownGraceMs = Number(process.env.SHUTDOWN_GRACE_MS || 15_000)
+  let shuttingDown = false
+  for (const sig of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(sig, () => {
+      if (shuttingDown) return // 二次信号直接忽略，避免打断正在进行的排空
+      shuttingDown = true
+      const timer = setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.error(`[cps-server] 优雅停机超过 ${shutdownGraceMs}ms，强制退出（在途请求可能被截断）`)
+        process.exit(1)
+      }, shutdownGraceMs)
+      timer.unref() // 正常排空完成时不因该定时器延长进程寿命
+    })
+  }
+
   // OpenAPI / Swagger —— 生产默认不暴露 /docs（避免对外泄露完整 API 契约），
   // 需要时显式 EXPOSE_SWAGGER=true 放行（如内网预发）。openapi.json 仅在非生产落盘。
   const exposeSwagger = process.env.NODE_ENV !== 'production' || process.env.EXPOSE_SWAGGER === 'true'
