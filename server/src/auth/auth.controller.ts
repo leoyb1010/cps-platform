@@ -21,8 +21,9 @@ class ChangePasswordDto {
 // 登录/改密限流：生产严格防爆破；test 放开（e2e 单进程内高频登录会误触发，且限流由专项用例覆盖）。
 // 全局 ThrottlerModule 的 skipIf 不覆盖 @Throttle 装饰器，故此处按环境显式放大 limit。
 const IS_TEST = process.env.NODE_ENV === 'test'
-const LOGIN_LIMIT = IS_TEST ? 100000 : 10
-const CHPWD_LIMIT = IS_TEST ? 100000 : 5
+// 压测：设 LOGIN_RATE_LIMIT / CHPWD_RATE_LIMIT 放大阈值（仍按真实 IP，只调上限）；不设则用生产默认 10 / 5。
+const LOGIN_LIMIT = IS_TEST ? 100000 : Number(process.env.LOGIN_RATE_LIMIT) || 10
+const CHPWD_LIMIT = IS_TEST ? 100000 : Number(process.env.CHPWD_RATE_LIMIT) || 5
 
 const REFRESH_COOKIE = 'cps_rt'
 

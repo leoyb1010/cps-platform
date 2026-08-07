@@ -58,8 +58,9 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
     JwtModule.register({}),
     // 限流：默认每 IP 每分钟 120 次；登录等敏感端点用 @Throttle 单独收紧（防爆破）
     // 测试环境跳过（套件会高频登录），避免误触发 429
+    // 压测：设 THROTTLE_LIMIT 放大阈值（仍按真实 IP 限流，只调上限，保留生产行为）；生产勿设或设回合理值
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 120 }],
+      throttlers: [{ ttl: 60_000, limit: Number(process.env.THROTTLE_LIMIT) || 120 }],
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
     // 定时任务调度（准备金到期释放、对账）。任务体在 ScheduledTasksService，测试环境内部跳过自动触发。
