@@ -18,7 +18,7 @@
 ![鉴权](https://img.shields.io/badge/Auth-JWT_+_刷新令牌-000000?style=flat-square&logo=jsonwebtokens&logoColor=white)
 ![主题](https://img.shields.io/badge/主题-明亮_/_暗色_/_跟随系统-6b4fd6?style=flat-square)
 ![API](https://img.shields.io/badge/API-107_端点-FF6B35?style=flat-square)
-![测试](https://img.shields.io/badge/测试-269_自动化用例-4CAF50?style=flat-square)
+![测试](https://img.shields.io/badge/测试-283_自动化用例-4CAF50?style=flat-square)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions_×7-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
@@ -167,6 +167,8 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 | 🟡 P2 | 提现审批闸只统计 pending 可超额、门户自定义时间段 500/静默全零、工单端点泄漏代理 ID 明文 | 闸含 approved；日期解析取日界根治；工单字段白名单脱敏 |
 | 🟡 前端 | real 模式渠道明细/素材 KPI/选品链接展示假数据或假动作 | Analytics/Aigc/Marketplace 加 real 守卫（空态/占位），Products 横幅纠正矛盾文案 |
 
+**第十轮补充 · 逼近满分优化**：在上述修复之上，补齐 **15 个双租户越权矩阵 e2e**（资金写 403 / 横切读零可见 / scoped 读收窄 / 门户读归属，把权限隔离从「代码当前正确」升级为「回归可证」）；修门户查询无上限（防高频代理 OOM）；产出 [PG 金额 BigInt 迁移方案](docs/PG金额BigInt迁移方案.md)。后端测试增至 **229**，详见 [商业化评审与打分报告](docs/CPS平台-商业化评审与打分-2026-08-07.md)（综合 8.6 → 8.9）。
+
 **第九轮（v12）资金并发、安全重放与 real 模式清零复测**（详见 [`docs/多角色对抗审计报告-2026-07-13-修复复测.md`](docs/多角色对抗审计报告-2026-07-13-修复复测.md)）：
 
 | 级别 | 发现 | 修复 |
@@ -245,7 +247,7 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 **纵深防护**：登录限流（10/min 防爆破）· Helmet 安全头 · 生产密钥强校验 · 依赖漏洞扫描（`npm audit` 接 CI，逐条研判见 [`server/SECURITY-AUDIT.md`](server/SECURITY-AUDIT.md)）· PII 脱敏（手机号/商户号）· 审计旁路落盘。
 
-**测试矩阵**：后端 215（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 269 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
+**测试矩阵**：后端 229（e2e + 单测）· 前端 45（Vitest+jsdom）· 端到端 9（Playwright 真实浏览器，覆盖权限守卫/超市闭环/门户登录）· **共 283 自动化用例**。另有两轮 real 模式对抗脚本（每轮 41 个 API 场景 + 3 张浏览器截图）。CI 七作业：前端构建 / ESLint / 后端 e2e / PG schema / Playwright / 依赖扫描 / PostgreSQL Docker readiness。
 
 ---
 

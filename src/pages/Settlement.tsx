@@ -423,7 +423,7 @@ function FundFlowCard({ settlements }: { settlements: SettlementT[] }) {
         </div>
       ) : (
         <div className="px-3 pb-4">
-          {gross > 0 ? <FundSankey gross={gross} flows={flows} /> : <div className="py-10 text-center text-[12.5px] text-ink-4">暂无结算数据</div>}
+          {gross > 0 ? <FundSankey gross={gross} flows={flows} /> : <div className="py-10 text-center text-[12.5px] text-ink-4">暂无结算数据 · 点击右上角「开始本期结算」按账期聚合已履约订单，生成分润瀑布与准备金释放计划</div>}
           {diff > 0 && <div className="mx-4 mt-1 rounded-lg bg-alert-soft/50 px-3 py-2 text-[12px] text-alert-ink">存在对账差异 {money(diff)}（已在「逆向冲账」股标红）· 到「核销差异」处理</div>}
         </div>
       )}

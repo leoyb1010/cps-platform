@@ -162,10 +162,12 @@ export class PortalController {
       const id = user.scopeId!
       const range = period ? presetToRange(period) : null
       const orderWhere = { agentId: id, ...(range && (range.from || range.to) ? { createdAt: { ...(range.from ? { gte: new Date(range.from) } : {}), ...(range.to ? { lte: new Date(range.to) } : {}) } } : {}) }
-      const [agent, orderRows, contracts] = await Promise.all([
+      const [agent, orderRows, contracts, orderCount] = await Promise.all([
         this.prisma.agent.findFirst({ where: { id, deletedAt: null } }),
-        this.prisma.order.findMany({ where: orderWhere, orderBy: { createdAt: 'asc' } }),
+        // 上限防内存爆：高频代理不传时间段时全量历史订单会 OOM。取最近 3000 条，足够覆盖近 14 天趋势与 Top 品牌聚合。
+        this.prisma.order.findMany({ where: orderWhere, orderBy: { createdAt: 'desc' }, take: 3000 }),
         this.prisma.growthContract.count({ where: { agentId: id, deletedAt: null } }),
+        this.prisma.order.count({ where: orderWhere }), // 订单总数走 count，不被 take 截断
       ])
       // Top 品牌榜（按带单成交，退款计负）——供经营看板，仅聚合自己的订单
       const byBrand = new Map<string, number>()
@@ -181,7 +183,7 @@ export class PortalController {
         payoutPending: agent?.payoutPending ?? 0,
         creditScore: agent?.creditScore ?? 0,
         renewalRate: agent?.renewalRate ?? 0,
-        orders: orderRows.length,
+        orders: orderCount,
         acceptedContracts: contracts,
         topBrands,
         trend: orderTrend(orderRows), // 近 14 天带单成交趋势

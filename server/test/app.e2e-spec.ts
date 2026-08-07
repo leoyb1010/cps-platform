@@ -1634,7 +1634,7 @@ describe('多租户越权矩阵', () => {
     const roles = (await request(httpServer).get('/roles').set('Authorization', `Bearer ${su}`).expect(200)).body
     const audit = roles.find((r: any) => r.id === 'audit')
     await request(httpServer).patch('/roles/audit').set('Authorization', `Bearer ${su}`).send({
-      permissions: [...new Set([...audit.permissions, 'settlement.clear', 'order.refund', 'merchant.write'])],
+      permissions: [...new Set([...audit.permissions, 'settlement.clear', 'order.refund', 'merchant.write', 'contract.write'])],
     }).expect((r) => expect([200, 201]).toContain(r.status))
   })
 
@@ -1855,6 +1855,80 @@ describe('多租户越权矩阵', () => {
       const items = (await request(httpServer).get('/orders?limit=500').set('Authorization', `Bearer ${su}`).expect(200)).body.items
       expect(new Set(items.map((o: any) => o.brandId)).size).toBeGreaterThan(1)
       expect(new Set(items.map((o: any) => o.agentId)).size).toBeGreaterThan(1)
+    })
+  })
+
+  // ── H. 越权矩阵补全：brandaudit 权限已达 assertOwns/assertPlatform，真正证明数据级隔离（非止步 PermsGuard）──
+  // 把「隔离当前正确」升级为「回归可证」：横切读零可见、跨租户资金写 403、scoped 读收窄。
+  describe('H · 越权矩阵补全（资金写/横切读/scoped 读）', () => {
+    // 横切读：全代理提现是平台级视图（无租户维度），非平台账户零可见——与 audit-logs 同性质
+    it('GET /payout-requests：brandaudit(有 settlement.read) 仍 403（assertPlatform 横切）', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).get('/payout-requests').set('Authorization', `Bearer ${t}`).expect(403)
+    })
+    // scoped 读：品牌只读审计不得见他牌主数据（A 块覆盖了 merchants/settlements/orders/tickets/contracts，独缺 brands/agents）
+    it('GET /brands：brandaudit 每条 id===youdao，不含他牌', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/brands').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((b: any) => b.id === 'youdao')).toBe(true)
+      expect(rows.some((b: any) => b.id === OTHER_BRAND)).toBe(false)
+    })
+    it('GET /agents：brandaudit(brand scope) 收窄，绝不含他人代理 A-1188', async () => {
+      const t = await token('brandaudit')
+      const rows = (await request(httpServer).get('/agents').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.some((a: any) => a.id === OTHER_AGENT)).toBe(false)
+    })
+    // assertPlatform 写：非平台不能触发跑批出账 / 审批放款
+    it('POST /settlements/run：brandaudit 403（不能触发全平台账期跑批）', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/settlements/run').set('Authorization', `Bearer ${t}`).send({ period: '24C', from: '2026-01-01', to: '2026-12-31' }).expect(403)
+    })
+    it('POST /payout-requests/:id/approve：brandaudit 403（不能审批放款闸）', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/payout-requests/PR-x/approve').set('Authorization', `Bearer ${t}`).send({}).expect(403)
+    })
+    it('POST /payout-requests/:id/reject：brandaudit 403（不能驳回提现）', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/payout-requests/PR-x/reject').set('Authorization', `Bearer ${t}`).send({}).expect(403)
+    })
+    // assertReserveOwns 写：品牌不能释放/冻结他牌准备金（RR-2406WP-* 属 S-2406-WP/A-1188，非 youdao）
+    it('POST /reserve/:rrId/release：brandaudit 释放他牌准备金 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/reserve/RR-2406WP-2/release').set('Authorization', `Bearer ${t}`).send({}).expect(403)
+    })
+    it('POST /reserve/:rrId/freeze：brandaudit 冻结他牌准备金 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/reserve/RR-2406WP-4/freeze').set('Authorization', `Bearer ${t}`).send({ reason: '越权回归' }).expect(403)
+    })
+    // assertOwns 写：品牌不能往他牌号池新增 / 流转他牌合约
+    it('POST /merchants：brandaudit 往他牌号池(ximalaya)新增 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).post('/merchants').set('Authorization', `Bearer ${t}`).send({ brandId: OTHER_BRAND, channel: 'wechat', weight: 10 }).expect(403)
+    })
+    it('PATCH /contracts/:id/status：brandaudit 流转他牌合约(GC-2406-02) 403', async () => {
+      const t = await token('brandaudit')
+      await request(httpServer).patch('/contracts/GC-2406-02/status').set('Authorization', `Bearer ${t}`).send({ status: 'closed' }).expect(403)
+    })
+    // 门户读归属：品牌/代理只见自己的合约/商品/提现（B/C 块之外的遗漏端点）
+    it('GET /portal/contracts：品牌只见自己发的合约（每条 brandId===youdao）', async () => {
+      const t = await token('brand')
+      const rows = (await request(httpServer).get('/portal/contracts').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((c: any) => c.brandId === 'youdao')).toBe(true)
+    })
+    it('GET /portal/contracts：代理只见自己接的 + open 挂单，不泄漏他人已接', async () => {
+      const t = await token('agent')
+      const rows = (await request(httpServer).get('/portal/contracts').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((c: any) => c.agentId === 'A-2041' || (c.agentId === null && c.status === 'open'))).toBe(true)
+    })
+    it('GET /portal/brand/products：品牌每条 brandId===youdao', async () => {
+      const t = await token('brand')
+      const rows = (await request(httpServer).get('/portal/brand/products').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((p: any) => p.brandId === 'youdao')).toBe(true)
+    })
+    it('GET /portal/agent/payout-requests：代理每条 agentId===A-2041', async () => {
+      const t = await token('agent')
+      const rows = (await request(httpServer).get('/portal/agent/payout-requests').set('Authorization', `Bearer ${t}`).expect(200)).body
+      expect(rows.every((p: any) => p.agentId === 'A-2041')).toBe(true)
     })
   })
 })
