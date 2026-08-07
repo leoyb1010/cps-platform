@@ -123,7 +123,9 @@ export default function App() {
     if (needsBootstrap)
       void bootstrapAuth()
         .then((ok) => (ok && shouldHydratePlatformStore(getCurrentUser()) ? hydrateFromServer() : undefined))
-        .catch(() => false)
+        // 启动恢复/水合失败不阻断进入应用（降级为未登录或本地数据），但必须可观测——
+        // 静默吞掉会让"线上一批用户白等/看到旧数据"无从排查。
+        .catch((e) => reportError(e, { phase: 'bootstrapAuth' }))
         .finally(() => setReady(true))
   }, [needsBootstrap])
   if (!ready) {

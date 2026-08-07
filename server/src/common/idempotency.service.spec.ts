@@ -64,6 +64,36 @@ describe('IdempotencyService', () => {
     expect(await prisma.idempotencyKey.count()).toBe(0)
   })
 
+  // 压测/审计 P1 回归：业务已提交、幂等结果落库失败的故障注入。
+  // 旧实现在这条路径上删除占位行 → 调用方收到错误后用同键重试，会把同一笔资金操作再执行一次（双花）。
+  it('故障注入：op 已提交但结果落库失败 → 返回真实结果、占位不删、同键重试绝不重跑', async () => {
+    let calls = 0
+    const op = async () => {
+      calls++
+      return { charged: 500 }
+    }
+    // 让「写幂等结果」这一步持续失败（业务 op 本身已成功提交）
+    const realUpdate = prisma.idempotencyKey.update.bind(prisma.idempotencyKey)
+    prisma.idempotencyKey.update = (async () => {
+      throw new Error('socket timeout')
+    }) as typeof prisma.idempotencyKey.update
+
+    // ① 业务已发生 → 必须把真实结果返回给调用方（绝不能报错让其以为没执行）
+    const r1 = await idem.run('k-fault', 'fund', op)
+    expect(r1.result).toEqual({ charged: 500 })
+    expect(calls).toBe(1)
+
+    // ② 占位行必须保留并标记为已提交但结果不可知（删除=允许重跑=双花）
+    const row = await prisma.idempotencyKey.findUnique({ where: { key: 'fund:k-fault' } })
+    expect(row?.result).toBe('__committed_unknown__')
+
+    prisma.idempotencyKey.update = realUpdate
+
+    // ③ 同键重试：明确拒绝，且绝不再次执行资金 op
+    await expect(idem.run('k-fault', 'fund', op)).rejects.toThrow(/已执行/)
+    expect(calls).toBe(1) // 关键：仍然只执行过一次
+  })
+
   it('并发同 key：op 只执行一次，二者拿到同一结果（无双花）', async () => {
     let calls = 0
     const op = async () => {

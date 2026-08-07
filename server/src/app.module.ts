@@ -7,6 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { LoggerModule } from 'nestjs-pino'
 import { randomUUID } from 'crypto'
 
+import { LOG_REDACT_PATHS } from './common/log-redact'
 import { PrismaService } from './prisma.service'
 import { AuthService } from './auth/auth.service'
 import { AuthController } from './auth/auth.controller'
@@ -44,6 +45,8 @@ import { ScheduledTasksService } from './business/scheduled-tasks.service'
       pinoHttp: {
         level: process.env.NODE_ENV === 'test' ? 'silent' : 'info',
         transport: process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
+        // 凭据脱敏（P0）：路径清单与断言测试见 common/log-redact.ts。
+        redact: { paths: LOG_REDACT_PATHS, remove: true },
         autoLogging: { ignore: (req) => req.url === '/health' || req.url === '/ready' || req.url === '/metrics' },
         // 追踪 ID：复用入站 X-Request-Id（清洗 + 限长，防响应头注入/超长），否则生成；写回响应头
         genReqId: (req, res) => {

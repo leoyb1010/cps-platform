@@ -145,7 +145,8 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 > **生产起停前先设必填 env**（缺失时 compose 直接报错、不静默起坏容器）：
 > `JWT_ACCESS_SECRET`、`JWT_REFRESH_SECRET`（各 `openssl rand -hex 32`）、
-> `YOUDAO_PLATFORM_PRIVATE_KEY`（真实 RSA 私钥 PEM，`openssl genrsa 2048`）；
+> `YOUDAO_PLATFORM_PRIVATE_KEY`（真实 RSA 私钥 PEM，`openssl genrsa 2048`）、
+> `METRICS_TOKEN`（≥16 字符，`openssl rand -hex 16`；/metrics 含资金指标，缺失即拒启）；
 > PG 叠加层再加 `POSTGRES_PASSWORD`。可写入 `.env` 或 `export` 后再 `docker compose up`。
 
 ---

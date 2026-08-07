@@ -18,6 +18,8 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET 必填：openssl rand -hex 32}
       # 有道出站回调平台私钥：缺失则 compose 直接报错，避免回退 demo 私钥被伪造回调后 crash-loop
       YOUDAO_PLATFORM_PRIVATE_KEY: ${YOUDAO_PLATFORM_PRIVATE_KEY:?生产必须提供真实RSA私钥（PEM）：openssl genrsa 2048}
+      # /metrics 暴露资金业务指标：缺失则服务拒启（仅靠 nginx 拦截挡不住绕过网关直连容器端口）
+      METRICS_TOKEN: ${METRICS_TOKEN:?METRICS_TOKEN 必填（≥16 字符）：openssl rand -hex 16}
       ACCESS_TTL: 900s
       REFRESH_TTL_DAYS: "14"
       PORT: "3001"

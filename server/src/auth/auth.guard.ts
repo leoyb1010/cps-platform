@@ -33,12 +33,12 @@ export class AuthGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('登录态无效或已过期')
     }
+    // 单次查询取回 用户 + 角色权限 + tokenVersion（原为两次查询，高并发下把用户表读放大一倍）
+    const loaded = await this.auth.loadForAuth(payload.sub)
+    if (!loaded) throw new UnauthorizedException('用户不存在或已停用')
     // token 版本校验：登出/吊销全会话/角色变更会 bump 版本，使旧 access token 立即失效
-    const currentTv = await this.auth.tokenVersionOf(payload.sub)
-    if (currentTv === null) throw new UnauthorizedException('用户不存在或已停用')
-    if ((payload.tv ?? 0) !== currentTv) throw new UnauthorizedException('登录态已失效，请重新登录')
-    const user = await this.auth.toAuthUser(payload.sub)
-    if (!user) throw new UnauthorizedException('用户不存在或已停用')
+    if ((payload.tv ?? 0) !== loaded.tokenVersion) throw new UnauthorizedException('登录态已失效，请重新登录')
+    const user = loaded.user
     const passwordChangeAllowed = this.reflector.getAllAndOverride<boolean>(PASSWORD_CHANGE_ALLOWED_KEY, [ctx.getHandler(), ctx.getClass()])
     if (user.mustChangePassword && !passwordChangeAllowed) {
       throw new ForbiddenException('首次登录必须先修改密码')

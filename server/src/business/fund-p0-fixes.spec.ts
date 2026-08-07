@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
 import { PrismaService } from '../prisma.service'
+import { cleanupPrismaTestDb, resetPrismaTestDb } from '../test-utils/prisma-test-db'
 import { ReserveReleaseService } from './reserve-release.service'
 import { FulfillmentService } from './fulfillment.service'
 
@@ -13,27 +12,21 @@ let prisma: PrismaService
 let reserve: ReserveReleaseService
 let fulfillment: FulfillmentService
 
-const DB = 'file:./p0fix-test.db'
+// 统一走 test-utils/prisma-test-db：绝对路径 + 按 PID 隔离 + 显式 RUST_LOG（相对 URL 在
+// 本机 Prisma/macOS 下报无细节 "Schema engine error"，导致整个资金回归套件跑不起来）。
+let databaseUrl: string | undefined
 
 beforeAll(() => {
-  process.env.DATABASE_URL = DB
-  for (const f of ['p0fix-test.db', 'p0fix-test.db-journal', 'p0fix-test.db-wal', 'p0fix-test.db-shm']) {
-    for (const dir of ['../..', '../../prisma']) {
-      try {
-        rmSync(`${__dirname}/${dir}/${f}`)
-      } catch {
-        /* 不存在则忽略 */
-      }
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: DB }, stdio: 'ignore' })
+  databaseUrl = resetPrismaTestDb('fund-p0fix')
   prisma = new PrismaService()
   reserve = new ReserveReleaseService(prisma)
   fulfillment = new FulfillmentService(prisma)
 })
 
 afterAll(async () => {
-  await prisma.$disconnect()
+  // 可选链：beforeAll 若失败则 prisma 未初始化，直接 $disconnect 会抛二次异常掩盖真实错因
+  await prisma?.$disconnect()
+  cleanupPrismaTestDb(databaseUrl)
 })
 
 async function seedBrand() {

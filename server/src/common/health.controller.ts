@@ -1,10 +1,21 @@
 import { Controller, ForbiddenException, Get, Header, HttpCode, HttpStatus, Req, ServiceUnavailableException } from '@nestjs/common'
 import type { Request } from 'express'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { Public } from '../auth/auth.guard'
 import { PrismaService } from '../prisma.service'
 import { MetricsService } from './metrics.service'
 import { AuditService } from '../audit/audit.service'
+
+/**
+ * 常量时间比较（避免按字符提前返回泄露前缀，被逐位爆破出 token）。
+ * 先各自 sha256 定长化，使长度差异也不产生时间差、timingSafeEqual 不因长度不等抛错。
+ */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ha = createHash('sha256').update(a).digest()
+  const hb = createHash('sha256').update(b).digest()
+  return timingSafeEqual(ha, hb)
+}
 
 @ApiTags('health')
 @Controller()
@@ -51,13 +62,15 @@ export class HealthController {
   @Header('Content-Type', 'text/plain; version=0.0.4')
   @ApiOperation({ summary: 'Prometheus 指标（进程 + HTTP 延迟直方图 + 业务计数）' })
   metricsEndpoint(@Req() req: Request) {
-    // P2-B13 纵深防御：/metrics 暴露资金业务指标。生产除 nginx 拦截外，配置 METRICS_TOKEN 后要求
-    //   Bearer/`?token=` 匹配，堵住绕过 nginx 直连 server:3001 抓取资金指标的口子。未配则维持现状（仅靠 nginx）。
+    // P2-B13 纵深防御：/metrics 暴露资金业务指标（含 cps_refund_amount_total）。
+    //   生产除 nginx 拦截外，强制 METRICS_TOKEN（见 main.ts assertSecrets：生产缺失即拒启），
+    //   堵住绕过 nginx 直连 server:3001 抓取资金指标的口子。
+    // 仅接受 Authorization: Bearer——不再接受 `?token=`：查询串会进 nginx/网关 access log，等于泄露密钥。
     const token = process.env.METRICS_TOKEN
     if (token) {
       const auth = req.headers['authorization'] || ''
-      const provided = auth.startsWith('Bearer ') ? auth.slice(7) : String((req.query?.token as string) ?? '')
-      if (provided !== token) throw new ForbiddenException('metrics 需授权')
+      const provided = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+      if (!timingSafeEqualStr(provided, token)) throw new ForbiddenException('metrics 需授权')
     }
     return this.metrics.render()
   }

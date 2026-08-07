@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { execSync } from 'child_process'
-import { rmSync } from 'fs'
 import { PrismaService } from '../prisma.service'
+import { cleanupPrismaTestDb, resetPrismaTestDb } from '../test-utils/prisma-test-db'
 import { AuditService } from '../audit/audit.service'
 import { MetricsService } from '../common/metrics.service'
 import { SettlementRunService } from './settlement-run.service'
@@ -13,26 +12,20 @@ import { SettlementRunService } from './settlement-run.service'
 let prisma: PrismaService
 let run: SettlementRunService
 
-const DB = 'file:./srun-test.db'
+// 统一走 test-utils/prisma-test-db（绝对路径 + 按 PID 隔离 + 显式 RUST_LOG），
+// 相对 URL 在本机 Prisma/macOS 下报无细节 "Schema engine error"，使结算跑批回归无法执行。
+let databaseUrl: string | undefined
 
 beforeAll(() => {
-  process.env.DATABASE_URL = DB
-  for (const f of ['srun-test.db', 'srun-test.db-journal', 'srun-test.db-wal', 'srun-test.db-shm']) {
-    for (const dir of ['../..', '../../prisma']) {
-      try {
-        rmSync(`${__dirname}/${dir}/${f}`)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  execSync('npx prisma db push --skip-generate --accept-data-loss', { env: { ...process.env, DATABASE_URL: DB }, stdio: 'ignore' })
+  databaseUrl = resetPrismaTestDb('settlement-run')
   prisma = new PrismaService()
   run = new SettlementRunService(prisma, new AuditService(prisma, new MetricsService()))
 })
 
 afterAll(async () => {
-  await prisma.$disconnect()
+  // 可选链：beforeAll 若失败则 prisma 未初始化，直接 $disconnect 会抛二次异常掩盖真实错因
+  await prisma?.$disconnect()
+  cleanupPrismaTestDb(databaseUrl)
 })
 
 const FROM = new Date('2026-06-01T00:00:00.000Z')

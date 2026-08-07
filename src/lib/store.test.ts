@@ -118,11 +118,11 @@ describe('store · 结算与代理状态', () => {
     expect(getStore().activity.some((x) => x.text.includes(a.id))).toBe(true)
   })
 
-  it('settleAgent 把待结算清零并计入累计已结', () => {
+  it('settleAgent 把待结算清零并计入累计已结', async () => {
     const a = getStore().agents.find((x) => x.payoutPending > 0)!
     const pend = a.payoutPending
     const settledBefore = a.settledTotal
-    settleAgent(a.id)
+    await settleAgent(a.id)
     const after = getStore().agents.find((x) => x.id === a.id)!
     expect(after.payoutPending).toBe(0)
     expect(after.settledTotal).toBe(settledBefore + pend)

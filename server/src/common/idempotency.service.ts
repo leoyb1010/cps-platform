@@ -1,10 +1,16 @@
-import { ConflictException, Injectable } from '@nestjs/common'
+import { ConflictException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 
 const PENDING = '__pending__'
+// op() 已提交、但幂等结果落库失败的终态标记。
+// 这一态绝不可删除、也绝不可被 stale 抢占重跑——删除或重跑意味着同一笔资金操作执行两次。
+// 后续同键请求一律拒绝（503 + 不可重试），由调用方按业务单据核对最终状态。
+const COMMITTED_UNKNOWN = '__committed_unknown__'
 // PENDING 占位超过此时长视为持有者已死（进程崩溃/重启遗留的死锁占位），可被后来者抢占重跑（P2-B7）。
 // 取 10 分钟：远大于正常资金 op 耗时（毫秒级），避免误抢正在执行的慢事务；且各资金 op 自身带条件更新，重跑亦不双花。
 const STALE_MS = 10 * 60 * 1000
+
+type KeyState<T> = { kind: 'done'; value: T } | { kind: 'pending' } | { kind: 'committed-unknown' } | { kind: 'missing' }
 
 /**
  * 资金类写操作的幂等保护。
@@ -16,6 +22,7 @@ const STALE_MS = 10 * 60 * 1000
  */
 @Injectable()
 export class IdempotencyService {
+  private readonly logger = new Logger(IdempotencyService.name)
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -30,9 +37,10 @@ export class IdempotencyService {
     if (!key) return { result: await op(), replayed: false }
     const storageKey = this.storageKey(scope, key, bind)
 
-    // 已有最终结果 → 直接回放
-    const done = await this.readIfDone<T>(storageKey)
-    if (done.hit) return { result: done.value as T, replayed: true }
+    // 已有最终结果 → 直接回放；已提交但结果丢失 → 明确拒绝，绝不重跑
+    const state = await this.readState<T>(storageKey)
+    if (state.kind === 'done') return { result: state.value, replayed: true }
+    if (state.kind === 'committed-unknown') throw this.committedUnknownError()
 
     // 抢占位行：create 成功者执行 op；失败者（并发输家）去等待赢家结果
     let owns = await this.tryClaim(storageKey, scope)
@@ -40,21 +48,62 @@ export class IdempotencyService {
     if (!owns) {
       // 并发输家：轮询等待赢家写入最终结果；绝不重复执行资金 op
       const waited = await this.waitForResult<T>(storageKey)
-      if (waited.hit) return { result: waited.value as T, replayed: true }
+      if (waited.kind === 'done') return { result: waited.value, replayed: true }
+      if (waited.kind === 'committed-unknown') throw this.committedUnknownError()
       // 赢家失败删行、或占位死锁超时被判 stale：再抢占一次；仍抢不到才判冲突让客户端用新键或稍后重试
       owns = await this.tryClaim(storageKey, scope)
       if (!owns) throw new ConflictException('幂等键处理中或上次失败，请稍后用同一键重试')
     }
 
-    // 占位拥有者：执行 op；失败则删除占位行（不毒化），成功则落最终结果
+    // ── 占位拥有者：执行 op ──
+    // 关键分界：op() 是否已提交，决定占位行能否删除。
+    //   op 抛错（业务未提交）→ 删占位，允许干净重试。
+    //   op 成功但结果落库失败 → 绝不能删占位：删了之后调用方重试会重新执行一次资金副作用（双花）。
+    //     旧实现对两种情况一律删除，是压测暴露的「业务已提交、调用方拿到错误」歧义的根因。
+    let result: T
     try {
-      const result = await op()
-      await this.prisma.idempotencyKey.update({ where: { key: storageKey }, data: { result: JSON.stringify(result) } })
-      return { result, replayed: false }
+      result = await op()
     } catch (e) {
       await this.prisma.idempotencyKey.deleteMany({ where: { key: storageKey, result: PENDING } }).catch(() => {})
       throw e
     }
+
+    // op 已提交。此后只处理「结果如何持久化」，无论成败都必须把真实结果返回给调用方——
+    // 业务已经发生却告诉调用方失败，是比 500 更糟的歧义。
+    try {
+      await this.persistResult(storageKey, result)
+    } catch (persistErr) {
+      await this.prisma.idempotencyKey
+        .updateMany({ where: { key: storageKey, result: PENDING }, data: { result: COMMITTED_UNKNOWN } })
+        .catch(() => {})
+      this.logger.error(
+        `幂等结果落库失败（业务已提交，占位保留为 ${COMMITTED_UNKNOWN}，绝不重跑）key=${storageKey}：${persistErr instanceof Error ? persistErr.message : String(persistErr)}`,
+      )
+    }
+    return { result, replayed: false }
+  }
+
+  /** 结果落库带重试：短暂锁竞争/超时不至于直接把键推入 committed-unknown 终态。 */
+  private async persistResult(storageKey: string, result: unknown, tries = 3): Promise<void> {
+    let lastErr: unknown
+    for (let i = 0; i < tries; i++) {
+      try {
+        await this.prisma.idempotencyKey.update({ where: { key: storageKey }, data: { result: JSON.stringify(result) } })
+        return
+      } catch (e) {
+        lastErr = e
+        if (i < tries - 1) await new Promise((r) => setTimeout(r, 50 * (i + 1)))
+      }
+    }
+    throw lastErr
+  }
+
+  /** 已提交但结果不可知：不可重试（重试也只会拿到同样的拒绝），需按业务单据核对。 */
+  private committedUnknownError() {
+    return new ServiceUnavailableException({
+      message: '该幂等键对应的操作已执行，但执行结果未能保存；请勿重复提交，请按业务单据核对最终状态',
+      retryable: false,
+    })
   }
 
   /**
@@ -91,20 +140,22 @@ export class IdempotencyService {
     return bind ? `${scope}:${bind}:${key}` : `${scope}:${key}`
   }
 
-  private async readIfDone<T>(key: string): Promise<{ hit: boolean; value?: T }> {
+  /** 读取键的当前状态。committed-unknown 是终态标记，绝不能当成 JSON 结果去解析。 */
+  private async readState<T>(key: string): Promise<KeyState<T>> {
     const row = await this.prisma.idempotencyKey.findUnique({ where: { key } })
-    if (row && row.result !== PENDING) return { hit: true, value: JSON.parse(row.result) as T }
-    return { hit: false }
+    if (!row) return { kind: 'missing' }
+    if (row.result === PENDING) return { kind: 'pending' }
+    if (row.result === COMMITTED_UNKNOWN) return { kind: 'committed-unknown' }
+    return { kind: 'done', value: JSON.parse(row.result) as T }
   }
 
   /** 轮询等待赢家把占位行变成最终结果（最多 ~5s），命中即回放。 */
-  private async waitForResult<T>(key: string, tries = 25, intervalMs = 200): Promise<{ hit: boolean; value?: T }> {
+  private async waitForResult<T>(key: string, tries = 25, intervalMs = 200): Promise<KeyState<T>> {
     for (let i = 0; i < tries; i++) {
-      const row = await this.prisma.idempotencyKey.findUnique({ where: { key } })
-      if (!row) return { hit: false } // 赢家失败删行
-      if (row.result !== PENDING) return { hit: true, value: JSON.parse(row.result) as T }
+      const state = await this.readState<T>(key)
+      if (state.kind !== 'pending') return state // done / committed-unknown / missing(赢家失败删行) 均可立即返回
       await new Promise((r) => setTimeout(r, intervalMs))
     }
-    return { hit: false }
+    return { kind: 'pending' }
   }
 }

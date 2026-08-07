@@ -3,6 +3,7 @@ import { rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 const serverRoot = resolve(__dirname, '../..')
+const prismaBin = join(serverRoot, 'node_modules', '.bin', 'prisma')
 
 function removeSqliteFiles(dbPath: string) {
   for (const suffix of ['', '-journal', '-wal', '-shm']) {
@@ -24,11 +25,14 @@ function runPrisma(args: string[], databaseUrl: string) {
     RUST_LOG: 'info',
   }
   try {
-    execFileSync('npx', ['prisma', ...args], { cwd: serverRoot, env, encoding: 'utf8', stdio: 'pipe' })
+    // 直接执行本地 prisma 二进制，不经 npx：整套测试有多个套件各调一次建库，
+    // 每次 npx 都要做包解析并在 ~/.npm/_npx 抢锁——并发/负载下会阻塞，
+    // 表现为「完整套件跑到一半无进展」（单文件跑却很快）。直调二进制既快又无锁竞争。
+    execFileSync(prismaBin, args, { cwd: serverRoot, env, encoding: 'utf8', stdio: 'pipe', timeout: 120_000 })
   } catch (e) {
     const err = e as { message?: string; stdout?: string; stderr?: string }
     const detail = [err.stdout, err.stderr].filter(Boolean).join('\n').trim()
-    throw new Error(`npx prisma ${args.join(' ')} failed${detail ? `\n${detail}` : `\n${err.message ?? ''}`}`)
+    throw new Error(`prisma ${args.join(" ")} failed${detail ? `\n${detail}` : `\n${err.message ?? ''}`}`)
   }
 }
 

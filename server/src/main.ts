@@ -28,6 +28,14 @@ function assertSecrets() {
       throw new Error(`[安全] 生产环境 ${k} 未设置或过弱（需 ≥24 字符随机值，如 openssl rand -hex 32）`)
     }
   }
+  // /metrics 暴露资金业务指标（cps_refund_amount_total 等）。生产必须设 METRICS_TOKEN：
+  // 仅靠 nginx 正则拦截，一旦有人绕过网关直连容器端口即可抓取全量资金指标。
+  {
+    const mt = process.env.METRICS_TOKEN || ''
+    if (mt.length < 16) {
+      throw new Error('[安全] 生产环境 METRICS_TOKEN 未设置或过短（需 ≥16 字符随机值）——/metrics 暴露资金指标')
+    }
+  }
   // 有道出站回调平台私钥：生产必须设置真实 RSA 私钥，否则回退到仓库内 demo 私钥 → 任何人可伪造回调签名。
   const pk = process.env.YOUDAO_PLATFORM_PRIVATE_KEY || ''
   if (!pk.includes('PRIVATE KEY')) {

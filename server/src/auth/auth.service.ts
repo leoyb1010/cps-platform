@@ -50,6 +50,31 @@ export class AuthService {
     return u.tokenVersion
   }
 
+  /**
+   * AuthGuard 专用：一次查询取回鉴权所需全部信息（用户 + 角色权限 + tokenVersion）。
+   * 每个受保护请求原本要查两次库（tokenVersionOf + toAuthUser），在高并发下把用户表读放大一倍——
+   * 压测显示认证读是主要 DB 压力来源之一。合并为单次 findUnique。
+   */
+  async loadForAuth(userId: string): Promise<{ user: AuthUser; tokenVersion: number } | null> {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: true } })
+    if (!u || u.status !== 'active') return null
+    // 角色可能指向已删除/缺失的角色 → 视为无权限，避免 JSON.parse(null) 抛 500
+    const permissions = u.role ? (JSON.parse(u.role.permissions || '[]') as string[]) : []
+    return {
+      tokenVersion: u.tokenVersion,
+      user: {
+        id: u.id,
+        name: u.name,
+        account: u.account,
+        roleId: u.roleId,
+        permissions,
+        scopeType: u.scopeType,
+        scopeId: u.scopeId,
+        mustChangePassword: u.mustChangePassword,
+      },
+    }
+  }
+
   async validate(account: string, password: string) {
     const u = await this.prisma.user.findUnique({ where: { account } })
     if (!u || u.status !== 'active') {
