@@ -52,7 +52,7 @@ export default function PortalLogin() {
   return (
     <AuthShell
       footer={
-        <p className="text-[11px] leading-relaxed text-ink-4">
+        <p className="text-[12px] leading-relaxed text-ink-4">
           {isRealApi ? '数据按账户隔离 · 仅显示与你账户相关的数据' : '演示态 · 门户数据来自本地演示数据集，连接真实后端后按账户隔离'}
         </p>
       }
@@ -91,7 +91,7 @@ export default function PortalLogin() {
 
         {!isRealApi && (
           <div className="mt-4 border-t border-line pt-3.5">
-            <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-4">
+            <div className="mb-2 flex items-center gap-1.5 text-[12px] text-ink-4">
               <ShieldCheck size={13} /> 演示账户（点击一键填入，密码 demo）
             </div>
             <div className="grid grid-cols-2 gap-1.5">

@@ -15,6 +15,7 @@ import {
   Td,
   Row,
   TONE,
+  SummaryStrip,
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
@@ -23,6 +24,7 @@ import { Steps, EmptyState } from '../components/ui/forms'
 import { AGENT_STATUS, type Agent, type AgentStatus } from '../lib/data'
 import { useStore, setAgentStatus, approveAgent, rejectAgent, type PendingAgent } from '../lib/store'
 import { money, int, pct, cx } from '../lib/format'
+import { useViewMode } from '../lib/prefs'
 
 function scoreTone(s: number) {
   return s >= 850 ? 'good' : s >= 750 ? 'info' : s >= 650 ? 'warn' : 'alert'
@@ -46,26 +48,32 @@ export default function Agents() {
   const blacklist = agents.filter((a) => a.status === 'blacklist')
   const [review, setReview] = useState(false)
   const [blOpen, setBlOpen] = useState(false)
+  const expert = useViewMode() === 'expert'
 
   return (
     <>
       <PageHeader
         title="代理商"
-        desc="开放自助入驻（KYC/KYB）。信用分联动分润与结算优先级，分层准入：新代理小流量起步，跑出健康数据再放量，黑名单锁主体/设备/收款账户防换马甲。"
+        desc="审核代理入驻，查看投放和分润表现，并处理限流、冻结与黑名单。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => setBlOpen(true)}><ShieldX size={14} /> 黑名单库</Button>
-            <Button variant="primary" onClick={() => setReview(true)}><UserPlus size={14} /> 审核入驻申请{pendingAgents.length > 0 && <span className="ml-1 tnum">({pendingAgents.length})</span>}</Button>
+            {expert && <Button variant="ghost" onClick={() => setBlOpen(true)}><ShieldX size={14} /> 黑名单库</Button>}
+            <Button variant="primary" onClick={() => setReview(true)}><UserPlus size={14} /> 审核申请{pendingAgents.length > 0 && <span className="ml-1 tnum">({pendingAgents.length})</span>}</Button>
           </>
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {expert ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card><Stat label="活跃代理" value={String(active.length)} unit={`/ ${agents.length}`} sub={<span>本月消耗 {money(totalSpend)}</span>} /></Card>
         <Card><Stat label="待结算分润" value={money(totalPayout)} sub={<span>按信用分排序结算</span>} /></Card>
         <Card><Stat label="平均信用分" value={String(avgScore)} sub={<span>满分 1000</span>}><Meter value={avgScore / 10} tone="info" /></Stat></Card>
         <Card><Stat label="风险代理" value={String(agents.filter((a) => a.status !== 'active').length)} sub={<span className="text-alert-ink">限流/冻结/黑名单</span>} /></Card>
-      </div>
+      </div> : <SummaryStrip items={[
+        { label: '活跃代理', value: `${active.length} / ${agents.length}`, hint: `本月消耗 ${money(totalSpend)}` },
+        { label: '待结算分润', value: money(totalPayout), tone: totalPayout > 0 ? 'warn' : 'good' },
+        { label: '平均信用分', value: avgScore, tone: avgScore >= 750 ? 'good' : 'warn' },
+        { label: '风险代理', value: `${agents.filter((a) => a.status !== 'active').length} 个`, tone: agents.some((a) => a.status !== 'active') ? 'alert' : 'good' },
+      ]} />}
 
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">

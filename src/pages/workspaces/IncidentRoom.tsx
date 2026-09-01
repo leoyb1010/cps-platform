@@ -204,7 +204,7 @@ export default function IncidentRoom() {
 function ActBtn({ icon, label, tone, active, suggested, onClick }: { icon: React.ReactNode; label: string; tone: 'alert' | 'warn' | 'good'; active?: boolean; suggested?: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} disabled={active}
-      className={cx('relative flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[12.5px] font-medium transition-all',
+      className={cx('relative flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[12.5px] font-medium transition-[background-color,color,border-color,box-shadow,transform]',
         active ? 'cursor-default border-line bg-surface-muted text-ink-4' : 'border-line bg-surface text-ink-2 hover:-translate-y-px hover:shadow-[var(--shadow-card)]',
         !active && tone === 'alert' && 'hover:border-alert hover:text-alert-ink',
         !active && tone === 'warn' && 'hover:border-warn hover:text-warn-ink',

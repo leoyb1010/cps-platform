@@ -136,7 +136,7 @@ export function CheckGroup({ options, value, onChange }: { options: string[]; va
         const on = value.includes(o)
         return (
           <button key={o} type="button" onClick={() => toggle(o)}
-            className={cx('rounded-full border px-2.5 py-1 text-[12px] transition-all', on ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>
+            className={cx('rounded-full border px-2.5 py-1 text-[12px] transition-[background-color,color,border-color]', on ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>
             {o}
           </button>
         )

@@ -46,7 +46,7 @@ export function FilterChips({
             key={o.value}
             onClick={() => toggle(o.value)}
             className={cx(
-              'rounded-full border transition-all',
+              'rounded-full border transition-[background-color,color,border-color]',
               pad,
               on
                 ? 'border-brand bg-brand/[0.06] font-medium text-brand'

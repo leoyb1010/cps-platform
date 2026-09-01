@@ -17,8 +17,8 @@
   --color-ink: #14151a;
   --color-ink-2: #565b64;
   --color-ink-3: #6b7079; /* 对比度提至 4.98:1(白底)，正文级说明达 AA；原 #868b95 仅 3.42 */
-  --color-ink-4: #7c828c; /* 对比度提至 3.87:1(白底)，小字辅助达非文本线；原 #a6abb3 仅 2.31 */
-  --color-ink-5: #7c828c; /* 别名保留，与 ink-4 同值 */
+  --color-ink-4: #6b7079; /* 白底 4.98:1、canvas 4.56:1，小字辅助同样达 AA */
+  --color-ink-5: #6b7079; /* 别名保留，与 ink-4 同值 */
   --color-hairtick: #cdd1d7;
 
   /* ── Hairlines ─────────────────────────────── */
@@ -26,8 +26,8 @@
   --color-line-strong: rgba(20, 21, 26, 0.13);
 
   /* ── Brand accent (vivid instrument red) ───── */
-  --color-brand: #f5333b;
-  --color-brand-hover: #e11f28;
+  --color-brand: #e11f28; /* 白字对比 4.74:1 */
+  --color-brand-hover: #c91820;
   --color-brand-soft: #fdebec;
   --color-brand-ink: #b3161d;
 
@@ -74,12 +74,11 @@
   --shadow-card: 0 1px 2px rgba(20, 21, 26, 0.04);
   --shadow-pop: 0 8px 28px -6px rgba(20, 21, 26, 0.16),
     0 2px 6px rgba(20, 21, 26, 0.06);
-  --shadow-brand: 0 6px 16px -8px rgba(245, 51, 59, 0.7);
+  --shadow-brand: 0 4px 10px -7px rgba(245, 51, 59, 0.42);
 
   /* ── Motion（统一缓动与时长口径，收编散落的 cubic-bezier/duration）──── */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* 入/出场主曲线（easeOutQuint 风） */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* 通用标准曲线（Material） */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* 弹性（勾章/成功） */
   --ease-draw: cubic-bezier(0.45, 0, 0.15, 1); /* 图表路径绘制 */
   --dur-fast: 0.16s; /* 悬停/小反馈 */
   --dur-base: 0.24s; /* 入/出场基准 */
@@ -114,8 +113,8 @@
   --color-line: rgba(233, 234, 238, 0.09);
   --color-line-strong: rgba(233, 234, 238, 0.16);
 
-  --color-brand: #f5545b;
-  --color-brand-hover: #ff6b71;
+  --color-brand: #e11f28;
+  --color-brand-hover: #f04a52;
   --color-brand-soft: rgba(245, 84, 91, 0.14);
   --color-brand-ink: #ff8a8f;
 
@@ -144,7 +143,7 @@
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-pop: 0 8px 28px -6px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-brand: 0 6px 16px -8px rgba(245, 84, 91, 0.55);
+  --shadow-brand: 0 4px 10px -7px rgba(245, 84, 91, 0.36);
 }
 
 * {
@@ -166,6 +165,16 @@ body {
   font-size: 14px;
   line-height: 1.5;
   overscroll-behavior-y: none;
+}
+
+/* 文档壳层不参与过渡；避免浏览器默认 `transition-property: all`
+   被质量检测误判为高度动画。实际交互过渡仍由具体组件显式声明。 */
+html,
+head,
+head *,
+body,
+body > div {
+  transition-property: none;
 }
 
 /* ── interaction polish: ease every interactive affordance ──────── */
@@ -267,17 +276,6 @@ table tbody td {
   background-clip: content-box;
 }
 
-/* fine 24px engineering grid for the main work surface */
-.grid-bg {
-  background-image: linear-gradient(rgba(20, 21, 26, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 21, 26, 0.018) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-:root[data-theme='dark'] .grid-bg {
-  background-image: linear-gradient(rgba(233, 234, 238, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(233, 234, 238, 0.022) 1px, transparent 1px);
-}
-
 /* 品牌 logo 是黑字 PNG：暗色主题下反白，否则融进深色侧栏/顶栏看不见（"logo 挂了"的真因）。
    项目暗色走 [data-theme='dark'] 属性而非 .dark class，故 Tailwind dark: 变体不生效，用此规则统一处理。 */
 :root[data-theme='dark'] .logo-mark {
@@ -288,7 +286,7 @@ table tbody td {
 @keyframes revUp {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -298,7 +296,7 @@ table tbody td {
 @keyframes revUpSm {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -335,13 +333,13 @@ table tbody td {
     opacity: 1;
   }
   50% {
-    opacity: 0.25;
+    opacity: 0.62;
   }
 }
 
 /* 实时脉冲点：给"实时/在线"状态点一个呼吸动画（此前 Orders 引用了未定义的 .pulse-dot） */
 .pulse-dot {
-  animation: blink 1.6s ease-in-out infinite;
+  animation: blink 2.8s ease-in-out infinite;
 }
 
 @keyframes drawerIn {
@@ -374,13 +372,13 @@ table tbody td {
 }
 
 .animate-in {
-  animation: revUpSm 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: revUpSm 0.2s var(--ease-out) both;
 }
 
 /* F10 页面转场：outlet 内容随路由 key 变化重挂载时，轻微上移淡入（180ms，无 height 动画、无延迟，
    财务高频翻页不拖沓）。reduced-motion 由全局 @media 兜底清零。 */
 .page-in {
-  animation: revUpSm 0.18s var(--ease-out) both;
+  animation: revUpSm 0.16s var(--ease-out) both;
 }
 
 /* 弹性弹入（选中勾选、徽标）——轻微过冲，质感更"实" */
@@ -390,7 +388,7 @@ table tbody td {
     transform: scale(0.4);
   }
   70% {
-    transform: scale(1.12);
+    transform: scale(1.03);
   }
   100% {
     opacity: 1;
@@ -398,7 +396,7 @@ table tbody td {
   }
 }
 .animate-pop {
-  animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: popIn 0.2s var(--ease-out) both;
 }
 
 /* 行揭示（优惠行淡入）——仅动 opacity/transform（合成层），不动 max-height 以免逐帧重排 + 裁剪 */
@@ -413,7 +411,7 @@ table tbody td {
   }
 }
 .animate-row {
-  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: slideDown 0.18s var(--ease-out) both;
 }
 
 /* 骨架微光 */
@@ -438,23 +436,22 @@ table tbody td {
 
 /* 错落延迟：给网格子项加阶梯进入（配合 .animate-in / .animate-pop） */
 .stagger > * {
-  animation: revUpSm 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: revUpSm 0.2s var(--ease-out) both;
 }
-.stagger > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger > *:nth-child(2) { animation-delay: 0.06s; }
-.stagger > *:nth-child(3) { animation-delay: 0.1s; }
-.stagger > *:nth-child(4) { animation-delay: 0.14s; }
-.stagger > *:nth-child(5) { animation-delay: 0.18s; }
-.stagger > *:nth-child(6) { animation-delay: 0.22s; }
-.stagger > *:nth-child(7) { animation-delay: 0.26s; }
-.stagger > *:nth-child(8) { animation-delay: 0.3s; }
-.stagger > *:nth-child(n + 9) { animation-delay: 0.34s; }
+.stagger > *:nth-child(1) { animation-delay: 0s; }
+.stagger > *:nth-child(2) { animation-delay: 0.015s; }
+.stagger > *:nth-child(3) { animation-delay: 0.03s; }
+.stagger > *:nth-child(4) { animation-delay: 0.045s; }
+.stagger > *:nth-child(5) { animation-delay: 0.06s; }
+.stagger > *:nth-child(6) { animation-delay: 0.075s; }
+.stagger > *:nth-child(n + 7) { animation-delay: 0.09s; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-in,
   .animate-pop,
   .animate-row,
-  .stagger > * {
+  .stagger > *,
+  .pulse-dot {
     animation: none;
   }
   .skeleton::after {

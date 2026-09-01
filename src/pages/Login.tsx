@@ -44,7 +44,7 @@ export default function Login() {
   return (
     <AuthShell
       footer={
-        <p className="text-[11px] leading-relaxed text-ink-4">
+        <p className="text-[12px] leading-relaxed text-ink-4">
           {isRealApi ? '真实后端鉴权（NestJS · JWT + 刷新令牌，服务端 RBAC）' : '演示态鉴权（前端 mock）· 接口形态对齐后端契约，真实后端就绪即可切换'}
         </p>
       }
@@ -89,7 +89,7 @@ export default function Login() {
         {/* 演示账户一键填入仅演示模式展示；真实模式绝不泄露任何账号/口令提示 */}
         {!isRealApi && (
           <div className="mt-4 border-t border-line pt-3.5">
-            <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-ink-4">
+            <div className="mb-2 flex items-center gap-1.5 text-[12px] text-ink-4">
               <ShieldCheck size={13} /> 演示账户（点击一键填入，密码 demo）
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -98,7 +98,7 @@ export default function Login() {
                   key={u.id}
                   type="button"
                   onClick={() => setAccount(u.account)}
-                  className="rounded-md border border-line px-2 py-1 text-[11.5px] text-ink-2 transition-colors hover:border-brand hover:text-brand"
+                  className="rounded-md border border-line px-2 py-1 text-[12px] text-ink-2 transition-colors hover:border-brand hover:text-brand"
                 >
                   {u.name}
                   <span className="ml-1 text-ink-4">· {ROLES[u.roleId].name}</span>

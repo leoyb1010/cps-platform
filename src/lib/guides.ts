@@ -13,20 +13,20 @@ export interface PageGuide {
 
 export const GUIDES: Record<string, PageGuide> = {
   '/': {
-    title: '经营总览',
-    what: '平台运营的全局视图。汇总风险预警、待办事项与核心经营指标，用于快速判断当前状态并定位需要处理的问题。',
-    how: ['顶部"平台健康"展示各风险维度，红色项需优先处理', '"今日待办"汇集待处理事项，支持一键操作', '北极星指标采用 R-NSC，衡量风险调整后的净订阅增长', '右上角可切换简洁/专家视图，调整信息密度'],
+    title: '今日工作',
+    what: '按当前角色汇总今天需要处理或核查的事，并给出业务增长、资金结算、风险客服和经营复盘的直达入口。',
+    how: ['从"今天要处理的事"按紧急程度开始', '通过"工作入口"按要完成的事进入对应页面', '下方经营脉搏用于快速确认整体状态', '超级管理员和审计角色可在账户菜单切换"核心 / 完整"信息'],
     terms: ['rnsc', 'escalated', 'fused', 'reserve'],
     tip: '带虚线下划线的术语支持悬停查看定义。',
   },
   '/brands': {
-    title: '品牌 · 入驻',
+    title: '品牌管理',
     what: '管理接入平台的品牌主体。入驻按业务种类（CPS投流 / 增长合约 / 资源置换 / AIGC）区分，对应不同的准入资料与审核要素。',
     how: ['点击"邀请品牌入驻"，首先选择业务种类', '按种类填写准入资料，可按需添加录入模块', '提交后进入审核，通过后方可上线'],
     terms: ['reserve', 'escalated'],
   },
   '/marketplace': {
-    title: '选品市场',
+    title: '选品与投放',
     what: '面向代理的可投商品货架。代理领取专属追踪链接进行投放，按转化结果结算分成。',
     how: ['按品类筛选可投套餐', '领取追踪链接（自动记录至投放计划）', '在"我的投放计划"查看消耗与分润', '投放素材须先通过素材规范审核'],
     terms: ['attrHijack', 'winback'],
@@ -38,7 +38,7 @@ export const GUIDES: Record<string, PageGuide> = {
     terms: ['simFarm', 'emptyPkg', 'chargeback'],
   },
   '/orders': {
-    title: '订单 · 订阅',
+    title: '订单与订阅',
     what: '连续包月订单的全生命周期管理：签约、续费、退订、退款。核心指标为续费率与净 LTV，而非首单量。',
     how: ['在"订单流 / 订阅生命周期"两个视图间切换', '生命周期视图查看 D30/60/90 续费率与退订挽留', '订单退款将自动联动逆向冲账', '"同步回传"拉取最新转化数据'],
     terms: ['winback', 'cohort', 'chargeback', 'reversal'],
@@ -64,7 +64,7 @@ export const GUIDES: Record<string, PageGuide> = {
     tip: '非现金对价须按公允价值计量，并满足真实交付、估值可证明、税务发票链路匹配。',
   },
   '/aigc': {
-    title: 'AIGC · 素材实验',
+    title: '素材中心',
     what: '积分制素材生成，每条素材回收点击、转化与续费数据，按 LTV 而非点击率排序。定位为投放效率工具，沉淀素材与转化的闭环数据。',
     how: ['查看素材实验台的表现指标（CTR / CVR / LTV）', '查看单条素材的转化闭环数据', '素材按净 LTV 排序，不以点击率为唯一依据'],
     terms: ['cohort'],
@@ -76,13 +76,13 @@ export const GUIDES: Record<string, PageGuide> = {
     terms: ['reconEq', 'reversal', 'reserve', 'chargeback'],
   },
   '/merchants': {
-    title: '商户号 · 号池',
+    title: '商户号与号池',
     what: '管理收款商户号。号池按品牌隔离，投诉率逼近阈值时自动降权或熔断，健康度反向约束投放。',
     how: ['查看各商户号的健康状态（健康 / 警告 / 暂停 / 熔断）', '"路由日志"查看进单的加权分配明细', '支持人工执行熔断 / 暂停 / 恢复'],
     terms: ['fused', 'escalated', 'close72h', 'poolWeight'],
   },
   '/risk': {
-    title: '风控中心',
+    title: '风险与工单',
     what: '事前、事中、事后三道防线的反作弊体系。投诉率作为投放的第二目标函数，风控可对投放执行约束。',
     how: ['查看实时拦截信号与风控事件流', '"规则配置"增改风控规则及其启停', '高风险代理自动降权 / 冻结'],
     terms: ['attrHijack', 'simFarm', 'emptyPkg'],
@@ -100,13 +100,13 @@ export const GUIDES: Record<string, PageGuide> = {
     terms: ['erqing', 'sanliu', 'flexLabor'],
   },
   '/analytics': {
-    title: '数据 · 归因',
+    title: '经营分析',
     what: '统一追踪 ID 将转化归因至代理×品牌×套餐×渠道×素材。首单与续费分别归因，T+0 预测 LTV 用于指导出价。',
     how: ['查看转化漏斗、LTV 曲线与留存 cohort', '在代理 / 品牌 / 渠道三个视角间切换', '"归因模型设置"调整归因窗口与去重粒度'],
     terms: ['attrHijack', 'cohort', 'ltvCac'],
   },
   '/members': {
-    title: '成员与角色',
+    title: '成员与权限',
     what: 'RBAC 权限管理。成员归属角色，角色绑定权限点与数据范围，实现路由级、操作级、数据级三级控制。',
     how: ['在"成员 / 角色"两个标签间切换', '点击成员"管理"调整角色或停用', '"邀请成员"添加新成员', '查看角色权限矩阵了解各角色职责范围'],
     terms: [],
@@ -118,7 +118,7 @@ export const GUIDES: Record<string, PageGuide> = {
     terms: [],
   },
   '/settings': {
-    title: '配置中心',
+    title: '平台设置',
     what: '平台参数、风控阈值默认值、持牌分账通道、数据隔离与审计开关。业务规则全部参数化，配置即时生效。',
     how: ['调整风控阈值与自动熔断开关', '启停持牌分账通道', '配置数据隔离与全量审计', '修改后点击"保存配置"'],
     terms: ['fused', 'erqing', 'flexLabor'],

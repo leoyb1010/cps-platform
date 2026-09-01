@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Download, AlertTriangle, ArrowRight, FileSignature, Repeat, CheckCircle2, Circle, KeyRound, PackagePlus, Handshake, Receipt, ClipboardCheck } from 'lucide-react'
-import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row, CountUp } from '../../components/ui/primitives'
-import { AreaLine, Sparkline } from '../../components/ui/charts'
+import { Card, CardTitle, Stat, SummaryStrip, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row } from '../../components/ui/primitives'
+import { AreaLine } from '../../components/ui/charts'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Input, Select, Textarea, CheckGroup } from '../../components/ui/forms'
 import { Wizard } from '../../components/ui/Wizard'
@@ -29,25 +29,16 @@ export function BrandHome() {
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Card>
-                <Stat label="本月基础流水" value={money(d.gmvMtd)} sub={d.periodGross != null ? <span>本期成交 {money(d.periodGross)}</span> : <span>GMV</span>} />
-                {d.trend.length > 1 && <div className="mt-2"><Sparkline data={d.trend.map((t) => t.value)} tone="brand" w={140} h={30} /></div>}
-              </Card>
-              <Card><Stat label="活跃订阅" value={<CountUp to={d.activeSubs} group />} sub={<span>连续包月</span>} /></Card>
-              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 60 ? 'text-good-ink' : 'text-warn-ink'}>LTV 核心驱动</span>} /></Card>
-              <Card><Stat label="我的回款" value={money(d.brandShare)} hint="品牌回款侧，不含平台费与代理分润" sub={<span className="text-good-ink">累计品牌留存回款</span>} /></Card>
-            </div>
+            <SummaryStrip items={[
+              { label: '本月基础流水', value: money(d.gmvMtd), hint: d.periodGross != null ? `本期成交 ${money(d.periodGross)}` : 'GMV' },
+              { label: '活跃订阅', value: d.activeSubs.toLocaleString('zh-CN'), hint: '连续包月' },
+              { label: '续费率', value: pct(d.renewalRate), hint: 'LTV 核心驱动', tone: d.renewalRate >= 60 ? 'good' : 'warn' },
+              { label: '我的回款', value: money(d.brandShare), hint: '品牌留存回款', tone: 'good' },
+            ]} />
 
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
               <Card>
-                <CardTitle title="成交趋势" desc="近期每日成交额（退款/拒付计负）" />
-                {d.trend.length > 1
-                  ? <AreaLine data={d.trend.map((t) => t.value)} labels={d.trend.map((t) => t.date.slice(5))} tone="brand" height={200} />
-                  : <div className="grid h-[200px] place-items-center text-[12px] text-ink-4">数据点不足，暂不绘制趋势</div>}
-              </Card>
-              <Card>
-                <CardTitle title="需关注" desc="待你处理或留意的事项" />
+                <CardTitle title="下一步" desc="优先处理这些事，再看数据" />
                 <div className="space-y-2.5">
                   {d.pendingTickets > 0
                     ? <Todo tone="warn" icon={<AlertTriangle size={15} />} title={`${d.pendingTickets} 个工单待处理`} sub="投诉工单需关注，及时响应可压低升级率" to="/portal/brand/tickets" />
@@ -55,6 +46,12 @@ export function BrandHome() {
                   {d.complaintRate >= 0.9 && <Todo tone="alert" icon={<AlertTriangle size={15} />} title={`投诉率偏高 ${pct(d.complaintRate)}`} sub="逼近阈值可能触发号池降权" to="/portal/brand/onboarding" />}
                   <Todo tone="info" title={`${d.orders} 笔订单`} sub="查看你的订单流水明细" to="/portal/brand/orders" />
                 </div>
+              </Card>
+              <Card>
+                <CardTitle title="成交趋势" desc="近期每日成交额（退款/拒付计负）" />
+                {d.trend.length > 1
+                  ? <AreaLine data={d.trend.map((t) => t.value)} labels={d.trend.map((t) => t.date.slice(5))} tone="brand" height={176} />
+                  : <div className="grid h-[176px] place-items-center text-[12px] text-ink-4">数据点不足，暂不绘制趋势</div>}
               </Card>
             </div>
           </>

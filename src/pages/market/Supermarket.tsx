@@ -265,7 +265,7 @@ function ShelfBody(s: ShelfProps) {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5">
             {s.cats.map((c) => (
-              <button key={c} onClick={() => s.setCat(c)} className={cx('rounded-full border px-3 py-1 text-[12px] transition-all', s.cat === c ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>{c}</button>
+              <button key={c} onClick={() => s.setCat(c)} className={cx('rounded-full border px-3 py-1 text-[12px] transition-[background-color,color,border-color]', s.cat === c ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>{c}</button>
             ))}
           </div>
           {s.tiers.length > 0 && (
@@ -290,7 +290,7 @@ function ShelfBody(s: ShelfProps) {
                 <div key={p.id} role="button" tabIndex={blocked ? -1 : 0} aria-pressed={on} aria-disabled={blocked}
                   onClick={() => !blocked && s.toggle(p)}
                   onKeyDown={(e) => { if (!blocked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); s.toggle(p) } }}
-                  className={cx('group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200',
+                  className={cx('group relative overflow-hidden rounded-2xl border p-4 text-left transition-[background-color,border-color,box-shadow,transform,opacity] duration-200',
                     on ? 'border-brand bg-brand/[0.035] shadow-[inset_0_0_0_1.5px_var(--color-brand),0_4px_16px_-6px_rgba(245,51,59,.25)] cursor-pointer'
                       : blocked ? 'cursor-not-allowed border-line bg-surface-muted opacity-55'
                         : 'cursor-pointer border-line bg-surface hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-[var(--shadow-pop)]')}>
@@ -384,7 +384,7 @@ function ShelfBody(s: ShelfProps) {
 
                 {!s.done ? (
                   <button onClick={s.generate} disabled={s.busy || !s.quote?.ok}
-                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-[13.5px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-50 disabled:shadow-none">
+                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-[13.5px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-[background-color,box-shadow,transform,opacity] hover:bg-brand-hover active:scale-[0.99] disabled:opacity-50 disabled:shadow-none">
                     {s.busy ? '生成中…' : <>生成我的订阅套餐 <ArrowRight size={15} /></>}
                   </button>
                 ) : s.paid ? (
@@ -408,11 +408,11 @@ function ShelfBody(s: ShelfProps) {
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button disabled={s.paying} onClick={() => setChannel('alipay')}
-                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all active:scale-[0.98] disabled:opacity-50', channel === 'alipay' ? 'border-[#1677ff] bg-[#1677ff]/5 ring-1 ring-[#1677ff]/30' : 'border-line bg-surface hover:border-[#1677ff]/50')}>
+                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-[background-color,border-color,box-shadow,transform,opacity] active:scale-[0.98] disabled:opacity-50', channel === 'alipay' ? 'border-[#1677ff] bg-[#1677ff]/5 ring-1 ring-[#1677ff]/30' : 'border-line bg-surface hover:border-[#1677ff]/50')}>
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#1677ff] text-[9px] font-bold text-white">支</span>支付宝
                       </button>
                       <button disabled={s.paying} onClick={() => setChannel('wechat')}
-                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-all active:scale-[0.98] disabled:opacity-50', channel === 'wechat' ? 'border-[#07c160] bg-[#07c160]/5 ring-1 ring-[#07c160]/30' : 'border-line bg-surface hover:border-[#07c160]/50')}>
+                        className={cx('flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-semibold text-ink transition-[background-color,border-color,box-shadow,transform,opacity] active:scale-[0.98] disabled:opacity-50', channel === 'wechat' ? 'border-[#07c160] bg-[#07c160]/5 ring-1 ring-[#07c160]/30' : 'border-line bg-surface hover:border-[#07c160]/50')}>
                         <span className="grid h-4 w-4 place-items-center rounded-[4px] bg-[#07c160] text-[9px] font-bold text-white">微</span>微信
                       </button>
                     </div>
@@ -425,7 +425,7 @@ function ShelfBody(s: ShelfProps) {
                     )}
                     {/* 真实模式：尚未接入真实支付渠道，禁用支付避免走"沙箱假支付"，只诚实提示即将开放 */}
                     <button disabled={s.paying || isRealApi || !agreed} onClick={() => s.pay(channel)}
-                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-[background-color,box-shadow,transform,opacity] hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
                       {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : !agreed ? <><Wallet size={14} /> 请先勾选同意协议</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
                     </button>
                     <div className="mt-2 text-center text-[10.5px] text-ink-4">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
@@ -550,7 +550,7 @@ export function BundlesPanel() {
         <div className="mt-3 flex flex-wrap gap-1.5">
           {LEDGER_FILTERS.map((f) => (
             <button key={f.value} onClick={() => setFilter(f.value)}
-              className={cx('rounded-full border px-3 py-1 text-[12px] transition-all', filter === f.value ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>
+              className={cx('rounded-full border px-3 py-1 text-[12px] transition-[background-color,color,border-color]', filter === f.value ? 'border-brand bg-brand/[0.06] font-medium text-brand' : 'border-line text-ink-3 hover:border-line-strong hover:bg-surface-muted')}>
               {f.label}<span className="tnum ml-1 text-ink-4">{counts[f.value]}</span>
             </button>
           ))}

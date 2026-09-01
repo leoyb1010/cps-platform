@@ -103,7 +103,7 @@ export function CoachMarks({ id, steps }: { id: string; steps: CoachStep[] }) {
           <button onClick={finish} className="text-[12px] text-ink-4 transition-colors hover:text-ink-2">跳过</button>
           <div className="flex items-center gap-1.5">
             {steps.map((_, k) => (
-              <span key={k} className={k === i ? 'h-1.5 w-4 rounded-full bg-brand transition-all' : 'h-1.5 w-1.5 rounded-full bg-line-strong transition-all'} />
+              <span key={k} className={k === i ? 'h-1.5 w-4 rounded-full bg-brand transition-[transform,background-color]' : 'h-1.5 w-4 scale-x-[0.375] rounded-full bg-line-strong transition-[transform,background-color]'} />
             ))}
           </div>
           <button

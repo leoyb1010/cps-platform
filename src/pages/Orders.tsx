@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Download, ArrowRight, RefreshCcw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Download, ArrowRight, RefreshCcw, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   Card,
   CardTitle,
@@ -16,6 +16,7 @@ import {
   Td,
   Row,
   TONE,
+  SummaryStrip,
 } from '../components/ui/primitives'
 import {
   brandById,
@@ -33,6 +34,7 @@ import { Bars } from '../components/ui/charts'
 import { series } from '../lib/data'
 import { int, pct, cx, csvCell, downloadText } from '../lib/format'
 import { isRealApi } from '../lib/http'
+import { useViewMode } from '../lib/prefs'
 
 // 完整订阅生命周期 7 态（PDF 6.4 订阅留存与退订体验）：合规退订不是损失，
 // 而是降低投诉、保护商户号、提高长期信任的成本。
@@ -61,6 +63,7 @@ export default function Orders() {
   const [openId, setOpenId] = useState<string | null>(null)
   const pop = useAnchoredPopover()
   const [confirm, setConfirm] = useState<string | null>(null)
+  const expert = useViewMode() === 'expert'
   const active = orders.find((o) => o.id === openId) ?? null
   const firsts = orders.filter((o) => o.type === 'first').length
   const renews = orders.filter((o) => o.type === 'renew').length
@@ -73,6 +76,11 @@ export default function Orders() {
   const cbRate = ordersTruncated || !deducted ? null : (cbs / deducted) * 100
   const list = orders.filter((o) => (f === 'all' ? true : o.type === f))
   const sort = useSort(list) // F5：表头三态排序（订单号/金额/类型）
+  const [page, setPage] = useState(1)
+  const pageSize = 12
+  const pageCount = Math.max(1, Math.ceil(sort.sorted.length / pageSize))
+  const pageRows = sort.sorted.slice((page - 1) * pageSize, page * pageSize)
+  useEffect(() => setPage(1), [f, sort.key, sort.dir])
 
   // 订阅生命周期指标（D30/60/90 取自留存 cohort，D0=100）
   // series.renewalCohort 是纯静态常量，hydrateFromServer 从不覆盖它 → 真实模式下无真实来源，
@@ -85,13 +93,13 @@ export default function Orders() {
   return (
     <>
       <PageHeader
-        title="订单 · 订阅"
-        desc="首单 / 续费 / 退款 / 拒付全生命周期状态机。连续包月真正看的是续费与净 LTV，不是首单。"
+        title="订单与订阅"
+        desc="查看首单、续费、退款和拒付；需要时切换到订阅生命周期复盘留存。"
         actions={
           <>
             <Segmented value={view} onChange={setView} options={[{ value: 'orders', label: '订单流' }, { value: 'lifecycle', label: '订阅生命周期' }]} />
             <Button variant="ghost" onClick={() => { triggerOrderSync(); toast({ tone: 'good', text: '订单回传同步完成' }) }}><RefreshCcw size={14} /> 同步回传</Button>
-            <Button variant="primary" disabled={ordersTruncated} title={ordersTruncated ? '数据已截断，禁止导出不完整对账文件' : undefined} onClick={() => { const csv = '订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); downloadText('订单对账.csv', csv); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>
+            {expert && <Button variant="primary" disabled={ordersTruncated} title={ordersTruncated ? '数据已截断，禁止导出不完整对账文件' : undefined} onClick={() => { const csv = '订单号,品牌,套餐,代理,通道,类型,金额\n' + orders.map((o) => [o.id, brandById(o.brandId)?.name, o.plan, o.agentId, CHANNEL_LABEL[o.channel], ORDER_TYPE[o.type].label, o.amount].map(csvCell).join(',')).join('\n'); downloadText('订单对账.csv', csv); toast({ tone: 'good', text: '对账明细已导出 CSV' }) }}><Download size={14} /> 导出对账</Button>}
           </>
         }
       />
@@ -168,12 +176,17 @@ export default function Orders() {
         </>
       ) : (
       <>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {expert ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Card><Stat label="今日订单" value={ordersTruncated ? `≥ ${int(orders.length)}` : int(orders.length)} sub={<span>首单 {ordersTruncated ? '≥ ' : ''}{int(firsts)} · 续费 {ordersTruncated ? '≥ ' : ''}{int(renews)}</span>} /></Card>
             <Card><Stat label="续费 / 首单" value={ordersTruncated || !firsts ? '—' : (renews / firsts).toFixed(2)} hint="续费笔数 ÷ 首单笔数" sub={<span>{ordersTruncated ? '数据不完整，暂不计算' : '越高 LTV 越好'}</span>} /></Card>
         <Card><Stat label="退款率" value={refundRate === null ? '—' : pct(refundRate)} sub={<span>触发分润冲账</span>} /></Card>
         <Card><Stat label="拒付率" value={cbRate === null ? '—' : pct(cbRate, 2)} sub={cbRate !== null && cbRate < 0.5 ? <span className="text-good-ink">低于阈值</span> : <span>对照红线 0.5%</span>} /></Card>
-      </div>
+      </div> : <SummaryStrip items={[
+        { label: '今日订单', value: ordersTruncated ? `≥ ${int(orders.length)}` : int(orders.length), hint: `首单 ${firsts} · 续费 ${renews}` },
+        { label: '续费 / 首单', value: ordersTruncated || !firsts ? '—' : (renews / firsts).toFixed(2) },
+        { label: '退款率', value: refundRate === null ? '—' : pct(refundRate), tone: refundRate !== null && refundRate > 5 ? 'warn' : 'neutral' },
+        { label: '拒付率', value: cbRate === null ? '—' : pct(cbRate, 2), tone: cbRate !== null && cbRate >= 0.5 ? 'alert' : 'good' },
+      ]} />}
 
       {/* 订单流 */}
       <Card className="mt-4" pad={false}>
@@ -209,7 +222,7 @@ export default function Orders() {
             </>
           }
         >
-          {sort.sorted.map((o) => {
+          {pageRows.map((o) => {
             const b = brandById(o.brandId)
             const t = ORDER_TYPE[o.type]
             return (
@@ -240,9 +253,13 @@ export default function Orders() {
             )
           })}
         </TableShell>
-        <div className="flex items-center justify-between border-t border-line px-5 py-3 text-[12px] text-ink-3">
-          <span>{ordersTruncated ? '当前已加载' : '本页'} {list.length} 笔 · 首单 {list.filter((o) => o.type === 'first').length}，续费 {list.filter((o) => o.type === 'renew').length}，退款 {list.filter((o) => o.type === 'refund').length}，拒付 {list.filter((o) => o.type === 'chargeback').length}{ordersTruncated ? '（非完整统计）' : ''}</span>
-          <span className="text-ink-4">每 5 分钟刷新 · 完整数据见对账中心</span>
+        <div className="flex flex-col gap-2 border-t border-line px-5 py-3 text-[12px] text-ink-3 sm:flex-row sm:items-center sm:justify-between">
+          <span>共 {list.length} 笔 · 当前显示 {pageRows.length} 笔{ordersTruncated ? '（非完整数据）' : ''}</span>
+          <div className="flex items-center gap-2">
+            <button aria-label="上一页" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-3 hover:bg-surface-muted disabled:opacity-35"><ChevronLeft size={14} /></button>
+            <span className="tnum min-w-[56px] text-center text-ink-3">{page} / {pageCount}</span>
+            <button aria-label="下一页" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))} className="grid h-7 w-7 place-items-center rounded-md border border-line text-ink-3 hover:bg-surface-muted disabled:opacity-35"><ChevronRight size={14} /></button>
+          </div>
         </div>
       </Card>
       </>

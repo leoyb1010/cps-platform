@@ -61,20 +61,18 @@ export function EmptyNotice({ title = '暂无数据', body = '这里还没有内
   return <Notice icon={<Inbox size={18} />} title={title} body={body} />
 }
 
-// 门户首页装饰横幅：氛围图作右侧图层，左侧渐变遮罩淡出保证叠加的标题/描述文字可读
-// （代理 banner 底色饱和，遮罩尤为必要）。纯装饰，标题内容仍由页面自己的 PageHeader 承载。
+// 门户首页标题条：图像只作为低对比质感，不抢待办和主操作的首屏注意力。
 export function PortalBanner({ src, title, desc, actions }: { src: string; title: string; desc?: string; actions?: ReactNode }) {
   return (
-    <div className="relative mb-6 min-h-[128px] overflow-hidden rounded-2xl border border-line bg-surface sm:h-[128px]">
-      <img src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover object-right opacity-35 sm:opacity-100" />
-      {/* 左→右白色淡出遮罩：暗色主题下改用 surface 色，避免白块 */}
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, var(--color-surface) 30%, color-mix(in srgb, var(--color-surface) 55%, transparent) 55%, transparent 78%)' }} />
-      <div className="relative flex min-h-[128px] flex-col items-start justify-center gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-0">
+    <div className="relative mb-5 overflow-hidden rounded-xl border border-line bg-surface">
+      <img src={src} alt="" aria-hidden className="absolute inset-y-0 right-0 h-full w-[46%] object-cover object-right opacity-[0.12]" />
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, var(--color-surface) 52%, color-mix(in srgb, var(--color-surface) 72%, transparent) 76%, transparent)' }} />
+      <div className="relative flex min-h-[96px] flex-col items-start justify-center gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
         <div className="min-w-0">
           <h1 className="t-h1 text-ink">{title}</h1>
-          {desc && <p className="mt-1.5 max-w-md text-[13px] leading-relaxed text-ink-3">{desc}</p>}
+          {desc && <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-ink-3">{desc}</p>}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>}
+        {actions && <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:shrink-0 lg:justify-end">{actions}</div>}
       </div>
     </div>
   )

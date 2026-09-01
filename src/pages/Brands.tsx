@@ -13,6 +13,7 @@ import {
   Th,
   Td,
   Row,
+  SummaryStrip,
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
 import { Modal, useToast } from '../components/ui/overlays'
@@ -22,6 +23,7 @@ import { SETTLE_PATH_LABEL, SETTLE_PATH_TONE as PATH_TONE, type SettlePath } fro
 import { useStore, addBrand, setBrandStatus, type NewBrandInput } from '../lib/store'
 import { money, int, pct, cx } from '../lib/format'
 import { isRealApi } from '../lib/http'
+import { useViewMode } from '../lib/prefs'
 
 const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' }> = {
   live: { label: '在投', tone: 'good' },
@@ -71,6 +73,7 @@ export default function Brands() {
   const [f, setF] = useState<'all' | 'live' | 'review'>('all')
   const [wizard, setWizard] = useState(false)
   const [tplOpen, setTplOpen] = useState(false)
+  const expert = useViewMode() === 'expert'
 
   const liveGmv = brands.filter((b) => b.status === 'live').reduce((s, b) => s + b.gmvMtd, 0)
   const totalSubs = brands.reduce((s, b) => s + b.activeSubs, 0)
@@ -85,22 +88,27 @@ export default function Brands() {
   return (
     <>
       <PageHeader
-        title="品牌 · 入驻"
-        desc="配置驱动接入：费率 / 套餐 / 支付通道 / 商户号 / 风控阈值 / 结算规则全部参数化。新品牌接入 = 填配置 + 接回传，不改代码。"
+        title="品牌管理"
+        desc="查看品牌经营状态、审核新品牌，并进入详情维护商品、费率和接入配置。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => setTplOpen(true)}><Settings2 size={14} /> 接入字段模板</Button>
-            <Button variant="primary" onClick={() => setWizard(true)}><Plus size={14} /> 邀请品牌入驻</Button>
+            {expert && <Button variant="ghost" onClick={() => setTplOpen(true)}><Settings2 size={14} /> 接入字段模板</Button>}
+            <Button variant="primary" onClick={() => setWizard(true)}><Plus size={14} /> 新增品牌</Button>
           </>
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {expert ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card mark><Stat label="在投品牌" value={String(brands.filter((b) => b.status === 'live').length)} sub={<span>审核中 {brands.filter((b) => b.status === 'review').length} · 暂停 {brands.filter((b) => b.status === 'paused').length}</span>} /></Card>
         <Card mark><Stat label="在投品牌基础流水" value={money(liveGmv)} sub={<span>本月累计</span>} /></Card>
         <Card mark><Stat label="活跃订阅总数" value={int(totalSubs)} sub={<span>连续包月口径</span>} /></Card>
         <Card mark><Stat label="平均续费率" value={avgRenewal === null ? <span className="text-ink-4">—</span> : pct(avgRenewal)} deltaTone="good" sub={<span>北极星核心驱动</span>} /></Card>
-      </div>
+      </div> : <SummaryStrip items={[
+        { label: '在投品牌', value: `${brands.filter((b) => b.status === 'live').length} 个`, hint: `审核中 ${brands.filter((b) => b.status === 'review').length}` },
+        { label: '本月流水', value: money(liveGmv) },
+        { label: '活跃订阅', value: int(totalSubs) },
+        { label: '平均续费率', value: avgRenewal === null ? '—' : pct(avgRenewal), tone: avgRenewal !== null && avgRenewal >= 60 ? 'good' : 'neutral' },
+      ]} />}
 
       <Card className="mt-4" pad={false}>
         <div className="flex items-center justify-between p-5 pb-3">
@@ -153,7 +161,7 @@ export default function Brands() {
         </TableShell>
       </Card>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {expert && <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {(['direct', 'licensed', 'mixed'] as SettlePath[]).map((p) => {
           const bs = brands.filter((b) => b.path === p)
           return (
@@ -168,7 +176,7 @@ export default function Brands() {
             </Card>
           )
         })}
-      </div>
+      </div>}
 
       {wizard && <OnboardWizard onClose={() => setWizard(false)} onDone={(name, biz) => { setWizard(false); const bn = BIZ_TYPES.find((t) => t.id === biz)?.name ?? ''; toast({ tone: 'good', text: `${name}（${bn}）已提交入驻，进入审核 · 下一步：到成员页为品牌开通门户账号` }) }} />}
       <DocModal

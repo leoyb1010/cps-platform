@@ -13,7 +13,7 @@ export interface RoleExperience {
 
 export const ROLE_EXPERIENCE: Record<RoleId, RoleExperience> = {
   super: {
-    navLabel: '经营总览',
+    navLabel: '今日工作',
     eyebrow: '平台全局',
     title: '经营总览',
     description: '先看跨业务风险与待办，再检查经营结果和资金健康。',

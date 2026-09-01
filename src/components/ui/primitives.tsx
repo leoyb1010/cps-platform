@@ -197,7 +197,7 @@ export function Card({
         (pad || mark) && 'relative',
         pad && 'p-5',
         hover &&
-          'cursor-pointer transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]',
+          'cursor-pointer transition-[box-shadow,border-color] duration-150 hover:border-line-strong hover:shadow-[var(--shadow-pop)]',
         className,
       )}
     >
@@ -225,7 +225,7 @@ export function CardTitle({
   return (
     <div className="mb-4 flex items-start justify-between gap-3">
       <div className="flex items-start gap-2.5">
-        <span className="mt-[5px] h-[7px] w-[7px] shrink-0 bg-brand" />
+        <span className="mt-[3px] h-4 w-0.5 shrink-0 rounded-full bg-brand/70" />
         <div>
           <h3 className="text-[14px] font-semibold text-ink">{title}</h3>
           {desc && <p className="mt-0.5 text-[12.5px] text-ink-3">{desc}</p>}
@@ -287,6 +287,28 @@ export function Stat({
   )
 }
 
+/* ── Compact summary strip ─────────────────────── */
+
+export function SummaryStrip({
+  items,
+  className,
+}: {
+  items: { label: ReactNode; value: ReactNode; hint?: ReactNode; tone?: Tone }[]
+  className?: string
+}) {
+  return (
+    <dl className={cx('grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-4', className)}>
+      {items.map((item, index) => (
+        <div key={index} className="min-w-0 border-b border-r border-line px-4 py-3.5 last:border-r-0 lg:border-b-0">
+          <dt className="truncate text-[11.5px] text-ink-4">{item.label}</dt>
+          <dd className={cx('tnum mt-1 text-[18px] font-semibold', item.tone ? TONE[item.tone].ink : 'text-ink')}>{item.value}</dd>
+          {item.hint && <div className="mt-0.5 truncate text-[11px] text-ink-4">{item.hint}</div>}
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /* ── Page header ────────────────────────────────── */
 
 export function PageHeader({
@@ -304,7 +326,7 @@ export function PageHeader({
         <h1 className="t-h1 text-ink">{title}</h1>
         {desc && <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-ink-3">{desc}</p>}
       </div>
-      {actions && <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>}
+      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">{actions}</div>}
     </div>
   )
 }
@@ -618,8 +640,8 @@ export function ThresholdBar({
     <div className="flex items-center gap-2">
       <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken">
         <div
-          className="h-full rounded-full transition-[width] duration-300 ease-out"
-          style={{ width: `${pctOf}%`, background: toneVar[tone] }}
+          className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-out"
+          style={{ transform: `scaleX(${pctOf / 100})`, background: toneVar[tone] }}
         />
         <div
           className="absolute top-[-2px] h-[10px] w-px bg-ink-4"

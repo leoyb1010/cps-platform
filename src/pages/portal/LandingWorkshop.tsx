@@ -119,7 +119,7 @@ export function LandingWorkshop({
                     const on = sel.includes(p.id)
                     return (
                       <button key={p.id} onClick={() => toggle(p.id)}
-                        className={cx('relative rounded-xl border p-4 text-left transition-all',
+                        className={cx('relative rounded-xl border p-4 text-left transition-[background-color,border-color,box-shadow,transform]',
                           on ? 'border-brand bg-brand/[0.04] shadow-[inset_0_0_0_1.5px_var(--color-brand)]' : 'border-line bg-surface hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-[var(--shadow-pop)]')}>
                         {on && <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-brand text-white"><Check size={13} strokeWidth={3} /></span>}
                         <div className="flex items-center gap-2.5">

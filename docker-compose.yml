@@ -25,8 +25,10 @@ services:
       PORT: "3001"
       # 经 nginx /api 反代，cookie 走根路径
       REFRESH_COOKIE_PATH: /
-      # 浏览器实际访问的是 web 容器同源，CORS 同源即可；放开本地两个口便于直连调试
-      CORS_ORIGIN: http://localhost:8080,http://localhost:5273
+      # 浏览器实际访问的是 web 容器同源；公网部署时通过 env 加入正式 HTTPS 域名。
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://localhost:5273}
+      # 公网演示环境可显式灌入 demo 数据；正式生产默认关闭。
+      SEED_DEMO: ${SEED_DEMO:-false}
     volumes:
       - cps-db:/data
     healthcheck:
@@ -45,10 +47,12 @@ services:
       server:
         condition: service_healthy
     ports:
-      - '8080:8080'
+      # 默认仅绑定回环地址，公网入口交给反向代理 / Cloudflare Tunnel。
+      - '127.0.0.1:${WEB_PORT:-8080}:8080'
     # nginx-unprivileged 监听 8080；busybox wget 探活根路径
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/']
+      # Alpine 可能把 localhost 优先解析到 ::1，而 nginx 当前监听 IPv4。
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/']
       interval: 10s
       timeout: 3s
       retries: 5

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Download, Search, ArrowRight, TrendingUp, Store } from 'lucide-react'
-import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, BrandMark, TableShell, Th, Td, Row, CountUp } from '../../components/ui/primitives'
-import { AreaLine, Gauge, Sparkline } from '../../components/ui/charts'
+import { Card, CardTitle, Stat, SummaryStrip, PageHeader, Badge, Button, Segmented, BrandMark, TableShell, Th, Td, Row } from '../../components/ui/primitives'
+import { AreaLine, Gauge } from '../../components/ui/charts'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Input, Textarea } from '../../components/ui/forms'
 import { PeriodFilter } from '../../components/ui/filters'
@@ -27,27 +27,27 @@ export function AgentHome() {
       <PortalState state={state} data={data} reload={reload}>
         {(d) => (
           <>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              <Card>
-                <Stat label="本月消耗" value={money(d.spendMtd)} sub={<span>投放成本</span>} />
-                {d.trend.length > 1 && <div className="mt-2"><Sparkline data={d.trend.map((t) => t.value)} tone="brand" w={140} h={30} /></div>}
-              </Card>
-              <Card><Stat label="带来首单" value={<CountUp to={d.firstOrders} group />} sub={<span>新签</span>} /></Card>
-              <Card><Stat label="待结分润" value={money(d.payoutPending)} sub={<span>T+N 账期</span>} /></Card>
-              <Card><Stat label="续费率" value={<CountUp to={d.renewalRate} decimals={1} suffix="%" />} sub={<span className={d.renewalRate >= 60 ? 'text-good-ink' : 'text-warn-ink'}>带来用户质量</span>} /></Card>
-            </div>
+            <SummaryStrip items={[
+              { label: '本月消耗', value: money(d.spendMtd), hint: '投放成本' },
+              { label: '带来首单', value: d.firstOrders.toLocaleString('zh-CN'), hint: '新签' },
+              { label: '待结分润', value: money(d.payoutPending), hint: 'T+N 账期', tone: d.payoutPending > 0 ? 'warn' : undefined },
+              { label: '续费率', value: pct(d.renewalRate), hint: '带来用户质量', tone: d.renewalRate >= 60 ? 'good' : 'warn' },
+            ]} />
 
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+              <Card>
+                <CardTitle title="下一步" desc="先完成今天的投放与结算动作" />
+                <div className="space-y-2.5">
+                  <AgentAction to="/portal/agent/market" title="继续选品投放" sub={`${d.acceptedContracts} 个已接合作，可扩大优质货源`} />
+                  <AgentAction to="/portal/agent/payouts" title={`${money(d.payoutPending)} 待结分润`} sub="查看账期、可提现金额与打款进度" tone={d.payoutPending > 0 ? 'warn' : 'neutral'} />
+                  <AgentAction to="/portal/agent/credit" title={`信用分 ${d.creditScore}`} sub={d.creditScore >= 800 ? '当前优质，可继续保持' : '查看影响结算优先级的指标'} tone={d.creditScore >= 800 ? 'good' : 'warn'} />
+                </div>
+              </Card>
               <Card>
                 <CardTitle title="带单成交趋势" desc="本期每日带来的成交额（退款/拒付计负）" />
                 {d.trend.length > 1
-                  ? <AreaLine data={d.trend.map((t) => t.value)} labels={d.trend.map((t) => t.date.slice(5))} tone="brand" height={200} />
-                  : <div className="grid h-[200px] place-items-center text-[12px] text-ink-4">数据点不足，暂不绘制趋势</div>}
-              </Card>
-              <Card>
-                <CardTitle title="信用分" desc="决定结算优先级与可投额度" />
-                <Gauge value={d.creditScore} max={1000} target={800} decimals={0} status={d.creditScore >= 800 ? '优质' : d.creditScore >= 600 ? '正常' : '受限'} />
-                <a href="#/portal/agent/credit" className="mt-2 flex items-center justify-center gap-1 text-[12px] font-medium text-brand hover:underline">查看信用分构成 <ArrowRight size={13} /></a>
+                  ? <AreaLine data={d.trend.map((t) => t.value)} labels={d.trend.map((t) => t.date.slice(5))} tone="brand" height={176} />
+                  : <div className="grid h-[176px] place-items-center text-[12px] text-ink-4">数据点不足，暂不绘制趋势</div>}
               </Card>
             </div>
 
@@ -61,6 +61,19 @@ export function AgentHome() {
         )}
       </PortalState>
     </>
+  )
+}
+
+function AgentAction({ to, title, sub, tone = 'neutral' }: { to: string; title: string; sub: string; tone?: 'neutral' | 'warn' | 'good' }) {
+  const cls = tone === 'warn' ? 'border-warn/25 bg-warn-soft/40' : tone === 'good' ? 'border-good/25 bg-good-soft/40' : 'border-line bg-surface-muted'
+  return (
+    <a href={`#${to}`} className={`flex items-center gap-2.5 rounded-lg border p-3 transition-colors hover:border-brand/40 ${cls}`}>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12.5px] font-medium text-ink">{title}</div>
+        <div className="text-[11px] leading-relaxed text-ink-4">{sub}</div>
+      </div>
+      <ArrowRight size={14} className="shrink-0 text-ink-4" />
+    </a>
   )
 }
 
@@ -105,7 +118,7 @@ export function AgentMarket() {
                   <div className="rounded-lg bg-surface-muted p-2"><div className="text-[11px] text-ink-4">分成费率</div><div className="text-[13px] font-semibold tnum text-ink">{pct(b.feeRate)}</div></div>
                   <div className="rounded-lg bg-surface-muted p-2"><div className="text-[11px] text-ink-4">续费率</div><div className="text-[13px] font-semibold tnum text-good-ink">{pct(b.renewalRate)}</div></div>
                 </div>
-                <button onClick={() => claim(b.id)} disabled={busy === b.id} className="mt-3 w-full rounded-lg bg-brand px-3 py-2 text-[12.5px] font-medium text-white shadow-[0_3px_10px_-3px_rgba(245,51,59,.4)] transition-all hover:bg-brand-hover active:scale-[0.99] disabled:opacity-50 disabled:shadow-none">{busy === b.id ? '领取中…' : '领取投放'}</button>
+                <button onClick={() => claim(b.id)} disabled={busy === b.id} className="mt-3 w-full rounded-lg bg-brand px-3 py-2 text-[12.5px] font-medium text-white shadow-[0_3px_10px_-3px_rgba(245,51,59,.4)] transition-[background-color,box-shadow,transform,opacity] hover:bg-brand-hover active:scale-[0.99] disabled:opacity-50 disabled:shadow-none">{busy === b.id ? '领取中…' : '领取投放'}</button>
               </Card>
             ))}
           </div>

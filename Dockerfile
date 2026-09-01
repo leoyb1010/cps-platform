@@ -16,4 +16,4 @@ COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
 # 镜像自带健康检查兜底（compose 未接管时也可探活）
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
-  CMD wget -qO- http://localhost:8080/ || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/ || exit 1

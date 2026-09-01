@@ -13,13 +13,17 @@ import {
   Sparkles,
   UsersRound,
   ScrollText,
+  Store,
+  Landmark,
+  ShieldAlert,
+  BarChart3,
 } from 'lucide-react'
 import { Card, CardTitle, Badge, Button, Segmented, CountUp, BrandMark, PageHeader, Stat, TONE } from '../components/ui/primitives'
 import { CrosshairChart, Meter } from '../components/ui/charts'
 import { Confirm, useToast } from '../components/ui/overlays'
 import { EmptyState } from '../components/ui/forms'
 import { Term } from '../components/ui/Term'
-import { useViewMode } from '../lib/prefs'
+import { setViewMode, useViewMode } from '../lib/prefs'
 import { useAuth, useCan } from '../lib/auth'
 import { isRealApi } from '../lib/http'
 import { ROLE_EXPERIENCE, resolveDashboardTarget } from '../lib/roleExperience'
@@ -166,6 +170,46 @@ export default function Dashboard() {
   const orderGross = s.orders.reduce((sum, x) => sum + x.amount, 0)
 
   if (roleId === 'teamadmin') return <TeamAdminHome onOpen={nav} />
+
+  // 默认首页是“值班台”：先给任务和下一步，完整经营分析通过“查看完整数据”显式进入。
+  if (!expert) {
+    return (
+      <>
+        <SimpleDashboard
+          userName={user?.name ?? ''}
+          experience={experience}
+          actions={visibleActions}
+          readOnly={readOnly}
+          canRefund={canRefund}
+          can={can}
+          onOpen={(to) => nav(to)}
+          onRefund={(id) => setConfirmTicket(id)}
+          liveBrandCount={liveBrandCount}
+          activeAgents={activeAgents}
+          pendingSettlements={pendingSettlements.length}
+          reconcileDiffTotal={reconcileDiffTotal}
+          unresolvedTickets={unresolvedTickets.length}
+          urgentTickets={urgentTickets.length}
+          controlledMerchants={controlledMerchants.length}
+          gmvBase={gmvBase}
+          renewal={renewalShown}
+        />
+        <Confirm
+          open={!!confirmTicket}
+          onClose={() => setConfirmTicket(null)}
+          onConfirm={() => {
+            if (confirmTicket) {
+              resolveTicketWithRefund(confirmTicket)
+              toast({ tone: 'good', text: `工单 ${confirmTicket} 已退款，联动冲账完成` })
+            }
+          }}
+          title="确认退款并联动冲账"
+          confirmText="确认退款"
+          body={<>将对工单 <span className="tnum font-medium text-ink">{confirmTicket}</span> 发起退款。此操作会<span className="font-medium text-ink"> 触发清结算逆向冲账、回收代理分润、更新信用分</span>，并实时反映在联动事件中。</>}
+        />
+      </>
+    )
+  }
 
   return (
     <>
@@ -323,7 +367,7 @@ export default function Dashboard() {
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_318px]">
         <Card style={rev(0.32)}>
           <CardTitle title="基础流水与平台净收入" desc="近 12 个月 · 实线基础流水，虚线净收入，悬停查看读数"
-            right={<div className="flex shrink-0 items-center gap-3.5 text-[12px] whitespace-nowrap text-ink-2"><span className="inline-flex items-center gap-1.5"><span className="h-[2px] w-3.5 rounded bg-brand" />基础流水</span><span className="inline-flex items-center gap-1.5"><span className="h-0 w-3.5 border-t-2 border-dashed border-ink opacity-50" />净收入</span></div>} />
+            right={<div className="flex shrink-0 items-center gap-3.5 text-[12px] whitespace-nowrap text-ink-2"><span className="inline-flex items-center gap-1.5"><span className="h-[2px] w-3.5 rounded bg-brand" />基础流水</span><span className="inline-flex items-center gap-1.5"><span className="h-[2px] w-3.5 opacity-50" style={{ backgroundImage: 'repeating-linear-gradient(90deg, currentColor 0 3px, transparent 3px 5px)' }} />净收入</span></div>} />
           <CrosshairChart a={{ name: '基础流水', data: series.gmv12m }} b={{ name: '净收入', data: series.netRevenue12m }} labels={months12} yMax={32e6} fmtA={wan} fmtB={wan} />
         </Card>
 
@@ -477,6 +521,161 @@ export default function Dashboard() {
 }
 
 /* ── local pieces ──────────────────────────────── */
+function SimpleDashboard({
+  userName,
+  experience,
+  actions,
+  readOnly,
+  canRefund,
+  can,
+  onOpen,
+  onRefund,
+  liveBrandCount,
+  activeAgents,
+  pendingSettlements,
+  reconcileDiffTotal,
+  unresolvedTickets,
+  urgentTickets,
+  controlledMerchants,
+  gmvBase,
+  renewal,
+}: {
+  userName: string
+  experience: (typeof ROLE_EXPERIENCE)[keyof typeof ROLE_EXPERIENCE]
+  actions: ActionItem[]
+  readOnly: boolean
+  canRefund: boolean
+  can: (permission: string) => boolean
+  onOpen: (to: string) => void
+  onRefund: (id: string) => void
+  liveBrandCount: number
+  activeAgents: number
+  pendingSettlements: number
+  reconcileDiffTotal: number
+  unresolvedTickets: number
+  urgentTickets: number
+  controlledMerchants: number
+  gmvBase: number
+  renewal: number | null
+}) {
+  const workflows = [
+    {
+      id: 'growth',
+      title: '业务增长',
+      desc: `${liveBrandCount} 个在营品牌 · ${activeAgents} 个活跃代理`,
+      to: can('order.read') ? '/orders' : can('agent.read') ? '/agents' : '/brands',
+      show: can('order.read') || can('agent.read') || can('brand.read'),
+      icon: Store,
+      tone: 'text-info-ink bg-info-soft',
+    },
+    {
+      id: 'money',
+      title: '资金结算',
+      desc: pendingSettlements ? `${pendingSettlements} 笔待推进${reconcileDiffTotal ? ` · 差异 ${money(reconcileDiffTotal)}` : ''}` : '当前没有待结算事项',
+      to: '/settlement',
+      show: can('settlement.read'),
+      icon: Landmark,
+      tone: reconcileDiffTotal ? 'text-warn-ink bg-warn-soft' : 'text-good-ink bg-good-soft',
+    },
+    {
+      id: 'risk',
+      title: '风险客服',
+      desc: `${unresolvedTickets} 起未完结${urgentTickets ? ` · ${urgentTickets} 起临期` : ''} · ${controlledMerchants} 个受控号`,
+      to: can('risk.read') || can('ticket.read') || can('compliance.view') ? '/risk' : '/merchants',
+      show: can('risk.read') || can('ticket.read') || can('compliance.view') || can('merchant.read'),
+      icon: ShieldAlert,
+      tone: urgentTickets ? 'text-alert-ink bg-alert-soft' : 'text-violet-ink bg-violet-soft',
+    },
+    {
+      id: 'analytics',
+      title: '经营复盘',
+      desc: `本月流水 ${money(gmvBase)}${renewal === null ? '' : ` · 续费率 ${pct(renewal)}`}`,
+      to: '/analytics',
+      show: can('analytics.view'),
+      icon: BarChart3,
+      tone: 'text-ink-2 bg-surface-sunken',
+    },
+  ].filter((item) => item.show)
+
+  return (
+    <>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold tracking-[0.12em] text-brand">{experience.eyebrow}</div>
+          <h1 className="t-h1 mt-1.5 text-ink">{userName ? `${userName}，今天先做什么？` : '今天先做什么？'}</h1>
+          <p className="mt-1.5 text-[13px] text-ink-3">{experience.description}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setViewMode('expert')}>查看完整数据</Button>
+          <Button variant="primary" onClick={() => onOpen(experience.primaryTo)}>{experience.primaryLabel} <ArrowRight size={15} /></Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(300px,.85fr)]">
+        <Card data-coach="todo" className="min-h-[330px]">
+          <CardTitle
+            title={readOnly ? '需要核查的事项' : '今天要处理的事'}
+            desc={readOnly ? '按紧急程度排列，仅显示你有权查看的异常' : '按紧急程度排列，处理后会同步更新资金、风控和审计状态'}
+            right={<Badge tone={actions.length ? 'alert' : 'good'} dot>{actions.length ? `${actions.length} 件待处理` : '已清空'}</Badge>}
+          />
+          {actions.length === 0 ? (
+            <EmptyState art="all-clear" title={readOnly ? '暂无需要核查的异常' : '今天的待办已处理完'} desc="新的相关事项会自动出现在这里" />
+          ) : (
+            <div className="space-y-1.5">
+              {actions.map((action) => (
+                <ActionRow
+                  key={action.id}
+                  a={action}
+                  actionLabel={readOnly ? '查看' : '去处理'}
+                  onRefund={canRefund && action.ticketId ? () => onRefund(action.ticketId!) : undefined}
+                  onOpen={() => onOpen(action.to)}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card className="min-h-[330px]">
+          <CardTitle title="工作入口" desc="按要完成的事情进入，不用先判断属于哪个模块" />
+          <div className="space-y-1.5">
+            {workflows.map((workflow) => (
+              <button key={workflow.id} onClick={() => onOpen(workflow.to)} className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left hover:bg-surface-muted">
+                <span className={cx('grid h-9 w-9 shrink-0 place-items-center rounded-lg', workflow.tone)}><workflow.icon size={17} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-ink">{workflow.title}</span>
+                  <span className="mt-0.5 block truncate text-[11.5px] text-ink-3">{workflow.desc}</span>
+                </span>
+                <ArrowRight size={14} className="text-ink-4 group-hover:translate-x-0.5 group-hover:text-brand" />
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-4">
+        <SimplePulse label="本月流水" value={money(gmvBase)} />
+        <SimplePulse label="待结算" value={`${pendingSettlements} 笔`} tone={pendingSettlements ? 'warn' : 'good'} />
+        <SimplePulse label="未完结工单" value={`${unresolvedTickets} 起`} tone={urgentTickets ? 'alert' : 'neutral'} />
+        <SimplePulse label="受控商户号" value={`${controlledMerchants} 个`} tone={controlledMerchants ? 'warn' : 'good'} />
+      </div>
+
+      <div className="mt-4">
+        <DailyBrief nav={onOpen} can={can} showAllClear={true} />
+      </div>
+    </>
+  )
+}
+
+function SimplePulse({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'neutral' | 'good' | 'warn' | 'alert' }) {
+  const ink = tone === 'good' ? 'text-good-ink' : tone === 'warn' ? 'text-warn-ink' : tone === 'alert' ? 'text-alert-ink' : 'text-ink'
+  return (
+    <div className="border-b border-r border-line px-4 py-3.5 last:border-r-0 lg:border-b-0">
+      <div className="text-[11.5px] text-ink-4">{label}</div>
+      <div className={cx('tnum mt-1 text-[18px] font-semibold', ink)}>{value}</div>
+    </div>
+  )
+}
+
 function TeamAdminHome({ onOpen }: { onOpen: (to: string) => void }) {
   const experience = ROLE_EXPERIENCE.teamadmin
   return (

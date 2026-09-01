@@ -16,6 +16,7 @@ import {
   Row,
   ThresholdBar,
   TONE,
+  SummaryStrip,
 } from '../components/ui/primitives'
 import { Meter } from '../components/ui/charts'
 import { Drawer, Modal, useToast, Confirm } from '../components/ui/overlays'
@@ -77,20 +78,20 @@ export default function Merchants() {
   return (
     <>
       <PageHeader
-        title="商户号 · 号池"
-        desc="号池按品牌严格隔离 · 投诉率/升级投诉率逼近阈值自动降权与熔断，健康度反向控制投放。"
+        title="商户号与号池"
+        desc="查看各商户号健康状态，处理预警、暂停和熔断，并维护品牌号池。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => setRouteOpen(true)}>
+            {expert && <Button variant="ghost" onClick={() => setRouteOpen(true)}>
               <Activity size={14} /> 路由日志
-            </Button>
+            </Button>}
             <Button variant="primary" onClick={() => setNewOpen(true)}>新增商户号</Button>
           </>
         }
       />
 
       {/* KPI */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {expert ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card>
           <Stat label="健康号 / 总数" value={`${counts.healthy}`} unit={`/ ${merchants.length}`} sub={<span>整改警告 {counts.watch}</span>}>
             <Meter value={(counts.healthy / (merchants.length || 1)) * 100} tone="good" />
@@ -107,10 +108,15 @@ export default function Merchants() {
         <Card>
           <Stat label="号池本月交易" value={money(totalGmv)} sub={<span>{int(totalTx)} 笔 · 决定新签承接基数</span>} />
         </Card>
-      </div>
+      </div> : <SummaryStrip items={[
+        { label: '健康号', value: `${counts.healthy} / ${merchants.length}`, hint: `整改警告 ${counts.watch}` },
+        { label: '暂停 / 熔断', value: `${counts.suspend} / ${counts.halt}`, tone: counts.suspend || counts.halt ? 'alert' : 'good' },
+        { label: '72h 完结率', value: pct(avgClose, 1), tone: avgClose >= 95 ? 'good' : 'warn' },
+        { label: '本月交易', value: money(totalGmv), hint: `${int(totalTx)} 笔` },
+      ]} />}
 
       {/* 状态机 */}
-      <Card className="mt-4">
+      {expert && <Card className="mt-4">
         <CardTitle
           title="商户号健康状态机"
           desc="支付平台管控口径 · 投诉率<1%（近7天累计），升级投诉<0.1%，72h 完结率≥95%"
@@ -140,7 +146,7 @@ export default function Merchants() {
             逼近红线时平台先内部降低进单权重并收紧投放（早于支付平台管控）。一旦被支付平台暂停新签：首次 7 天、二次 21 天、三次有暂停交易风险，其中「暂停新签」仅限制新订单，老订单续费照常。把投诉率作为投放的第二目标函数（第一为 ROI / LTV）。
           </span>
         </div>
-      </Card>
+      </Card>}
 
       {/* 智能路由 + 号池隔离（机制说明，专家视图展开） */}
       {expert && (

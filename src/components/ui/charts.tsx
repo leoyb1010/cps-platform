@@ -162,14 +162,16 @@ export function Bars({
           <span className="tnum text-[10px] text-ink-4 opacity-0 transition-opacity group-hover:opacity-100">
             {format(v)}
           </span>
-          <div
-            className="w-full rounded-t-[4px] transition-[height] duration-300 ease-out"
-            style={{
-              height: `${Math.max(0, (v / max) * (height - 24))}px`,
-              background: toneVar[tone],
-              opacity: i === data.length - 1 ? 1 : 0.42,
-            }}
-          />
+          <div className="relative w-full" style={{ height: `${height - 24}px` }}>
+            <div
+              className="absolute inset-0 origin-bottom rounded-t-[4px] transition-transform duration-300 ease-out"
+              style={{
+                transform: `scaleY(${Math.max(0, v / max)})`,
+                background: toneVar[tone],
+                opacity: i === data.length - 1 ? 1 : 0.42,
+              }}
+            />
+          </div>
           {labels && <span className="text-[10px] text-ink-4">{labels[i]}</span>}
         </div>
       ))}
@@ -257,11 +259,12 @@ export function Meter({
       <div
         className="h-full rounded-full"
         style={{
-          width: `${Math.min(100, value)}%`,
+          width: animate ? `${Math.min(100, value)}%` : '100%',
           background: toneVar[tone],
           transformOrigin: 'left',
+          transform: animate ? undefined : `scaleX(${Math.min(100, value) / 100})`,
           animation: animate ? `growX .8s ${delay}s var(--ease-draw) both` : undefined,
-          transition: animate ? undefined : 'width .3s',
+          transition: animate ? undefined : 'transform .3s var(--ease-out)',
         }}
       />
     </div>

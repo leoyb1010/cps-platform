@@ -4,7 +4,7 @@ import { ShieldCheck, Landmark, Waypoints, LineChart } from 'lucide-react'
 /**
  * 登录页外壳：左品牌叙事 + 右表单，取代旧版"空画布悬浮表单"。
  * 左栏固定深色（独立于主题令牌）——门面页在明暗两套主题下都保持同一品牌气质；
- * 装饰只用工程网格 + 品牌红辉光 + 错落进入，不引入插画资产。
+ * 装饰只用低对比品牌红光感，不引入插画资产。
  */
 const FEATURES = [
   { icon: Waypoints, t: '多品牌联运分发', d: '一套底座，品牌 × 代理 × 套餐自由组合投放' },
@@ -25,15 +25,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
     <div className="grid min-h-screen bg-canvas lg:grid-cols-[minmax(440px,44%)_1fr]">
       {/* 左：品牌叙事（lg 起显示） */}
       <aside className="relative hidden flex-col justify-between overflow-hidden p-10 text-white lg:flex" style={{ background: '#101014' }}>
-        {/* 工程网格 + 品牌辉光 */}
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
-        />
+        {/* 品牌辉光 */}
         <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand/[0.13] blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -right-16 h-80 w-80 rounded-full bg-brand/[0.07] blur-3xl" />
 
@@ -54,7 +46,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
             <br />
             做成<span className="text-[#ff6b71]">可联运、可结算、可风控</span>的平台
           </h1>
-          <p className="mt-3.5 text-[13.5px] leading-relaxed text-white/55" style={{ animation: 'revUp .6s .2s var(--ease-out) both' }}>
+          <p className="mt-3.5 text-[13.5px] leading-relaxed text-white/65" style={{ animation: 'revUp .6s .2s var(--ease-out) both' }}>
             业务层在上，投流 SaaS 底座在下。多品牌 · 开放代理 · 混合资金 · SaaS 化。
           </p>
           <div className="mt-8 space-y-4">
@@ -65,7 +57,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
                 </span>
                 <div>
                   <div className="text-[13px] font-medium text-white/90">{f.t}</div>
-                  <div className="mt-0.5 text-[12px] leading-relaxed text-white/45">{f.d}</div>
+                  <div className="mt-0.5 text-[12px] leading-relaxed text-white/60">{f.d}</div>
                 </div>
               </div>
             ))}
@@ -78,7 +70,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
             {METRICS.map((m) => (
               <div key={m.k}>
                 <div className="tnum text-[17px] font-semibold text-white/90">{m.v}</div>
-                <div className="mt-0.5 text-[10.5px] tracking-wide text-white/40">{m.k}</div>
+                <div className="mt-0.5 text-[12px] tracking-wide text-white/65">{m.k}</div>
               </div>
             ))}
           </div>
@@ -86,7 +78,7 @@ export function AuthShell({ children, footer }: { children: ReactNode; footer?: 
       </aside>
 
       {/* 右：表单区 */}
-      <main className="grid-bg relative flex flex-col items-center justify-center px-5 py-10">
+      <main className="relative flex flex-col items-center justify-center px-5 py-10">
         <div className="w-full max-w-[400px]" style={{ animation: 'revUpSm .5s .1s var(--ease-out) both' }}>
           {children}
         </div>

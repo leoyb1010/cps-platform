@@ -36,10 +36,11 @@ function PortalLogo({ branding }: { branding: ClientBranding }) {
 function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavGroup[]; branding: ClientBranding; open: boolean; onClose: () => void }) {
   const user = useAuth()
   const loc = useLocation()
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => Object.fromEntries(groups.map((g) => [g.title, g.defaultOpen === true])))
+  const currentTitle = groups.find((g) => g.items.some((item) => item.to === loc.pathname))?.title
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(() => currentTitle ?? groups.find((g) => g.defaultOpen)?.title ?? null)
   useEffect(() => {
     const current = groups.find((g) => g.items.some((item) => item.to === loc.pathname))
-    if (current) setExpanded((state) => state[current.title] ? state : { ...state, [current.title]: true })
+    if (current) setExpandedGroup(current.title)
   }, [groups, loc.pathname])
   return (
     <>
@@ -55,16 +56,15 @@ function ClientSidebar({ groups, branding, open, onClose }: { groups: PortalNavG
           <button aria-label="关闭菜单" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-ink-4 hover:bg-surface-muted md:hidden"><X size={16} /></button>
         </div>
         <nav className="flex-1 overflow-y-auto px-3 pb-5 pt-2">
-          {groups.map((group, gi) => {
-            const isExpanded = expanded[group.title] === true
+          {groups.map((group) => {
+            const isExpanded = expandedGroup === group.title
             return (
             <div key={group.title} className="mb-0.5">
-              {gi > 0 && <div className="mx-2 mb-1 mt-2.5 border-t border-line" />}
               <button
                 type="button"
                 aria-expanded={isExpanded}
-                onClick={() => setExpanded((state) => ({ ...state, [group.title]: !isExpanded }))}
-                className="flex w-full items-center gap-2 px-2 pt-2.5 pb-1.5 text-[10.5px] font-semibold tracking-[0.1em] text-ink-5 transition-colors hover:text-ink-2"
+                onClick={() => setExpandedGroup((current) => current === group.title ? null : group.title)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-[11px] font-semibold tracking-[0.06em] text-ink-4 transition-colors hover:bg-surface-muted hover:text-ink-2"
               >
                 <span className="flex-1 text-left">{group.title}</span>
                 <ChevronDown size={13} className={cx('transition-transform', !isExpanded && '-rotate-90')} />

@@ -25,6 +25,7 @@ import {
   Row,
   TONE,
   toneVar,
+  SummaryStrip,
 } from '../components/ui/primitives'
 import {
   brandById,
@@ -64,10 +65,10 @@ export default function Settlement() {
     <>
       <PageHeader
         title="清结算"
-        desc="分润分层计算（品牌费率 → 平台费 → 代理分润）。退款拒付逆向冲账，账期冻结覆盖风险窗口，三方逐笔对账。"
+        desc="先处理对账差异，再推进结算、准备金释放和代理提现。"
         actions={
           <>
-            <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>
+            {expert && <Button variant="ghost" onClick={() => { setTab('brand'); toast({ tone: 'info', text: '对账中心：三方逐笔对账，差异挂起在「核销差异」按钮处理' }) }}>对账中心</Button>}
             {/* 结算工作台：把月结日四处横跳收成一屏 Checklist（小白友好的引导式动线） */}
             <Button variant="primary" onClick={() => nav('/settlement/run')}>
               开始本期结算 <ArrowRight size={14} />
@@ -77,7 +78,7 @@ export default function Settlement() {
       />
 
       {/* KPI */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {expert ? <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card>
           <Stat
             label="平台净收入（累计）"
@@ -112,10 +113,15 @@ export default function Settlement() {
             sub={<span className="text-violet-ink">风险准备金联动</span>}
           />
         </Card>
-      </div>
+      </div> : <SummaryStrip items={[
+        { label: '平台净收入', value: money(totalPlatformFee), hint: diffCount ? `${diffCount} 单待核销` : '已对账无差异', tone: diffCount ? 'warn' : 'good' },
+        { label: '代理待结算', value: money(pendingPayout), hint: `${agents.filter((a) => a.payoutPending > 0).length} 个代理` },
+        { label: '逆向冲账', value: money(totalReversal), tone: totalReversal > 0 ? 'alert' : 'neutral' },
+        { label: '冻结准备金', value: money(totalFrozen), tone: totalFrozen > 0 ? 'violet' : 'neutral' },
+      ]} />}
 
-      {/* 资金流向 Sankey —— 把对账恒等式画出来（两模式都展示：小白一眼看懂钱怎么分的） */}
-      <FundFlowCard settlements={settlements} />
+      {/* 完整模式保留资金流向和口径解释；默认工作模式直接进入结算单。 */}
+      {expert && <FundFlowCard settlements={settlements} />}
 
       {/* 分润瀑布 + 资金路径（口径说明，专家视图展开） */}
       {expert && (
