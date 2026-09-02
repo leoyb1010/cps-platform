@@ -123,7 +123,10 @@ npm run start:dev           # http://localhost:3001 · Swagger 文档 /docs
 npm run dev:real            # 真实后端模式 → http://localhost:5273
 ```
 
-### 演示账户（密码一律 `demo`）
+### 演示账户（本地密码一律 `demo`）
+
+> 生产/公网沙箱（`NODE_ENV=production` + `SEED_DEMO=true`）下 seed 会**强制**使用 `SEED_DEMO_PASSWORD`
+> （≥12 字符、不能是 `demo`），`scripts/prepare-deploy-env.sh` 自动生成并写入 `.env`——公网域名上不存在 `admin/demo`。
 
 | 入口 | 账号 | 角色 / 数据范围 |
 |---|---|---|
@@ -145,9 +148,35 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 
 > **生产起停前先设必填 env**（缺失时 compose 直接报错、不静默起坏容器）：
 > `JWT_ACCESS_SECRET`、`JWT_REFRESH_SECRET`（各 `openssl rand -hex 32`）、
-> `YOUDAO_PLATFORM_PRIVATE_KEY`（真实 RSA 私钥 PEM，`openssl genrsa 2048`）、
+> `YOUDAO_PLATFORM_PRIVATE_KEY`（真实 RSA 私钥 PEM，`openssl genrsa 2048`；多行或以字面 `\n` 表示换行的单行均可，
+> 服务端 `youdao/platform-key.ts` 先归一化再用 `crypto.createPrivateKey` 真解析，解析不过 / 等于仓库 demo 私钥 → 启动即拒）、
 > `METRICS_TOKEN`（≥16 字符，`openssl rand -hex 16`；/metrics 含资金指标，缺失即拒启）；
 > PG 叠加层再加 `POSTGRES_PASSWORD`。可写入 `.env` 或 `export` 后再 `docker compose up`。
+
+**可选 env**
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `WEB_PORT` | `8080` | web 容器映射到**本机回环** `127.0.0.1:${WEB_PORT}`；compose 不对 `0.0.0.0` 开口，公网入口只能经反代 / Cloudflare Tunnel |
+| `CORS_ORIGIN` | `http://localhost:8080,http://localhost:5273` | 浏览器实际访问源，公网部署要加正式 HTTPS 域名 |
+| `SEED_DEMO` | `false` | 生产是否灌演示数据。`false` → 仅 bootstrap 首个管理员；`true` → 灌 demo 品牌/订单/账号（预发、沙箱、公网预览） |
+| `SEED_DEMO_PASSWORD` | 空 | 演示账号统一口令。**生产 + `SEED_DEMO=true` 必填**（≥12 字符、非 `demo`），否则 seed 拒绝执行 |
+
+#### 公网预览（Cloudflare Tunnel）
+
+```bash
+# 1) 一次性生成 .env（mode 600，不回显）：随机 JWT/METRICS/PG 口令 + 2048 位平台私钥；默认 SEED_DEMO=false
+PUBLIC_ORIGIN=https://cps.example.com WEB_PORT=18081 ./scripts/prepare-deploy-env.sh
+#    需要演示数据：SEED_DEMO=true ./scripts/prepare-deploy-env.sh  → 会额外生成随机 SEED_DEMO_PASSWORD 写进 .env
+# 2) 起栈（只监听 127.0.0.1:18081）
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
+# 3) cloudflared 把公网域名指到 http://127.0.0.1:18081
+```
+
+**拓扑硬约束（不可省）**：`nginx.conf` 把 `CF-Connecting-IP` 直接写进 `X-Real-IP` / `X-Forwarded-For`，后端据此限流、审计、
+记 refresh token 来源 IP。这只在「**nginx 的唯一上游是本机 cloudflared**」时成立——若把 `WEB_PORT` 改绑 `0.0.0.0`、
+或让任何非 Cloudflare 流量直达 nginx，攻击者可自带 `CF-Connecting-IP` 头伪造来源 IP，绕过登录限流并污染审计。
+不走 Cloudflare Tunnel 的部署必须改回 `$remote_addr` / `$proxy_add_x_forwarded_for` 并配置 `TRUST_PROXY_HOPS`。
 
 ---
 
@@ -327,6 +356,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
+| **v14 · 公网部署路径加固** | 平台私钥 `\n` 归一化 + 启动期 `createPrivateKey` 真解析（`youdao/platform-key.ts`，8 项单测含反向验证）；`prepare-deploy-env.sh` 默认 `SEED_DEMO=false`、开启时生成随机 `SEED_DEMO_PASSWORD`，生产 seed 强制校验；CI 三红修复（docker-smoke 补 `METRICS_TOKEN`、`.page-in` 纳入 reduced-motion、前后端 `npm audit` 清零）；nginx `CF-Connecting-IP` 信任前提写成硬约束；README 补 `WEB_PORT`/回环绑定/Cloudflare Tunnel 部署段 |
 | **v12 · 资金并发与安全清零** | 修复退款/准备金 CAS 竞争、补扣/解约状态机、原账期绑定；refresh 原子轮换、RSA DB nonce、IPv6/DNS 重绑定 SSRF；real 模式分页/RBAC/readiness；ESLint 转阻断；两轮对抗 findings=0 |
 | **v9 · 动线化 · 实时化 · 智能化** | 铁律：功能可专业、操作必小白（规整而非删减）。**B0 规整**：控制台分组折叠(一项不减)、门户分组导航(资源平台/接单大厅)、密度切换、3 步引导。**B1 动线**：C 端**落地页生成器**(移动优先+归因闭环+合规模块)、结算工作台(五步 Checklist+对账解释器)、**风险处置舱**(影响预演)、分润 Sankey、⌘K 动作化、行动队列、代码分割。**B2 门户深化**：资源广场、投放透视、异动播报、接单模拟器、实时事件流。**B3 智能**：Ask 平台(模板制)、LTV 预测带、品牌白标、i18n 骨架。执行方案见 [`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) |
 | **v8 · 全面审查 + 体验升级** | 三路对抗式审查修 40+ 缺陷（工单退款跨路径双冲账 P0 / 幂等键资源绑定 / CPS 跨品牌签约 / 配置契约漂移 / 刷新令牌互踢 / 权限路由守卫）；**暗色模式**（令牌级三态主题）；登录页品牌叙事重设计；**演示模式全入口打通**（订阅超市本地货架算价 + 品牌/代理门户演示数据层 + 门户演示账户）；图表健壮性（单点/负值/标签防重叠）；焦点陷阱与无障碍；README 截图流水线 |
