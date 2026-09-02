@@ -118,6 +118,9 @@ test('订单默认分页且可翻页', async ({ page }) => {
 
 test('移动端菜单可打开、跳转并自动收起', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
+  // 首登 550ms 后会弹 3 步引导遮罩（z-200）；抽屉滑入动画让点击晚于它出现时会被遮罩拦截 → 机器快慢不同时结果不同。
+  // 本用例只测抽屉导航，先标记引导已完成，消除这个竞态。
+  await page.evaluate(() => localStorage.setItem('cps-coach-done-console', '1'))
   await login(page)
   await page.getByRole('button', { name: '打开菜单' }).click()
   const nav = page.locator('nav').first()
@@ -188,10 +191,12 @@ test('多视口真实浏览器验证与截图', async ({ page }) => {
 test('减少动效偏好下入场与实时脉冲停止', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await login(page)
-  const pageAnimation = await page.locator('main').evaluate((node) => getComputedStyle(node).animationName)
+  // <main> 随路由 key 重挂载：先等首屏内容稳定，再取样式——否则可能读到已脱离文档的旧节点（animationName 为 ""）。
+  await expect(page.getByRole('heading', { name: /今天先做什么/ })).toBeVisible()
+  const pageAnimation = await page.locator('main.page-in').evaluate((node) => getComputedStyle(node).animationName)
   expect(pageAnimation).toBe('none')
   await page.goto('/#/orders')
-  const pulseAnimation = await page.locator('.pulse-dot').evaluate((node) => getComputedStyle(node).animationName)
+  const pulseAnimation = await page.locator('.pulse-dot').first().evaluate((node) => getComputedStyle(node).animationName)
   expect(pulseAnimation).toBe('none')
 })
 

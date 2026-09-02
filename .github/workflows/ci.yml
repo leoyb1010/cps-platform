@@ -139,6 +139,9 @@ jobs:
             echo 'JWT_ACCESS_SECRET=ci-access-secret-not-for-prod-000000000000'
             echo 'JWT_REFRESH_SECRET=ci-refresh-secret-not-for-prod-00000000000'
             echo 'POSTGRES_PASSWORD=ci_pg_password_change_me'
+            # compose 对 METRICS_TOKEN 是 :? 必填（main.ts 生产拒启 <16 字符）——缺它 compose up 直接报错，
+            # 此前 docker-smoke 连红即因此。
+            echo 'METRICS_TOKEN=ci-metrics-token-not-for-prod-0000'
             echo 'YOUDAO_PLATFORM_PRIVATE_KEY<<PEM_EOF'
             openssl genrsa 2048 2>/dev/null
             echo 'PEM_EOF'

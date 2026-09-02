@@ -447,6 +447,7 @@ table tbody td {
 .stagger > *:nth-child(n + 7) { animation-delay: 0.09s; }
 
 @media (prefers-reduced-motion: reduce) {
+  .page-in,
   .animate-in,
   .animate-pop,
   .animate-row,

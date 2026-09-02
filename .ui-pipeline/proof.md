@@ -10,12 +10,13 @@
 ## Evidence
 
 - Screenshots / visual diffs: 基线 `/tmp/cps-ui-audit/baseline-dashboard.png`、`/tmp/cps-ui-audit/baseline-settlement.png`；最终工作台 `/tmp/cps-ui-audit/final-dashboard-{1440,1024,768,390}.png`；品牌门户 `/tmp/cps-ui-audit/final-brand-{1440,1024,768,390}.png`；代理门户 `/tmp/cps-ui-audit/final-agent-{1440,390}.png`。
-- Storybook stories and tests: 未使用 Storybook；前端 Vitest 45/45，后端 Vitest 234/234。
-- End-to-end interactions: Playwright 17/17，覆盖 admin、finance、risk、ops、audit、brand、agent；包含导航单组展开、权限收窄、核心/完整切换、退款联动、订单分页、移动菜单、门户任务跳转和超市组合算价。后端 E2E 168/168。
+- Storybook stories and tests: 未使用 Storybook；前端 Vitest 45/45（6 文件），后端 Vitest 244/244（15 文件，含 `platform-key.spec.ts` 8 项私钥归一化/启动闸反向验证）。2026-09-02 于本地磁盘克隆实测（iCloud 同步目录下 node_modules 读取被节流，不可用于计时/门禁）。
+- End-to-end interactions: Playwright 17/17（Chromium，19.7s），覆盖 admin、finance、risk、ops、audit、brand、agent；包含导航单组展开、权限收窄、核心/完整切换、退款联动、订单分页、移动菜单、门户任务跳转和超市组合算价。两处竞态已消除：reduced-motion 用例先等首屏 heading 再对 `main.page-in` 取样（此前取到已卸载节点得 `""`）；移动菜单用例预置 `cps-coach-done-console`，避免首登 550ms 后的引导遮罩（z-200）拦截抽屉点击。
 - Accessibility checks: 交互控件使用语义化 button/link/dialog/heading；移动菜单具有可访问名；权限与隐藏状态使用真实浏览器断言。
 - Console / network checks: 连续访问工作台、品牌、订单、结算、号池，无 console error、pageerror 或 5xx。
 - Performance checks: 未新增组件库或动画运行时；生产构建通过；入场仅使用 opacity/transform，错落总延迟压缩到 90ms。Leo UI 仓库检测对主应用 `src/` 已无告警，仅剩独立子服务 `services/agent-studio` 的历史样式。运行页检测仅剩一条“高度 transition”误报；Playwright 逐元素检查确认非 0 秒的 `all/height` transition 数量为 0。
-- Reduced-motion check: Chromium `reducedMotion: reduce` 下 `.page-in` 和 `.pulse-dot` 计算样式均为 `animation-name: none`。
+- Reduced-motion check: Chromium `reducedMotion: reduce` 下 `.page-in` 和 `.pulse-dot` 计算样式均为 `animation-name: none`。注：此前 `.page-in` 并不在 `src/index.css` 的 `animation: none` 覆盖列表里（只被全局 0.001ms 时长兜底），该断言本不成立；本轮已把 `.page-in` 显式纳入覆盖列表，反向验证（去掉该行）用例即红。
+- CI status: 本轮之前 `main` 连续 5 次 CI 红（docker-smoke 缺 `METRICS_TOKEN`、e2e reduced-motion 断言、`npm audit` high 漏洞），本文件此前记录的"全绿"与 GitHub Actions 实际状态不一致。本轮修复后以 GitHub Actions 结果为准。
 
 ## Originality gate
 
