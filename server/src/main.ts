@@ -7,6 +7,7 @@ import cookieParser = require('cookie-parser')
 import { writeFileSync } from 'fs'
 import { AppModule } from './app.module'
 import { AllExceptionsFilter } from './common/all-exceptions.filter'
+import { assertPlatformPrivateKey } from './youdao/platform-key'
 
 // 禁止使用占位/弱密钥或仓库内 demo 私钥，避免令牌/回调签名可被伪造。
 // 不再以 NODE_ENV!=='production' 单开关整体豁免：改为「检测到弱值即拒启」，
@@ -36,22 +37,10 @@ function assertSecrets() {
       throw new Error('[安全] 生产环境 METRICS_TOKEN 未设置或过短（需 ≥16 字符随机值）——/metrics 暴露资金指标')
     }
   }
-  // 有道出站回调平台私钥：生产必须设置真实 RSA 私钥，否则回退到仓库内 demo 私钥 → 任何人可伪造回调签名。
-  const pk = process.env.YOUDAO_PLATFORM_PRIVATE_KEY || ''
-  if (!pk.includes('PRIVATE KEY')) {
-    throw new Error('[安全] 生产环境 YOUDAO_PLATFORM_PRIVATE_KEY 未设置真实 RSA 私钥（PEM）——回退 demo 私钥会被伪造回调')
-  }
-  // 指纹比对：仅检查"含 PRIVATE KEY 字样"不够——把仓库内 demo 私钥原样粘进 env 也能过。
-  // 用规范化后哈希比对，若与 demo 私钥相同则拒启（demo 私钥公开在仓库，等于无签名保护）。
-  {
-    // 延迟 require 避免测试/非生产路径加载 demo key
-    const { DEMO_RSA_PRIVATE } = require('./youdao/demo-keys') as { DEMO_RSA_PRIVATE: string }
-    const { createHash } = require('crypto') as typeof import('crypto')
-    const norm = (s: string) => s.replace(/\s+/g, '')
-    if (createHash('sha256').update(norm(pk)).digest('hex') === createHash('sha256').update(norm(DEMO_RSA_PRIVATE)).digest('hex')) {
-      throw new Error('[安全] YOUDAO_PLATFORM_PRIVATE_KEY 使用了仓库内公开的 demo 私钥——生产必须换成自有私钥')
-    }
-  }
+  // 有道出站回调平台私钥：生产必须是真实、可解析、非 demo 的 RSA 私钥。
+  // 三重校验收敛在 youdao/platform-key.ts（PEM 字样 / demo 指纹 / createPrivateKey 真解析）：
+  // 仅查字样会放过 .env 里以字面 \n 压成一行的 PEM——启动正常，首次签回调才炸。
+  assertPlatformPrivateKey(process.env.YOUDAO_PLATFORM_PRIVATE_KEY)
 }
 
 async function bootstrap() {

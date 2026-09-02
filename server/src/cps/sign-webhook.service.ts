@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import type { Prisma } from '@prisma/client'
 import { PrismaService } from '../prisma.service'
 import { buildRsaSign } from '../youdao/rsa-signature'
-import { DEMO_RSA_PRIVATE } from '../youdao/demo-keys'
+import { loadPlatformPrivateKey } from '../youdao/platform-key'
 import { postJsonToPublicCallback, validatePublicCallbackUrl } from '../common/callback-url'
 import { sendAlert } from '../common/alert'
 
@@ -14,10 +14,8 @@ const shortId = () => randomUUID().replace(/-/g, '').slice(0, 10)
 type WebhookFields = { orderNo?: string; amount?: number; period?: number; operateTime?: Date; subMsg?: string }
 
 // 平台级回调签名私钥（我方=有道，用它签出站回调，合作方用有道公钥验）。
-// 生产走 env/KMS；演示回退到 demo 私钥（与文档「有道平台公钥」对应）。
-function platformPrivateKey(): string {
-  return process.env.YOUDAO_PLATFORM_PRIVATE_KEY || DEMO_RSA_PRIVATE
-}
+// 生产走 env/KMS（platform-key 负责 \n 归一化）；演示回退到 demo 私钥（与文档「有道平台公钥」对应）。
+const platformPrivateKey = () => loadPlatformPrivateKey()
 
 /**
  * 出站续费状态回调投递：把签约生命周期事件按有道规范回调体推送到合作方 callbackUrl。
