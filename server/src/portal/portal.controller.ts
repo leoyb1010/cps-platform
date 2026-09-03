@@ -606,6 +606,12 @@ export class PortalController {
     // R2：品牌必须存在且为 live，防领取不存在/未上线品牌的投放
     const brand = await this.prisma.brand.findFirst({ where: { id: dto.brandId, status: 'live', deletedAt: null } })
     if (!brand) return { ok: false, detail: '该品牌不可投放' }
+    // productId 是可选的，但一旦传入必须属于同一品牌且已上架；否则会产生
+    // brandId/productId 跨租户错配，后续履约按商品匹配合约时可能串到他方链路。
+    if (dto.productId) {
+      const product = await this.prisma.product.findFirst({ where: { id: dto.productId, brandId: dto.brandId, status: 'live', deletedAt: null } })
+      if (!product) return { ok: false, detail: '该商品不存在、未上架或不属于该品牌' }
+    }
     const code = randomUUID().slice(0, 12)
     const id = 'CLM-' + randomUUID().slice(0, 6)
     const trackingUrl = `https://t.youdao.cps/${agentId}/${code}`

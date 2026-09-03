@@ -54,10 +54,19 @@ if [ "$NEED_SEED" = "0" ]; then
     run_script bootstrap-admin
   else
     echo "[entrypoint] seeding demo data…"
-    run_script seed || echo "[entrypoint] seed skipped/failed (continuing)"
+    # seed 失败必须阻止服务启动；生产沙箱缺少 SEED_DEMO_PASSWORD 时不能
+    # 继续起一个“健康但无账号/仍可用旧口令”的不安全容器。
+    run_script seed
   fi
 else
-  echo "[entrypoint] data present ($NEED_SEED users) — skip seed/bootstrap"
+  if [ "$NODE_ENV" = "production" ] && [ "$SEED_DEMO" = "true" ]; then
+    # 显式演示模式下即使数据库已有数据也要重跑 seed：除保持演示数据幂等外，
+    # 还负责把已有演示账户的 passwordHash 轮换到当前 SEED_DEMO_PASSWORD。
+    echo "[entrypoint] data present ($NEED_SEED users) — refresh demo seed"
+    run_script seed
+  else
+    echo "[entrypoint] data present ($NEED_SEED users) — skip seed/bootstrap"
+  fi
 fi
 
 echo "[entrypoint] starting: $*"

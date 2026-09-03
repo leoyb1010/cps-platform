@@ -214,7 +214,9 @@ async function main() {
     const scope = { scopeType: u.scopeType ?? 'platform', scopeId: u.scopeId ?? null }
     await db.user.upsert({
       where: { id: u.id },
-      update: { name: u.name, account: u.account, roleId: u.roleId, ...scope },
+      // 幂等重跑时同步轮换演示口令；否则旧库中的 admin/demo 等历史口令会继续有效，
+      // 使生产沙箱即使注入了新的 SEED_DEMO_PASSWORD 也无法真正完成密码轮换。
+      update: { name: u.name, account: u.account, roleId: u.roleId, passwordHash: hash, ...scope },
       create: { id: u.id, name: u.name, account: u.account, roleId: u.roleId, passwordHash: hash, ...scope },
     })
   }

@@ -1016,6 +1016,10 @@ describe('客户主动操作（债3）', () => {
     const claim = await request(httpServer).post('/portal/agent/claims').set('Authorization', `Bearer ${at}`).send({ brandId: 'youdao' })
     expect([200, 201]).toContain(claim.status)
     expect(claim.body.trackingUrl).toContain('t.youdao.cps')
+    // productId 不能跨品牌绑定：即使 brandId 是 live，也必须校验商品归属与上架状态。
+    const crossBrand = await request(httpServer).post('/portal/agent/claims').set('Authorization', `Bearer ${at}`).send({ brandId: 'youdao', productId: 'PRD-MG-01' })
+    expect(crossBrand.status).toBe(201)
+    expect(crossBrand.body.ok).toBe(false)
   })
   it('代理申请提现：≤payoutPending；超额拒绝；品牌打代理提现端点 403', async () => {
     const at = await token('agent')
