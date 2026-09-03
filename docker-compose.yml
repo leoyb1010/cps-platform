@@ -28,8 +28,8 @@ services:
       # 浏览器实际访问的是 web 容器同源；公网部署时通过 env 加入正式 HTTPS 域名。
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080,http://localhost:5273}
       # 公网演示环境可显式灌入 demo 数据；正式生产默认关闭。
-      # SEED_DEMO=true 时 seed.ts 强制要求 SEED_DEMO_PASSWORD（≥12 字符，非 "demo"），
-      # 由 scripts/prepare-deploy-env.sh 随机生成——公网预览域名上不再出现 admin/demo。
+      # SEED_DEMO=true 时灌入演示数据；默认演示口令为 demo。
+      # 如需临时隔离口令，可显式传入 SEED_DEMO_PASSWORD 覆盖。
       SEED_DEMO: ${SEED_DEMO:-false}
       SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
     volumes:

@@ -174,28 +174,20 @@ const NOTIFICATIONS = [
 
 /**
  * 演示账号统一口令。
- *   非生产：SEED_DEMO_PASSWORD 有值用它，否则沿用 "demo"（本地体验零配置）。
- *   生产 + SEED_DEMO=true（预发/沙箱/公网预览）：必须提供 SEED_DEMO_PASSWORD，≥12 字符且不能是 "demo"——
- *   公网预览域名上 admin/demo 等于把后台开给全网，scripts/prepare-deploy-env.sh 会自动生成随机值。
+ *   所有演示环境统一使用 "demo"；SEED_DEMO_PASSWORD 仍保留为可选覆盖，
+ *   便于需要临时隔离口令的部署场景显式注入。
  */
 export function resolveDemoPassword(env: NodeJS.ProcessEnv = process.env): string {
   const provided = (env.SEED_DEMO_PASSWORD ?? '').trim()
-  if (env.NODE_ENV === 'production') {
-    if (provided.length < 12 || provided.toLowerCase() === 'demo') {
-      console.error('[seed] 生产环境 SEED_DEMO=true 必须提供 SEED_DEMO_PASSWORD（≥12 字符随机值，且不能是 "demo"）：openssl rand -hex 12')
-      process.exit(1)
-    }
-    return provided
-  }
   return provided || 'demo'
 }
 
 async function main() {
-  // 安全闸：生产环境禁止灌入演示数据（含口令为 "demo" 的一批账号）。
+  // 生产环境默认禁止灌入演示数据；公网演示需显式 SEED_DEMO=true。
   // 生产建首个管理员请用 `npm run bootstrap:admin`（密码从 env 注入 / 随机打印一次）。
-  // 需要在生产刻意灌演示数据（如预发/沙箱）时，显式设置 SEED_DEMO=true 放行，并同时提供 SEED_DEMO_PASSWORD。
+  // 需要在生产刻意灌演示数据（如公网演示）时，显式设置 SEED_DEMO=true 放行。
   if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO !== 'true') {
-    console.error('[seed] 生产环境已拒绝灌演示数据。如确需演示数据请设 SEED_DEMO=true + SEED_DEMO_PASSWORD；建管理员用 npm run bootstrap:admin。')
+    console.error('[seed] 生产环境已拒绝灌演示数据。如确需演示数据请设 SEED_DEMO=true；建管理员用 npm run bootstrap:admin。')
     process.exit(1)
   }
   const demoPassword = resolveDemoPassword()
@@ -208,7 +200,7 @@ async function main() {
       create: { id: r.id, name: r.name, description: r.description, permissions: JSON.stringify(r.permissions), builtin: true },
     })
   }
-  // users（口令见 resolveDemoPassword：本地 "demo"，生产沙箱必须为 SEED_DEMO_PASSWORD）
+  // users（口令见 resolveDemoPassword：默认统一为 "demo"，可由 SEED_DEMO_PASSWORD 覆盖）
   const hash = await argon2.hash(demoPassword)
   for (const u of SEED_USERS) {
     const scope = { scopeType: u.scopeType ?? 'platform', scopeId: u.scopeId ?? null }

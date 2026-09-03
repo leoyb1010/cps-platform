@@ -54,8 +54,7 @@ if [ "$NEED_SEED" = "0" ]; then
     run_script bootstrap-admin
   else
     echo "[entrypoint] seeding demo data…"
-    # seed 失败必须阻止服务启动；生产沙箱缺少 SEED_DEMO_PASSWORD 时不能
-    # 继续起一个“健康但无账号/仍可用旧口令”的不安全容器。
+    # seed 失败必须阻止服务启动，避免起一个“健康但数据不完整”的容器。
     run_script seed
   fi
 else

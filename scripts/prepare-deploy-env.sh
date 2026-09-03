@@ -6,8 +6,7 @@ set -eu
 # 可选环境变量：
 #   PUBLIC_ORIGIN  公网访问源（写进 CORS_ORIGIN），默认 https://cps.leonote.top
 #   WEB_PORT       web 容器绑定到本机回环的端口，默认 18081（compose 只绑 127.0.0.1，公网入口交给 Cloudflare Tunnel）
-#   SEED_DEMO      是否灌演示数据，默认 false。显式 SEED_DEMO=true 时会额外生成随机 SEED_DEMO_PASSWORD
-#                  （生产 seed.ts 强制要求，绝不再用固定口令 "demo" 面向公网）。
+#   SEED_DEMO      是否灌演示数据，默认 false。显式 SEED_DEMO=true 时默认使用 demo 口令。
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ENV_FILE="$ROOT_DIR/.env"
 PUBLIC_ORIGIN=${PUBLIC_ORIGIN:-https://cps.leonote.top}
@@ -37,8 +36,8 @@ YOUDAO_PLATFORM_PRIVATE_KEY=$(awk '{printf "%s\\n", $0}' "$TMP_DIR/youdao-platfo
   printf 'CORS_ORIGIN=%s,http://localhost:%s\n' "$PUBLIC_ORIGIN" "$WEB_PORT"
   printf 'SEED_DEMO=%s\n' "$SEED_DEMO"
   if [ "$SEED_DEMO" = "true" ]; then
-    # 演示账号统一口令：随机 24 hex，仅写入 .env（mode 600），不回显。
-    printf 'SEED_DEMO_PASSWORD=%s\n' "$(openssl rand -hex 12)"
+    # 公网演示账号按产品约定统一使用 demo；如需隔离可手工覆盖此变量。
+    printf 'SEED_DEMO_PASSWORD=demo\n'
   fi
   printf 'JWT_ACCESS_SECRET=%s\n' "$JWT_ACCESS_SECRET"
   printf 'JWT_REFRESH_SECRET=%s\n' "$JWT_REFRESH_SECRET"
@@ -50,5 +49,5 @@ YOUDAO_PLATFORM_PRIVATE_KEY=$(awk '{printf "%s\\n", $0}' "$TMP_DIR/youdao-platfo
 chmod 600 "$ENV_FILE"
 echo "[deploy] generated $ENV_FILE (mode 600); SEED_DEMO=$SEED_DEMO"
 if [ "$SEED_DEMO" = "true" ]; then
-  echo "[deploy] demo accounts enabled — password is in $ENV_FILE (SEED_DEMO_PASSWORD), not printed"
+  echo "[deploy] demo accounts enabled — demo password is active"
 fi

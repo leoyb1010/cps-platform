@@ -123,10 +123,10 @@ npm run start:dev           # http://localhost:3001 · Swagger 文档 /docs
 npm run dev:real            # 真实后端模式 → http://localhost:5273
 ```
 
-### 演示账户（本地密码一律 `demo`）
+### 演示账户（密码一律 `demo`）
 
-> 生产/公网沙箱（`NODE_ENV=production` + `SEED_DEMO=true`）下 seed 会**强制**使用 `SEED_DEMO_PASSWORD`
-> （≥12 字符、不能是 `demo`），`scripts/prepare-deploy-env.sh` 自动生成并写入 `.env`——公网域名上不存在 `admin/demo`。
+> 本地、测试和公网演示统一使用 `demo`，便于现场演示和验收。`SEED_DEMO_PASSWORD` 可选，
+> 仅用于需要临时隔离口令的部署覆盖。
 
 | 入口 | 账号 | 角色 / 数据范围 |
 |---|---|---|
@@ -160,14 +160,14 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up --build
 | `WEB_PORT` | `8080` | web 容器映射到**本机回环** `127.0.0.1:${WEB_PORT}`；compose 不对 `0.0.0.0` 开口，公网入口只能经反代 / Cloudflare Tunnel |
 | `CORS_ORIGIN` | `http://localhost:8080,http://localhost:5273` | 浏览器实际访问源，公网部署要加正式 HTTPS 域名 |
 | `SEED_DEMO` | `false` | 生产是否灌演示数据。`false` → 仅 bootstrap 首个管理员；`true` → 灌 demo 品牌/订单/账号（预发、沙箱、公网预览） |
-| `SEED_DEMO_PASSWORD` | 空 | 演示账号统一口令。**生产 + `SEED_DEMO=true` 必填**（≥12 字符、非 `demo`），否则 seed 拒绝执行 |
+| `SEED_DEMO_PASSWORD` | `demo` | 演示账号统一口令；未设置时默认 `demo` |
 
 #### 公网预览（Cloudflare Tunnel）
 
 ```bash
-# 1) 一次性生成 .env（mode 600，不回显）：随机 JWT/METRICS/PG 口令 + 2048 位平台私钥；默认 SEED_DEMO=false
+# 1) 一次性生成 .env（mode 600）：随机 JWT/METRICS/PG 口令 + 2048 位平台私钥；默认 SEED_DEMO=false
 PUBLIC_ORIGIN=https://cps.example.com WEB_PORT=18081 ./scripts/prepare-deploy-env.sh
-#    需要演示数据：SEED_DEMO=true ./scripts/prepare-deploy-env.sh  → 会额外生成随机 SEED_DEMO_PASSWORD 写进 .env
+#    需要演示数据：SEED_DEMO=true ./scripts/prepare-deploy-env.sh  → 启用统一 demo 口令
 # 2) 起栈（只监听 127.0.0.1:18081）
 docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
 # 3) cloudflared 把公网域名指到 http://127.0.0.1:18081
@@ -356,7 +356,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
-| **v15 · 演示口令轮换与门户归属加固** | `SEED_DEMO=true` 时启动流程即使已有数据库也会幂等重跑 seed，确保 `SEED_DEMO_PASSWORD` 真正轮换已有演示账号；seed 失败 fail-fast，缺口令不会启动空/旧口令容器；代理领取投放时强制校验 `productId` 与品牌归属及 `live` 状态；新增跨品牌领取 E2E 对抗用例；修复后端 `qs` 中危依赖告警 |
+| **v15 · 演示口令与门户归属加固** | `SEED_DEMO=true` 时启动流程即使已有数据库也会幂等重跑 seed，确保演示账号统一口令可同步更新；seed 失败 fail-fast；代理领取投放时强制校验 `productId` 与品牌归属及 `live` 状态；新增跨品牌领取 E2E 对抗用例；修复后端 `qs` 中危依赖告警 |
 | **v14 · 公网部署路径加固** | 平台私钥 `\n` 归一化 + 启动期 `createPrivateKey` 真解析（`youdao/platform-key.ts`，8 项单测含反向验证）；`prepare-deploy-env.sh` 默认 `SEED_DEMO=false`、开启时生成随机 `SEED_DEMO_PASSWORD`，生产 seed 强制校验；CI 三红修复（docker-smoke 补 `METRICS_TOKEN`、`.page-in` 纳入 reduced-motion、前后端 `npm audit` 清零）；nginx `CF-Connecting-IP` 信任前提写成硬约束；README 补 `WEB_PORT`/回环绑定/Cloudflare Tunnel 部署段 |
 | **v12 · 资金并发与安全清零** | 修复退款/准备金 CAS 竞争、补扣/解约状态机、原账期绑定；refresh 原子轮换、RSA DB nonce、IPv6/DNS 重绑定 SSRF；real 模式分页/RBAC/readiness；ESLint 转阻断；两轮对抗 findings=0 |
 | **v9 · 动线化 · 实时化 · 智能化** | 铁律：功能可专业、操作必小白（规整而非删减）。**B0 规整**：控制台分组折叠(一项不减)、门户分组导航(资源平台/接单大厅)、密度切换、3 步引导。**B1 动线**：C 端**落地页生成器**(移动优先+归因闭环+合规模块)、结算工作台(五步 Checklist+对账解释器)、**风险处置舱**(影响预演)、分润 Sankey、⌘K 动作化、行动队列、代码分割。**B2 门户深化**：资源广场、投放透视、异动播报、接单模拟器、实时事件流。**B3 智能**：Ask 平台(模板制)、LTV 预测带、品牌白标、i18n 骨架。执行方案见 [`v9-execution-plan.md`](docs/planning/v9-execution-plan.md) |
