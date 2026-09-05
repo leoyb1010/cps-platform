@@ -259,7 +259,13 @@ export function LandingPreview({ page, products, quote }: { page: Pick<LP, 'titl
           <div className="text-[10px] text-ink-4">{products.length} 项 · 套餐价{savedPct > 0 && <span className="ml-1 text-good-ink">省{savedPct}%</span>}</div>
           <span className="tnum text-[20px] font-semibold" style={{ color: theme }}>{quote?.ok ? money(quote.finalPrice) : '—'}</span>
         </div>
-        <button className="mt-3 w-full rounded-xl py-2.5 text-[12.5px] font-semibold text-white" style={{ background: theme }}>立即订阅</button>
+        <div
+          aria-hidden="true"
+          className="mt-3 w-full rounded-xl py-2.5 text-center text-[12.5px] font-semibold text-white"
+          style={{ background: theme }}
+        >
+          立即订阅
+        </div>
       </div>
     </div>
   )
