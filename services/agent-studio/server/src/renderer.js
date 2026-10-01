@@ -4,9 +4,10 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
 import { chromium } from "playwright";
+import { safeExportSegment, loadIsolatedHtml } from "./renderSafety.js";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const exportRoot = path.join(serverRoot, "exports");
+const exportRoot = process.env.AGENT_STUDIO_EXPORTS_DIR ? path.resolve(process.env.AGENT_STUDIO_EXPORTS_DIR) : path.join(serverRoot, "exports");
 
 // Reuse a single headless Chromium across exports instead of launching/closing one per asset
 // (Autopilot renders cover + info + infographic per image slot = 3 launches otherwise). The
@@ -27,7 +28,7 @@ export async function closeSharedBrowser() {
 }
 
 function safeName(value) {
-  return String(value || "asset").replace(/[^a-zA-Z0-9_.-]/g, "-");
+  return safeExportSegment(value);
 }
 
 function normalizeViewport(viewport = {}) {
@@ -45,9 +46,9 @@ export async function writeHtmlAndScreenshot({ id, category, html, selectors = [
   await writeFile(htmlPath, html, "utf8");
 
   const browser = await getBrowser();
-  const page = await browser.newPage({ viewport: normalizeViewport(viewport), deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: normalizeViewport(viewport), deviceScaleFactor: 1, serviceWorkers: "block" });
   try {
-    await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle" });
+    await loadIsolatedHtml(page, html);
     const files = [];
     for (let index = 0; index < selectors.length; index += 1) {
       const locator = page.locator(selectors[index]);
@@ -79,9 +80,9 @@ export async function exportXhsCarouselPng({ pack, platform = "xhs", html, viewp
   await writeFile(htmlPath, html, "utf8");
 
   const browser = await getBrowser();
-  const page = await browser.newPage({ viewport: normalizeViewport(viewport), deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: normalizeViewport(viewport), deviceScaleFactor: 1, serviceWorkers: "block" });
   try {
-    await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle" });
+    await loadIsolatedHtml(page, html);
     const cards = await page.locator(".xhs-card").all();
     const checks = await page.locator(".xhs-card").evaluateAll((nodes) => nodes.map((node, index) => {
       const cardRect = node.getBoundingClientRect();
@@ -196,9 +197,9 @@ async function exportLocalMotionVideo({ pack, platform, html, duration = 14, fps
   await writeFile(htmlPath, html, "utf8");
 
   const browser = await getBrowser();
-  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1, serviceWorkers: "block" });
   try {
-    await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle" });
+    await loadIsolatedHtml(page, html);
     // Prefer the deterministic timeline (__seek) the content renderer exposes: it animates *within*
     // each scene (staggered reveals, growing bars, eased entrances) so the MP4 reads like real
     // motion instead of hard opacity cuts. Older templates without __seek fall back to the legacy
@@ -290,17 +291,17 @@ export async function exportDeckPng({ pack, platform, html }) {
   const outDir = path.join(exportRoot, safeName(pack.id));
   await mkdir(outDir, { recursive: true });
 
-  const htmlPath = path.join(outDir, `${platform}-deck.html`);
+  const htmlPath = path.join(outDir, `${safeName(platform)}-deck.html`);
   await writeFile(htmlPath, html, "utf8");
 
   const browser = await getBrowser();
-  const page = await browser.newPage({ viewport: { width: 1200, height: 1600 }, deviceScaleFactor: 1 });
+  const page = await browser.newPage({ viewport: { width: 1200, height: 1600 }, deviceScaleFactor: 1, serviceWorkers: "block" });
   try {
-    await page.goto(`file://${htmlPath}`, { waitUntil: "networkidle" });
+    await loadIsolatedHtml(page, html);
     const cards = await page.locator(".card").all();
     const files = [];
     for (let index = 0; index < cards.length; index += 1) {
-      const file = path.join(outDir, `${platform}-card-${String(index + 1).padStart(2, "0")}.png`);
+      const file = path.join(outDir, `${safeName(platform)}-card-${String(index + 1).padStart(2, "0")}.png`);
       await cards[index].screenshot({ path: file });
       files.push(file);
     }

@@ -24,6 +24,11 @@ function watchRuntimeErrors(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/*',route=>{
+    const url=new URL(route.request().url())
+    if (['localhost','127.0.0.1','::1','[::1]'].includes(url.hostname) || ['data:','blob:'].includes(url.protocol)) return route.continue()
+    return route.abort('blockedbyclient')
+  })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
 })

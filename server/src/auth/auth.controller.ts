@@ -56,9 +56,9 @@ export class AuthController {
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const u = await this.auth.validate(dto.account, dto.password)
     const authUser = (await this.auth.toAuthUser(u.id))!
-    const raw = await this.auth.issueRefresh(u.id, req.headers['user-agent'] || '', req.ip || '')
+    const raw = await this.auth.issueRefresh(u.id, req.headers['user-agent'] || '', req.ip || '', u.tokenVersion)
     this.setRefreshCookie(res, raw)
-    return { access: await this.auth.signAccess(authUser), user: authUser }
+    return { access: await this.auth.signAccess(authUser, u.tokenVersion), user: authUser }
   }
 
   @Public()
@@ -67,11 +67,11 @@ export class AuthController {
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const raw = req.cookies?.[REFRESH_COOKIE]
     if (!raw) throw new UnauthorizedException('无刷新令牌')
-    const { userId, refresh } = await this.auth.rotateRefresh(raw, req.headers['user-agent'] || '', req.ip || '')
+    const { userId, refresh, tokenVersion } = await this.auth.rotateRefresh(raw, req.headers['user-agent'] || '', req.ip || '')
     const authUser = await this.auth.toAuthUser(userId)
     if (!authUser) throw new UnauthorizedException('用户不存在')
     this.setRefreshCookie(res, refresh)
-    return { access: await this.auth.signAccess(authUser), user: authUser }
+    return { access: await this.auth.signAccess(authUser, tokenVersion), user: authUser }
   }
 
   @Get('me')

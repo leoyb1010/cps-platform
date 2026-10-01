@@ -1,9 +1,11 @@
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { renderMotionHtml } from "../../src/lib/visualEngine.js";
-import { exportMotionVideo } from "./renderer.js";
+import { exportMotionVideo, closeSharedBrowser } from "./renderer.js";
+
+afterAll(closeSharedBrowser);
 
 describe("exportMotionVideo", () => {
   it("exports distinct scene frames instead of freezing on one frame", async () => {

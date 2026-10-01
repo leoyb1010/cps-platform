@@ -72,7 +72,8 @@ async function tryRefresh(): Promise<boolean> {
         }
         const d = await r.json()
         if (sessionVersion !== startedVersion || typeof d?.access !== 'string' || !d.access) return false
-        setAccessToken(d.access)
+        // Refresh rotates the credential within the same principal generation.
+        accessToken = d.access
         return true
       } catch {
         return false
@@ -92,10 +93,18 @@ async function tryRefresh(): Promise<boolean> {
 
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const startedVersion = sessionVersion
+  const assertCurrentSession = () => {
+    if (sessionVersion !== startedVersion) throw new ApiError(401, '登录账户已变更，请在当前账户重新操作')
+  }
   let res = await raw(path, init)
-  if (sessionVersion === startedVersion && res.status === 401 && !path.startsWith('/auth/')) {
+  assertCurrentSession()
+  if (res.status === 401 && !path.startsWith('/auth/')) {
     const ok = await tryRefresh()
-    if (ok) res = await raw(path, init)
+    assertCurrentSession()
+    if (ok) {
+      res = await raw(path, init)
+      assertCurrentSession()
+    }
   }
   if (!res.ok) {
     let msg = `请求失败 (${res.status})`
@@ -105,10 +114,13 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
     } catch {
       /* ignore */
     }
+    assertCurrentSession()
     throw new ApiError(res.status, msg)
   }
   if (res.status === 204) return undefined as T
-  return (await res.json()) as T
+  const data = (await res.json()) as T
+  assertCurrentSession()
+  return data
 }
 
 export const http = {

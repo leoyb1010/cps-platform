@@ -101,24 +101,35 @@ export class AuthService {
       throw new BadRequestException('新密码不能与原密码相同')
     }
     const passwordHash = await argon2.hash(newPassword)
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } })
-    await this.revokeAllForUser(userId) // bump tokenVersion + 吊销 refresh 族：所有旧令牌立即失效
+    await this.prisma.$transaction(async tx => {
+      const changed = await tx.user.updateMany({where:{id:userId,status:'active',passwordHash:u.passwordHash,tokenVersion:u.tokenVersion},data:{passwordHash,mustChangePassword:false,tokenVersion:{increment:1}}})
+      if (changed.count !== 1) throw new UnauthorizedException('账号状态已变更，请重新登录')
+      await tx.refreshToken.updateMany({where:{userId,revoked:false},data:{revoked:true}})
+    })
     return { ok: true }
   }
 
-  async signAccess(user: AuthUser) {
-    const tv = (await this.tokenVersionOf(user.id)) ?? 0
+  async signAccess(user: AuthUser, expectedVersion?: number) {
+    const tv = expectedVersion ?? await this.tokenVersionOf(user.id)
+    if (tv === null) throw new UnauthorizedException('账号不可用')
     return this.jwt.sign(
       { sub: user.id, name: user.name, roleId: user.roleId, tv },
       { secret: this.cfg.get('JWT_ACCESS_SECRET'), expiresIn: this.cfg.get('ACCESS_TTL') || '900s', algorithm: 'HS256' },
     )
   }
 
-  async issueRefresh(userId: string, ua = '', ip = '') {
+  async issueRefresh(userId: string, ua = '', ip = '', expectedVersion?: number) {
     const raw = randomBytes(32).toString('hex')
     const days = Number(this.cfg.get('REFRESH_TTL_DAYS') || 14)
     const expiresAt = new Date(Date.now() + days * 86400_000)
-    await this.prisma.refreshToken.create({ data: { userId, tokenHash: this.sha256(raw), ua, ip, expiresAt } })
+    await this.prisma.$transaction(async tx => {
+      const user = await tx.user.findUnique({where:{id:userId}})
+      if (!user || user.status !== 'active' || (expectedVersion !== undefined && user.tokenVersion !== expectedVersion)) throw new UnauthorizedException('登录凭据已变更，请重新登录')
+      // No-op write obtains the same row lock used by password/logout revocation.
+      const locked = await tx.user.updateMany({where:{id:userId,status:'active',tokenVersion:user.tokenVersion},data:{tokenVersion:{increment:0}}})
+      if (locked.count !== 1) throw new UnauthorizedException('登录凭据已变更，请重新登录')
+      await tx.refreshToken.create({data:{userId,tokenHash:this.sha256(raw),ua,ip,expiresAt,tokenVersion:user.tokenVersion}})
+    })
     return raw
   }
 
@@ -130,18 +141,20 @@ export class AuthService {
     const outcome = await this.prisma.$transaction(async (tx) => {
       const rec = await tx.refreshToken.findUnique({
         where: { tokenHash: hash },
-        include: { user: { select: { mustChangePassword: true, status: true } } },
+        include: { user: { select: { mustChangePassword: true, status: true, tokenVersion: true } } },
       })
-      if (!rec || rec.expiresAt < now || rec.user.status !== 'active') return { kind: 'expired' as const }
+      if (!rec || rec.expiresAt <= now || rec.user.status !== 'active' || rec.tokenVersion !== rec.user.tokenVersion) return { kind: 'expired' as const }
+      const locked = await tx.user.updateMany({where:{id:rec.userId,status:'active',tokenVersion:rec.tokenVersion},data:{tokenVersion:{increment:0}}})
+      if (locked.count !== 1) return {kind:'expired' as const}
       if (rec.user.mustChangePassword) return { kind: 'password-change' as const }
 
       // 单条条件更新是轮换的原子认领点：并发请求只有一个能把 revoked=false 改为 true。
       const claimed = await tx.refreshToken.updateMany({ where: { id: rec.id, revoked: false }, data: { revoked: true } })
       if (claimed.count !== 1) return { kind: 'replayed' as const }
       await tx.refreshToken.create({
-        data: { userId: rec.userId, tokenHash: this.sha256(next), ua, ip, expiresAt: new Date(now.getTime() + days * 86400_000) },
+        data: { userId: rec.userId, tokenHash: this.sha256(next), ua, ip, expiresAt: new Date(now.getTime() + days * 86400_000), tokenVersion: rec.tokenVersion },
       })
-      return { kind: 'ok' as const, userId: rec.userId }
+      return { kind: 'ok' as const, userId: rec.userId, tokenVersion: rec.tokenVersion }
     })
     if (outcome.kind === 'expired') throw new UnauthorizedException('登录已过期，请重新登录')
     if (outcome.kind === 'password-change') throw new ForbiddenException('首次登录必须先修改密码')
@@ -151,24 +164,30 @@ export class AuthService {
       if (rec) await this.revokeAllForUser(rec.userId)
       throw new UnauthorizedException('检测到刷新令牌重放，已注销全部会话')
     }
-    return { userId: outcome.userId, refresh: next }
+    return { userId: outcome.userId, refresh: next, tokenVersion: outcome.tokenVersion }
   }
 
   async revokeRefresh(raw?: string) {
     if (!raw) return
-    const rec = await this.prisma.refreshToken.findUnique({ where: { tokenHash: this.sha256(raw) } }).catch(() => null)
-    await this.prisma.refreshToken.updateMany({ where: { tokenHash: this.sha256(raw) }, data: { revoked: true } }).catch(() => {})
-    // 登出同时 bump token 版本 → 已签发的 access token 立即失效（不再等 TTL）
-    if (rec) await this.bumpTokenVersion(rec.userId)
+    await this.prisma.$transaction(async tx => {
+      const rec = await tx.refreshToken.findUnique({where:{tokenHash:this.sha256(raw)}})
+      if (!rec) return
+      // Existing access-token revocation is account-generation based. Fence all
+      // refresh credentials in that old generation as well, including rotation
+      // children created just before logout acquired the user row lock.
+      await tx.user.updateMany({where:{id:rec.userId,tokenVersion:rec.tokenVersion},data:{tokenVersion:{increment:1}}})
+      await tx.refreshToken.updateMany({where:{userId:rec.userId,tokenVersion:rec.tokenVersion,revoked:false},data:{revoked:true}})
+    })
   }
 
   async revokeAllForUser(userId: string) {
-    await this.prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } })
-    await this.bumpTokenVersion(userId)
+    await this.prisma.$transaction(async tx => {
+      await tx.user.update({where:{id:userId},data:{tokenVersion:{increment:1}}})
+      await tx.refreshToken.updateMany({where:{userId,revoked:false},data:{revoked:true}})
+    })
   }
 
-  /** 自增 token 版本，使该用户所有已签发的 access token 失效。 */
   async bumpTokenVersion(userId: string) {
-    await this.prisma.user.update({ where: { id: userId }, data: { tokenVersion: { increment: 1 } } }).catch(() => {})
+    await this.prisma.user.update({where:{id:userId},data:{tokenVersion:{increment:1}}})
   }
 }

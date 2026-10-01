@@ -167,6 +167,9 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
   if (!gateway.ok) throw new Error("Model generation failed; credits were released");
 
   const pack = buildPack(input.prompt, direction, tone, generation, input.extraContext || input.audience || "", gateway.ok && assetType.modality === "text" ? { creative: null } : {});
+  // Artifact directories belong to the globally unique job, not a reusable
+  // content-derived client identifier shared by simultaneous tenants.
+  pack.id = job.id;
 
   if (assetType.id === "carousel") {
     const recipe = pickRecipe({ mode: "recommend", pack, platform: "xhs", excludeAgpl: true });
@@ -177,8 +180,9 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
     let warning = "";
     try {
       assets = await exportXhsCarouselPng({ pack, platform: "xhs", html, viewport: visualSize("3:4") });
+      if (!assets?.files?.length) throw new Error("No rendered cards");
     } catch (error) {
-      warning = error?.message || String(error);
+      throw new Error("Media rendering failed; credits were released");
     }
     return { type: "carousel", pack, plan, recipe, assets, warning, gateway, estimate };
   }
@@ -190,8 +194,9 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
     let warning = "";
     try {
       motionPreview = await exportMotionPreview({ pack, platform, html });
+      if (!motionPreview?.thumbnailPath) throw new Error("No rendered preview");
     } catch (error) {
-      warning = error?.message || String(error);
+      throw new Error("Media rendering failed; credits were released");
     }
     return { type: "video", pack, plan, motionPreview, storyboard: gateway.output?.storyboard || pack.videoFrames, warning, gateway, estimate };
   }

@@ -1,12 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { safeExportSegment } from "./renderSafety.js";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const exportRoot = path.join(serverRoot, "exports");
+const exportRoot = process.env.AGENT_STUDIO_EXPORTS_DIR ? path.resolve(process.env.AGENT_STUDIO_EXPORTS_DIR) : path.join(serverRoot, "exports");
 
 function safeName(value) {
-  return String(value || "asset").replace(/[^a-zA-Z0-9_.-]/g, "-");
+  return safeExportSegment(value);
 }
 
 function normalizeNumber(value, fallback) {

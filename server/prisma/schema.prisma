@@ -49,6 +49,7 @@ model RefreshToken {
   ua        String   @default("")
   ip        String   @default("")
   revoked   Boolean  @default(false)
+  tokenVersion Int @default(0)
   expiresAt DateTime
   createdAt DateTime @default(now())
 }

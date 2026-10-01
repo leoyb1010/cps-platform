@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { agentStages, apiSlots, platformMeta } from "../../src/lib/catalog.js";
 import {
@@ -117,6 +118,7 @@ import {
   saveSeries
 } from "./series.js";
 import { resolveRequestContext } from "./requestContext.js";
+import { enforceRequestBoundary } from "./requestBoundary.js";
 import { CREDIT_PLANS } from "./credits.js";
 import { modelGatewayStatus } from "./modelGateway.js";
 import {
@@ -199,6 +201,9 @@ const buildInfo = resolveBuildInfo();
 
 const frontendOrigin = globalThis.process?.env?.FRONTEND_ORIGIN
   || `http://127.0.0.1:${globalThis.process?.env?.FRONTEND_PORT || 45173}`;
+
+app.use('/api/*', enforceRequestBoundary);
+app.use('/api/*', bodyLimit({maxSize:2 * 1024 * 1024,onError:c=>c.json({ok:false,message:'Request body too large'},413)}));
 
 app.use("*", cors({
   origin: (origin) => {

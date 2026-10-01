@@ -2,6 +2,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(()=>{vi.unstubAllGlobals();vi.resetModules()})
 describe('real API refresh boundaries',()=>{
+  it('late successful old-account body is discarded after logout/new login',async()=>{
+    const {api,setAccessToken}=await import('./http')
+    setAccessToken('old-account')
+    let release!:(value:unknown)=>void
+    let entered!:()=>void;const started=new Promise<void>(r=>{entered=r})
+    vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,status:200,json:()=>{entered();return new Promise(r=>{release=r})}})))
+    const request=api('/projects');await started;setAccessToken(null);setAccessToken('new-account');release({private:'old fixture'})
+    await expect(request).rejects.toMatchObject({status:401})
+  })
+  it('account switch during refresh completion never replays a mutation',async()=>{
+    const {api,setAccessToken}=await import('./http')
+    setAccessToken('old-account')
+    const fetch=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401})).mockImplementationOnce(async()=>({ok:true,status:200,json:async()=>{
+      queueMicrotask(()=>setAccessToken('new-account'))
+      return {access:'old-refreshed'}
+    }}))
+    vi.stubGlobal('fetch',fetch)
+    await expect(api('/orders',{method:'POST',body:'{}'})).rejects.toMatchObject({status:401})
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
   it('transient refresh outage does not log out a valid session',async()=>{
     const {api,setAccessToken,onAuthLost}=await import('./http')
     setAccessToken('original');const lost=vi.fn();onAuthLost(lost)
