@@ -3404,3 +3404,10 @@ select:focus-visible {
 }
 
 .businessView .eventGrid article code { color: var(--accent-2); }
+
+/* Factory text fields share the form system and remain touch-readable. */
+.factoryWizard .settingsGrid label span { display: block; margin-bottom: 8px; }
+@media (max-width: 720px) {
+  .factoryWizard input[type="text"], .factoryWizard select { min-height: 44px; height: 44px; }
+  .factoryWizard input[type="text"], .factoryWizard textarea, .factoryWizard select { font-size: 16px; }
+}

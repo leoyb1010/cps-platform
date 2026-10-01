@@ -460,8 +460,8 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
           <textarea rows={4} value={form.prompt} onChange={(e) => setForm((s) => ({ ...s, prompt: e.target.value }))} placeholder="例如：帮我做一组卖 AI 素材工厂会员的小红书图文" />
 
           <div className="settingsGrid">
-            <label><span>受众</span><input value={form.audience} onChange={(e) => setForm((s) => ({ ...s, audience: e.target.value }))} /></label>
-            <label><span>产品/服务</span><input value={form.product} onChange={(e) => setForm((s) => ({ ...s, product: e.target.value }))} /></label>
+            <label><span>受众</span><input type="text" value={form.audience} onChange={(e) => setForm((s) => ({ ...s, audience: e.target.value }))} /></label>
+            <label><span>产品/服务</span><input type="text" value={form.product} onChange={(e) => setForm((s) => ({ ...s, product: e.target.value }))} /></label>
           </div>
 
           <label>4. 选择风格</label>
