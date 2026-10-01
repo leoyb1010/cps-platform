@@ -48,10 +48,13 @@ try {
       await page.getByRole('button',{name:'生成并扣积分',exact:true}).click();
       await page.waitForFunction(()=>[...document.querySelectorAll('.factoryView .primaryBtn')].every(button=>button.disabled));
       await page.screenshot({path:`${output}/factory-loading-${width}.png`});release();
-      await page.getByText('素材生成失败',{exact:true}).waitFor();
+      await page.getByRole('alert').filter({hasText:'素材生成失败'}).waitFor();
+      assert.equal(await page.locator('.toast[data-variant=error] [data-status-icon=error]').count(),1);
+      assert.equal(await page.locator('.toast [data-status-icon=success]').count(),0);
       await page.screenshot({path:`${output}/factory-error-${width}.png`});
       await page.getByRole('button',{name:'生成并扣积分',exact:true}).click();
       await page.locator('.factoryResult .copyBlock').waitFor();
+      await page.getByRole('status').filter({hasText:'素材已生成并扣减积分'}).waitFor();
       assert.equal(attempts,2,'loading state must not submit duplicate generation');
       await page.locator('.factoryResult').scrollIntoViewIfNeeded();
       await page.screenshot({path:`${output}/factory-retry-success-${width}.png`});

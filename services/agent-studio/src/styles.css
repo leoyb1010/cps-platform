@@ -2014,6 +2014,8 @@ input[type="text"], select { height: 38px; }
   animation: slideUp 0.2s ease;
 }
 .toast svg { color: var(--green); }
+.toast[data-variant="error"] { border-color: var(--red); }
+.toast[data-variant="error"] svg { color: var(--red); }
 
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(8px); }

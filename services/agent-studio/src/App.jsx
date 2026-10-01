@@ -1,6 +1,8 @@
+import { createToast, expireToast } from './lib/toast.js';
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  CircleAlert,
   ArrowRight,
   BarChart3,
   Bot,
@@ -222,7 +224,7 @@ export default function App() {
   const [platform, setPlatform] = useState("xhs");
   const [activeFrame, setActiveFrame] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishStatus, setPublishStatus] = useState("idle");
   const [draftTask, setDraftTask] = useState(null);
@@ -308,9 +310,10 @@ export default function App() {
     writeViewHash(nextView);
   }
 
-  function notify(message) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2400);
+  function notify(message, variant = "success") {
+    const notification = createToast(message, variant);
+    setToast(notification);
+    window.setTimeout(() => setToast(current => expireToast(current, notification)), 2400);
   }
 
   function logActivity(msg) {
@@ -324,7 +327,7 @@ export default function App() {
       logActivity(`复制 · ${label}`);
       trackEvent("platform.copied", { label, platform, packId: pack.id });
     } catch {
-      notify("复制失败，请手动选择");
+      notify("复制失败，请手动选择", "error");
     }
   }
 
@@ -419,7 +422,7 @@ export default function App() {
       notify("图文测试包已导出 PNG 并入队 draft runbook");
       logActivity(`Smoke · 导出 ${result.assets?.files?.length || 0} 张 PNG，等待 Codex app 执行`);
     } catch (error) {
-      notify("一键图文测试失败");
+      notify("一键图文测试失败", "error");
       logActivity(`Smoke 失败 · ${error.message}`);
     } finally {
       setSmokeRunning(false);
@@ -698,7 +701,7 @@ export default function App() {
           />
         )}
 
-        {toast && <div className="toast"><Check size={14} />{toast}</div>}
+        {toast && <div className="toast" data-variant={toast.variant} role={toast.variant === "error" ? "alert" : "status"} aria-live={toast.variant === "error" ? "assertive" : "polite"}>{toast.variant === "error" ? <CircleAlert size={14} data-status-icon="error" /> : <Check size={14} data-status-icon="success" />}{toast.message}</div>}
       </main>
     </div>
   );
@@ -733,7 +736,7 @@ function ResearchView({ topic, setTopic, notify, logActivity }) {
       notify("研究链路已完成");
       logActivity(`Research · 生成 ${topics.topics.length} 个候选选题`);
     } catch (error) {
-      notify("研究接口未连接");
+      notify("研究接口未连接", "error");
       logActivity(`Research 失败 · ${error.message}`);
     } finally {
       setLoading(false);
@@ -875,7 +878,7 @@ function AssetsView({ pack, platform, exportSvg, exportJson, copyText, notify, l
       notify("HTML deck 已渲染");
       logActivity("素材 · 渲染 HTML deck");
     } catch (error) {
-      notify("HTML 渲染失败");
+      notify("HTML 渲染失败", "error");
       logActivity(`HTML 渲染失败 · ${error.message}`);
     } finally {
       setBusy("");
@@ -894,7 +897,7 @@ function AssetsView({ pack, platform, exportSvg, exportJson, copyText, notify, l
       logActivity(`素材 · 导出 ${result.files?.length || 0} 张 PNG · ${result.recipe?.label || activeRecipe?.label || visualStyle}`);
     } catch (error) {
       if (activeRecipe?.id) reportTemplateOutcome({ recipeId: activeRecipe.id, success: false }).catch(() => {});
-      notify("PNG 导出失败，请确认 Playwright 浏览器已安装");
+      notify("PNG 导出失败，请确认 Playwright 浏览器已安装", "error");
       logActivity(`PNG 导出失败 · ${error.message}`);
     } finally {
       setBusy("");
@@ -909,7 +912,7 @@ function AssetsView({ pack, platform, exportSvg, exportJson, copyText, notify, l
       notify(`${module.label} 已生成`);
       logActivity(`Visual · ${module.label} / ${visualStyleCatalog[visualStyle]?.label || visualStyle}`);
     } catch (error) {
-      notify(`${module.label} 生成失败`);
+      notify(`${module.label} 生成失败`, "error");
       logActivity(`Visual ${module.label} 失败 · ${error.message}`);
     } finally {
       setBusy("");
@@ -1023,7 +1026,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       setData(snapshot);
       if (showToast) notify("Autopilot 已刷新");
     } catch (error) {
-      notify("Autopilot 未连接");
+      notify("Autopilot 未连接", "error");
       logActivity(`Autopilot 刷新失败 · ${error.message}`);
     } finally {
       setLoading(false);
@@ -1038,7 +1041,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify(patch.enabled === true ? "自动发布已开启" : patch.enabled === false ? "自动发布已暂停" : "设置已保存");
       logActivity("Autopilot · 设置更新");
     } catch (error) {
-      notify("设置保存失败");
+      notify("设置保存失败", "error");
       logActivity(`Autopilot 设置失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1066,7 +1069,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
 
   async function saveWindows() {
     if (!windowsDraft?.length) {
-      notify("至少保留一个发布窗口");
+      notify("至少保留一个发布窗口", "error");
       return;
     }
     setSaving("windows");
@@ -1077,7 +1080,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify("发布窗口已更新");
       logActivity(`Autopilot · 窗口更新（${snapshot.settings?.windows?.length || 0} 个）`);
     } catch (error) {
-      notify("窗口保存失败");
+      notify("窗口保存失败", "error");
       logActivity(`Autopilot 窗口失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1095,7 +1098,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify("主题已加入队列");
       logActivity("Autopilot · 新增主题");
     } catch (error) {
-      notify("主题加入失败");
+      notify("主题加入失败", "error");
       logActivity(`Autopilot 主题失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1109,7 +1112,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       setData(snapshot);
       notify(status === "archived" ? "主题已归档" : "主题已更新");
     } catch (error) {
-      notify("主题更新失败");
+      notify("主题更新失败", "error");
       logActivity(`Autopilot 主题更新失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1124,7 +1127,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify(result.queued?.length ? `已入队 ${result.queued.length} 个任务` : "暂无到点任务");
       logActivity(`Autopilot · tick queued=${result.queued?.length || 0}`);
     } catch (error) {
-      notify("检查失败");
+      notify("检查失败", "error");
       logActivity(`Autopilot tick 失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1139,7 +1142,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify("已清空所有定时计划");
       logActivity("Autopilot · 清空定时计划（随用随时）");
     } catch (error) {
-      notify("清空失败");
+      notify("清空失败", "error");
       logActivity(`Autopilot 清空失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1154,7 +1157,7 @@ function AutopilotView({ notify, logActivity, setTopic }) {
       notify("已入队 Codex 任务");
       logActivity(`Autopilot · ${slot.label} 已入队`);
     } catch (error) {
-      notify("入队失败");
+      notify("入队失败", "error");
       logActivity(`Autopilot 入队失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1389,7 +1392,7 @@ function SeriesView({ notify, logActivity, setTopic }) {
       setData(snapshot);
       if (showToast) notify("系列内容已刷新");
     } catch (error) {
-      notify("系列内容未连接");
+      notify("系列内容未连接", "error");
       logActivity(`Series 刷新失败 · ${error.message}`);
     } finally {
       setLoading(false);
@@ -1409,7 +1412,7 @@ function SeriesView({ notify, logActivity, setTopic }) {
       notify("系列已创建");
       logActivity(`Series · 创建 ${result.profile.title}`);
     } catch (error) {
-      notify("系列创建失败");
+      notify("系列创建失败", "error");
       logActivity(`Series 创建失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1431,7 +1434,7 @@ function SeriesView({ notify, logActivity, setTopic }) {
       notify(`第 ${result.episode.index} 期已生成`);
       logActivity(`Series · 生成第 ${result.episode.index} 期`);
     } catch (error) {
-      notify("生成下一期失败");
+      notify("生成下一期失败", "error");
       logActivity(`Series 生成失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1447,7 +1450,7 @@ function SeriesView({ notify, logActivity, setTopic }) {
       notify("已加入自动发布主题池");
       logActivity(`Series · 第 ${item.index} 期加入 Autopilot`);
     } catch (error) {
-      notify("加入自动发布失败");
+      notify("加入自动发布失败", "error");
       logActivity(`Series 入队失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1603,7 +1606,7 @@ function EngagementView({ notify, logActivity }) {
       setData(snapshot);
       if (showToast) notify("互动监控已刷新");
     } catch (error) {
-      notify("互动监控未连接");
+      notify("互动监控未连接", "error");
       logActivity(`Engagement 刷新失败 · ${error.message}`);
     } finally {
       setLoading(false);
@@ -1618,7 +1621,7 @@ function EngagementView({ notify, logActivity }) {
       notify(patch.enabled === true ? "互动监控已开启" : patch.enabled === false ? "互动监控已暂停" : "设置已保存");
       logActivity("Engagement · 设置更新");
     } catch (error) {
-      notify("设置保存失败");
+      notify("设置保存失败", "error");
       logActivity(`Engagement 设置失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1633,7 +1636,7 @@ function EngagementView({ notify, logActivity }) {
       notify(result.status === "already_pending" ? "已有互动任务待执行" : "互动检查已入队");
       logActivity(`Engagement · ${result.status}`);
     } catch (error) {
-      notify("互动检查入队失败");
+      notify("互动检查入队失败", "error");
       logActivity(`Engagement 入队失败 · ${error.message}`);
     } finally {
       setSaving("");
@@ -1786,7 +1789,7 @@ function ReviewView({ activity, storedEvents, pack, platform, notify, logActivit
       notify("数据复盘任务已生成");
       logActivity("Analytics · collect/brief/learning 闭环完成");
     } catch (error) {
-      notify("Analytics 接口未连接");
+      notify("Analytics 接口未连接", "error");
       logActivity(`Analytics 失败 · ${error.message}`);
     }
   }

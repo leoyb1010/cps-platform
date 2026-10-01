@@ -358,7 +358,7 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
       setCredits(creditData.credits);
       if (showToast) notify("素材工厂配置已刷新");
     } catch (error) {
-      notify("素材工厂接口未连接");
+      notify("素材工厂接口未连接", "error");
       logActivity(`Factory 配置失败 · ${error.message}`);
     }
   }
@@ -375,7 +375,7 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
 
   async function generateJob() {
     if (!form.prompt.trim()) {
-      notify("先输入一句话主题");
+      notify("先输入一句话主题", "error");
       return;
     }
     setBusy(true);
@@ -389,10 +389,10 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
         setTopic?.(form.prompt);
         setPlatform?.(form.platform === "generic" ? "xhs" : form.platform);
       }
-      notify(data.ok ? "素材已生成并扣减积分" : "生成失败，积分已退回");
+      notify(data.ok ? "素材已生成并扣减积分" : "生成失败，积分已退回", data.ok ? "success" : "error");
       logActivity(`Factory · ${form.assetType} · ${data.ok ? "completed" : "failed"}`);
     } catch (error) {
-      notify("素材生成失败");
+      notify("素材生成失败", "error");
       logActivity(`Factory 生成失败 · ${error.message}`);
     } finally {
       setBusy(false);
@@ -806,7 +806,7 @@ export function PublishView(props) {
       logActivity(`Codex · ${publishMode} runbook 已入队`);
       await refreshPendingTasks();
     } catch (error) {
-      notify("Codex runbook 创建失败");
+      notify("Codex runbook 创建失败", "error");
       logActivity(`Codex runbook 失败 · ${error.message}`);
     }
   }
@@ -817,7 +817,7 @@ export function PublishView(props) {
       setPendingTasks(response.tasks || []);
       notify("已刷新 Codex 任务");
     } catch (error) {
-      notify("Codex pending-tasks 未连接");
+      notify("Codex pending-tasks 未连接", "error");
       logActivity(`Codex pending 失败 · ${error.message}`);
     }
   }
