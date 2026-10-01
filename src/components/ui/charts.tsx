@@ -92,7 +92,11 @@ export function AreaLine({
   const line = data.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
   const area = `${line} L${x(data.length - 1).toFixed(1)},${(padT + ih).toFixed(1)} L${padL},${(padT + ih).toFixed(1)} Z`
   const grid = [0, 0.25, 0.5, 0.75, 1]
+  const tickIndices = labels?.length
+    ? [...new Set([0, Math.round((labels.length - 1) / 3), Math.round(2 * (labels.length - 1) / 3), labels.length - 1])]
+    : []
   return (
+    <div className="relative w-full" style={{ height: H }}>
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" style={{ height: H }} role="img" aria-label="面积趋势图">
       <defs>
         <linearGradient id={`g-${id}`} x1="0" y1="0" x2="0" y2="1">
@@ -118,22 +122,17 @@ export function AreaLine({
       {/* F6：non-scaling-stroke 让 preserveAspectRatio="none" 横向拉伸时线宽不变形 */}
       <path d={line} fill="none" stroke={toneVar[tone]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       <circle cx={x(data.length - 1)} cy={y(data[data.length - 1])} r={3} fill={toneVar[tone]} />
-      {labels &&
-        labels.map((l, i) =>
-          i % Math.ceil(labels.length / 6) === 0 || i === labels.length - 1 ? (
-            <text
-              key={i}
-              x={x(i)}
-              y={H - 6}
-              fontSize={10.5}
-              fill="var(--color-ink-4)"
-              textAnchor={i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle'}
-            >
-              {l}
-            </text>
-          ) : null,
-        )}
     </svg>
+    {/* HTML ticks keep a readable, unscaled font on narrow cards. SVG's
+        preserveAspectRatio="none" must only stretch the plotted geometry. */}
+    {labels && tickIndices.map(i => (
+      <span key={i} data-testid="area-chart-tick" aria-hidden="true"
+        className="absolute bottom-0 whitespace-nowrap text-ink-3"
+        style={{ left: `${x(i) / W * 100}%`, fontSize: 12, lineHeight: '18px', transform: i === 0 ? undefined : i === labels.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)' }}>
+        {labels[i]}
+      </span>
+    ))}
+    </div>
   )
 }
 

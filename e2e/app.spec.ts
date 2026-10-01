@@ -167,13 +167,14 @@ test('代理商门户登录后可从下一步进入分润', async ({ page }) => 
 })
 
 test('多视口真实浏览器验证与截图', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   mkdirSync('/tmp/cps-ui-audit', { recursive: true })
   await login(page)
   for (const width of [1440, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.reload()
     await expect(page.getByRole('heading', { name: /今天先做什么/ })).toBeVisible()
-    await page.screenshot({ path: `/tmp/cps-ui-audit/final-dashboard-${width}.png`, fullPage: true })
+    await page.screenshot({ path: `/tmp/cps-ui-audit/final-dashboard-${width}.png`, fullPage: true, animations: 'disabled' })
   }
   await page.evaluate(() => localStorage.clear())
   await portalLogin(page, 'brand')
@@ -181,7 +182,11 @@ test('多视口真实浏览器验证与截图', async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.reload()
     await expect(page.getByText('下一步')).toBeVisible()
-    await page.screenshot({ path: `/tmp/cps-ui-audit/final-brand-${width}.png`, fullPage: true })
+    const ticks = page.getByTestId('area-chart-tick')
+    await expect(ticks).toHaveCount(4)
+    expect(await ticks.first().evaluate(node => Number.parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(12)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `/tmp/cps-ui-audit/final-brand-${width}.png`, fullPage: true, animations: 'disabled' })
   }
   await page.evaluate(() => localStorage.clear())
   await portalLogin(page, 'agent')
@@ -189,7 +194,11 @@ test('多视口真实浏览器验证与截图', async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     await page.reload()
     await expect(page.getByText('下一步')).toBeVisible()
-    await page.screenshot({ path: `/tmp/cps-ui-audit/final-agent-${width}.png`, fullPage: true })
+    const ticks = page.getByTestId('area-chart-tick')
+    await expect(ticks).toHaveCount(4)
+    expect(await ticks.first().evaluate(node => Number.parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThanOrEqual(12)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `/tmp/cps-ui-audit/final-agent-${width}.png`, fullPage: true, animations: 'disabled' })
   }
 })
 

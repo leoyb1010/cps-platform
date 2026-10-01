@@ -20,6 +20,10 @@ Validated repairs cover transactional job-specific credit reservations/refunds (
 6. **Password/session write races.** Password changes, token-generation increments and refresh revocation now commit atomically. Refresh records carry their validated user tokenVersion. Issuance and rotation lock/CAS the same user row so an old validated password cannot gain the new generation; access JWTs retain that validated generation. Delayed logout revokes the old generation including rotation children, without invalidating a newly logged-in generation. Real disposable SQLite tests cover rollback on injected revocation failure, old validation after password change, concurrent change/rotate, delayed logout, and actual old-table migration backfill. The auth suite contains12 tests.
 7. **Dependency and verification upgrades.** Required compatible dependency/lockfile repairs remove known advisories. Vitest4.1.11 was necessary because no patched3.x existed for the affected advisory; Hyperframes0.7.43 removes vulnerable browser/archive dependencies; esbuild0.28.1 overrides the remaining Windows-dev-server low advisory. Hyperframes export signatures were inspected and job construction exercised. All three npm audits reported0 at the local checkpoint. No arbitrary product version bump was made.
 
+## Actual browser follow-up
+
+The first hosted run passed the portal browser journeys and produced10 desktop/tablet/mobile captures. Inspection found that SVG date labels were horizontally squeezed in narrow brand/agent cards. AreaLine now renders four date ticks in an unscaled12px HTML layer while preserving plotted data and geometry. Component tests cover short/empty series and tick counts; browser checks measure the real font and page overflow. Dashboard captures were taken mid-entry-animation, so final evidence uses reduced-motion and disabled screenshot animations rather than changing the product animation. All final gates run again on the follow-up commit.
+
 ## Verification checkpoint and hosted gates
 
 - Web:50/50 tests, lint and production build passed.
