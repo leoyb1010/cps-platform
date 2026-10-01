@@ -19,6 +19,7 @@ import { DEMO_USERS, ROLES, PERMISSIONS, useAuth, type RoleId } from '../lib/aut
 import { isRealApi } from '../lib/http'
 import { adminApi, bizApi, useApi } from '../lib/adminApi'
 import { cx } from '../lib/format'
+import { canManageMember } from '../lib/memberAccess'
 
 const ROLE_IDS = Object.keys(ROLES) as RoleId[]
 const PERM_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))]
@@ -26,7 +27,7 @@ const PERM_GROUPS = [...new Set(PERMISSIONS.map((p) => p.group))]
 // 统一成员/角色视图（mock 用本地常量；real 用服务端数据）
 interface MView { id: string; name: string; account: string; roleId: string; roleName: string; scopeType: string; scopeId: string | null; status: string }
 interface RView { id: string; name: string; desc: string; perms: string[] }
-const LOCAL_MEMBERS: MView[] = DEMO_USERS.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: ROLES[u.roleId].name, scopeType: 'platform', scopeId: null, status: 'active' }))
+const LOCAL_MEMBERS: MView[] = DEMO_USERS.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: ROLES[u.roleId].name, scopeType: u.scopeType ?? 'platform', scopeId: u.scopeId ?? null, status: 'active' }))
 // scopeType + scopeId → 数据范围中文
 const scopeLabel = (st: string, sid: string | null) => st === 'brand' ? `品牌 · ${sid ?? ''}` : st === 'agent' ? `代理 · ${sid ?? ''}` : '平台级'
 const LOCAL_ROLES: RView[] = ROLE_IDS.map((r) => ({ id: r, name: ROLES[r].name, desc: ROLES[r].desc, perms: ROLES[r].perms }))
@@ -37,7 +38,7 @@ export default function Members() {
   const toast = useToast()
   const [tab, setTab] = useState<'members' | 'roles'>('members')
   const [invite, setInvite] = useState(false)
-  const [manageMember, setManageMember] = useState<{ id: string; name: string; roleId: string; status: string } | null>(null)
+  const [manageMember, setManageMember] = useState<{ id: string; name: string; roleId: string; status: string; scopeType: string } | null>(null)
   const [activeRole, setActiveRole] = useState<string>('super')
 
   const membersApi = useApi(() => adminApi.members(), [])
@@ -54,7 +55,7 @@ export default function Members() {
     <>
       <PageHeader
         title="成员与角色"
-        desc={isSuper ? '创建账号、分配角色并维护权限与数据范围。' : '查看成员和角色；你可以停用或恢复账号，角色与权限由超级管理员维护。'}
+        desc={isSuper ? '创建账号、分配角色并维护权限与数据范围。' : '查看成员和角色；你可以停用或恢复客户账号，平台账号、角色与权限由超级管理员维护。'}
         actions={isSuper ? <Button variant="primary" onClick={() => setInvite(true)}><UserPlus size={14} /> 邀请成员</Button> : undefined}
       />
 
@@ -90,7 +91,9 @@ export default function Members() {
                     ? <span className="text-[11.5px] text-ink-4">当前账号</span>
                     : u.roleId === 'super'
                       ? <span className="text-[11.5px] text-ink-4">受保护账号</span>
-                      : <button onClick={() => setManageMember({ id: u.id, name: u.name, roleId: u.roleId, status: u.status })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>}
+                      : !canManageMember(currentUser, u)
+                        ? <span className="text-[11.5px] text-ink-4">仅超级管理员可管理</span>
+                        : <button onClick={() => setManageMember({ id: u.id, name: u.name, roleId: u.roleId, status: u.status, scopeType: u.scopeType })} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-2 transition-colors hover:bg-surface-sunken hover:text-ink">管理</button>}
                 </Td>
               </Row>
             ))}

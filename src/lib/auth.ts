@@ -5,7 +5,7 @@
 //  · 否则：演示态(前端 mock + localStorage)，接口形态与后端一致。
 // ════════════════════════════════════════════════════════════════
 import { useSyncExternalStore } from 'react'
-import { http, isRealApi, setAccessToken, onAuthLost } from './http'
+import { ApiError, http, isRealApi, setAccessToken, getSessionVersion, onAuthLost } from './http'
 import { clearStoreOnLogout, hydrateFromServer } from './store'
 
 /* ── 权限点字典（与 v4 §4 一致，按业务域分组） ── */
@@ -108,6 +108,8 @@ export const DEMO_USERS: User[] = [
   { id: 'U-003', name: '陈风控', account: 'risk', roleId: 'risk' },
   { id: 'U-004', name: '王运营', account: 'ops', roleId: 'ops' },
   { id: 'U-005', name: '赵审计', account: 'audit', roleId: 'audit' },
+  { id: 'U-008', name: '有道审计', account: 'brandaudit', roleId: 'audit', scopeType: 'brand', scopeId: 'youdao' },
+  { id: 'U-009', name: '王管理', account: 'teamadmin', roleId: 'teamadmin', scopeType: 'platform' },
   { id: 'U-101', name: '有道品牌运营', account: 'brand', roleId: 'brand', scopeType: 'brand', scopeId: 'youdao' },
   { id: 'U-201', name: '量子增长工作室', account: 'agent', roleId: 'agent', scopeType: 'agent', scopeId: 'A-2041' },
 ]
@@ -115,6 +117,9 @@ export const DEMO_USERS: User[] = [
 /* ── session store (external, persisted) ── */
 const KEY = 'cps-auth-v1'
 let current: User | null = (() => {
+  // Real-mode identity is established only by a validated login/refresh response.
+  // A shared localStorage snapshot can belong to another account or be forged.
+  if (isRealApi) return null
   try {
     const raw = localStorage.getItem(KEY)
     return raw ? (JSON.parse(raw) as User) : null
@@ -128,7 +133,7 @@ function emit() {
 }
 function persist() {
   try {
-    if (current) localStorage.setItem(KEY, JSON.stringify(current))
+    if (current && !isRealApi) localStorage.setItem(KEY, JSON.stringify(current))
     else localStorage.removeItem(KEY)
   } catch {
     /* ignore */
@@ -152,8 +157,19 @@ export function shouldHydratePlatformStore(u: User | null): boolean {
 /** 真实模式：调用 /auth/login，存 access token + 服务端用户/权限。失败抛出可读错误。 */
 export async function login(account: string, password = 'demo'): Promise<User> {
   if (isRealApi) {
+    // Account switching is an intent boundary, before the request can settle.
+    // This also makes the latest of overlapping login attempts win.
+    setAccessToken(null)
+    clearStoreOnLogout()
+    setUser(null)
+    const startedVersion = getSessionVersion()
+    // A late logout response clears the shared refresh cookie. Finish it before
+    // installing a new login cookie, even though the old UI clears immediately.
+    await pendingLogout
+    if (getSessionVersion() !== startedVersion) throw new ApiError(401, '登录账户已变更，请重新登录')
     const r = await http.post<{ access: string; user: User }>('/auth/login', { account, password })
-    setAccessToken(r.access)
+    if (getSessionVersion() !== startedVersion) throw new ApiError(401, '登录账户已变更，请重新登录')
+    setAccessToken(r.access, r.user.id)
     setUser(r.user)
     if (shouldHydratePlatformStore(r.user)) {
       // 平台控制台登录即水合：换账号后以新账号的服务端真值起步，而非上个会话残留
@@ -172,14 +188,18 @@ export async function login(account: string, password = 'demo'): Promise<User> {
   return u
 }
 
+let pendingLogout: Promise<unknown> | null = null
 export async function logout() {
-  if (isRealApi) {
-    await http.post('/auth/logout').catch(() => {})
-    setAccessToken(null)
-  }
+  // Start with the old credential, then invalidate local state before any await.
+  // Repeated clicks share one revocation rather than racing cookie mutations.
+  if (isRealApi && !pendingLogout) pendingLogout = http.post('/auth/logout').catch(() => {})
+  if (isRealApi) setAccessToken(null)
   // 清业务数据缓存（真实模式）：共享机器上不给下一位登录者看上一账号的水合数据
   clearStoreOnLogout()
   setUser(null)
+  const request = pendingLogout
+  await request
+  if (pendingLogout === request) pendingLogout = null
 }
 
 /**
@@ -188,7 +208,9 @@ export async function logout() {
  */
 export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
   if (!isRealApi) throw new Error('演示模式无需改密（账户由前端 mock）')
+  const startedVersion = getSessionVersion()
   await http.post('/auth/change-password', { oldPassword, newPassword })
+  if (getSessionVersion() !== startedVersion) return
   // 服务端已吊销全会话，本地清 token/用户，调用方跳登录页
   setAccessToken(null)
   clearStoreOnLogout()
@@ -215,21 +237,25 @@ let bootPromise: Promise<boolean> | null = null
 export function bootstrapAuth(): Promise<boolean> {
   if (!isRealApi) return Promise.resolve(current != null)
   if (!bootPromise) {
+    const startedVersion = getSessionVersion()
     const doRefresh = async () => {
       try {
+        if (getSessionVersion() !== startedVersion) return false
         const r = await http.post<{ access: string; user: User }>('/auth/refresh')
-        setAccessToken(r.access)
+        if (getSessionVersion() !== startedVersion) return false
+        setAccessToken(r.access, r.user.id)
         setUser(r.user)
         return true
       } catch {
-        setUser(null)
+        if (getSessionVersion() === startedVersion) {
+          setAccessToken(null)
+          clearStoreOnLogout()
+          setUser(null)
+        }
         return false
       }
     }
-    bootPromise =
-      typeof navigator !== 'undefined' && 'locks' in navigator
-        ? navigator.locks.request('cps-auth-refresh', doRefresh)
-        : doRefresh()
+    bootPromise = doRefresh()
   }
   return bootPromise
 }
@@ -246,6 +272,8 @@ export function consumeSessionExpired(): boolean {
 // 会话中刷新彻底失败（refresh cookie 过期/被吊销）→ 清登录态，守卫自然弹回登录页；
 // 否则用户守着一个每个动作都报错的"僵尸控制台"，只能手动刷新才发现要重新登录。
 onAuthLost(() => {
+  // Definitive revocation must invalidate in-flight reads as well as the UI.
+  setAccessToken(null)
   if (current) {
     sessionExpired = true // 曾登录 → 属过期，非首次访问
     // 与主动登出一致清空业务缓存：共享机器上不给下一位登录者看上一账号残留的水合数据

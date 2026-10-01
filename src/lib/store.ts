@@ -24,7 +24,7 @@ import {
   type SettleModel,
   type Tone,
 } from './data'
-import { isRealApi } from './http'
+import { isRealApi, getSessionVersion } from './http'
 import { bizApi, newIdemKey } from './adminApi'
 
 export interface ActivityItem {
@@ -148,6 +148,12 @@ function seed(): StoreState {
 }
 
 function load(): StoreState {
+  // This legacy cache has no principal binding. Keep real data in memory only;
+  // a reload must hydrate under the server-validated current account.
+  if (isRealApi) {
+    try { localStorage.removeItem(KEY) } catch { /* storage may be unavailable */ }
+    return seed()
+  }
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
@@ -196,6 +202,7 @@ __syncLiveEntities(state) // 启动即同步：brandById/agentById 跟随持久�
 const listeners = new Set<() => void>()
 
 function persist() {
+  if (isRealApi) return
   try {
     localStorage.setItem(KEY, JSON.stringify(state))
   } catch {
@@ -315,12 +322,14 @@ const emptyComplaintBase = (id: string): Complaint => ({
 // 三态与其它集合一致：403 → 空数组（数据级 RBAC 清空）；网络错/5xx → null（保留现值不清屏）；成功 → items。
 const ORDERS_MAX = 2000
 async function fetchOrders(): Promise<{ orders: Order[] | null; truncated: boolean }> {
+  const startedVersion = getSessionVersion()
   try {
     const acc: Partial<Order>[] = []
     let cursor: string | undefined
     let truncated = false
     do {
       const page = await bizApi.orders<Partial<Order>[]>(cursor)
+      if (getSessionVersion() !== startedVersion) return { orders: null, truncated: false }
       const items = Array.isArray(page) ? [] : page.items ?? []
       acc.push(...items)
       cursor = (Array.isArray(page) ? null : page.nextCursor) ?? undefined
@@ -338,19 +347,22 @@ async function fetchOrders(): Promise<{ orders: Order[] | null; truncated: boole
  * 服务端表是扁平子集，UI 需要的嵌套字段（品牌 plans/channels/thresholds 等）以 seed 为底，
  * 服务端标量字段覆盖其上，保证既是真数据又不破坏页面所需结构。
  */
-let hydrating: Promise<void> | null = null
+let hydrating: { version: number; promise: Promise<void> } | null = null
 export function hydrateFromServer(): Promise<void> {
   if (!isRealApi) return Promise.resolve()
   // 并发去重：登录 / 60s 轮询 / 镜像失败回收 可能同时触发水合。复用进行中的 promise，
   // 防多请求并发相互覆盖（慢的旧请求覆盖新状态）。参考 auth.ts bootstrapAuth 的 once-promise。
-  if (hydrating) return hydrating
-  hydrating = doHydrate().finally(() => {
-    hydrating = null
+  const version = getSessionVersion()
+  if (hydrating?.version === version) return hydrating.promise
+  const request = { version, promise: Promise.resolve() }
+  request.promise = doHydrate(version).finally(() => {
+    if (hydrating === request) hydrating = null
   })
-  return hydrating
+  hydrating = request
+  return request.promise
 }
 
-async function doHydrate(): Promise<void> {
+async function doHydrate(startedVersion: number): Promise<void> {
   // 每个集合独立取数，但区分失败语义：
   //   403（无权限）→ 置空：用户本就看不到，这让数据级 RBAC 在 UI 自然生效；
   //   网络错/5xx → 保留当前数据：一次瞬时 500 不应把整页清成"没有结算单"并持久化空集。
@@ -366,6 +378,9 @@ async function doHydrate(): Promise<void> {
     safe(bizApi.tickets<(Partial<Complaint> & { reason?: string })[]>()),
     safe(bizApi.config<Record<string, unknown>>()), // 配置 KV（平台配置/通道/SLA/归因）回读
   ])
+  // Some collections may have resolved before the account switch while others
+  // were still pending. HTTP-level response checks alone cannot gate this merge.
+  if (getSessionVersion() !== startedVersion) return
   // 订单三态（详见 fetchOrders）：403 → []（数据级 RBAC 清空）；网络错/5xx → null（保留现值）；成功 → 全量续拉结果
   const orders = ordersResult.orders
   // 全部失败（如完全离线）：保留现值 + 置离线态供全局 banner 提示，不阻断已有数据

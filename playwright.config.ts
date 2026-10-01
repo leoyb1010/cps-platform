@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test'
 // CI 与本地一致：webServer 自动起 dev 服务器后再跑用例。
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: '**/real/**',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -125,6 +125,49 @@ jobs:
             /tmp/cps-ui-audit/
           retention-days: 7
 
+  role-journeys:
+    name: Additional role rounds (real API + browser)
+    if: github.ref == 'refs/heads/codex/audit-cps-platform-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      DATABASE_URL: file:/tmp/cps-role-ui.db
+      JWT_ACCESS_SECRET: role-ui-local-fixture-access-xxxxxxxx
+      JWT_REFRESH_SECRET: role-ui-local-fixture-refresh-xxxxxxx
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - run: npm ci && npm ci --prefix server
+      - run: npx playwright install --with-deps chromium
+      - name: Prepare disposable synthetic backend
+        working-directory: server
+        run: |
+          npx prisma generate
+          npx prisma db push --skip-generate
+          npm run seed
+          npm run build
+      - name: Run real role journeys and cross-account handoff
+        env:
+          NODE_OPTIONS: --require=${{ github.workspace }}/scripts/test-offline.cjs
+        run: |
+          (cd server && node dist/src/main.js) > /tmp/cps-role-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3001/ready >/dev/null; then break; fi
+            sleep 1
+          done
+          npx playwright test --config playwright.roles.config.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cps-role-journeys-${{ github.sha }}
+          path: |
+            /tmp/cps-role-ui-audit/
+            /tmp/cps-role-server.log
+            test-results/
+          retention-days: 14
+
   security-audit:
     name: 依赖漏洞扫描 (npm audit)
     runs-on: ubuntu-latest

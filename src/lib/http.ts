@@ -8,8 +8,11 @@ export const isRealApi = API_MODE === 'real'
 
 let sessionVersion = 0
 let accessToken: string | null = null
-export const setAccessToken = (t: string | null) => {
+let principalId: string | null = null
+export const getSessionVersion = () => sessionVersion
+export const setAccessToken = (t: string | null, userId?: string) => {
   accessToken = t
+  principalId = t ? userId ?? null : null
   sessionVersion += 1
 }
 
@@ -24,22 +27,37 @@ export class ApiError extends Error {
 
 const REQUEST_TIMEOUT_MS = 15000 // 请求超时：弱网下不再无限挂起，超时归一为可读错误
 
+// Cookie-changing responses must arrive in request order. Rejecting stale JSON
+// alone cannot undo Set-Cookie already applied by the browser. Use one queue per
+// tab plus the same Web Lock across tabs; callers capture their bearer up front.
+let authQueue: Promise<unknown> = Promise.resolve()
+function serializeAuthRequest(run: () => Promise<Response>): Promise<Response> {
+  const result = authQueue.then(() =>
+    typeof navigator !== 'undefined' && 'locks' in navigator
+      ? navigator.locks.request('cps-auth-refresh', run)
+      : run(),
+  )
+  authQueue = result.catch(() => {})
+  return result
+}
+
 async function raw(path: string, init: RequestInit = {}): Promise<Response> {
+  const bearer = accessToken
   // 调用方未自带 signal 时，挂 15s 超时（AbortSignal.timeout 现代浏览器均支持）
   const hasExternalSignal = !!init.signal
-  const signal = init.signal ?? (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined)
   try {
-    return await fetch(API_BASE + path, {
+    const run = () => fetch(API_BASE + path, {
       ...init,
-      signal,
+      signal: init.signal ?? (typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined),
       credentials: 'include',
       headers: {
         // GET/无 body 请求不带 Content-Type：避免让本可为"简单请求"的 GET 触发多余 CORS 预检
         ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
         ...(init.headers || {}),
       },
     })
+    return await (/^\/auth\/(login|refresh|logout|change-password)$/.test(path) ? serializeAuthRequest(run) : run())
   } catch (e) {
     const aborted = e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')
     // 外部传入 signal 的主动取消（如 useApi 组件卸载/竞态清理）≠ 超时：原样抛出，
@@ -57,10 +75,11 @@ export function onAuthLost(cb: () => void) {
   authLostCb = cb
 }
 
-let refreshing: Promise<boolean> | null = null
+let refreshing: { version: number; promise: Promise<boolean> } | null = null
 async function tryRefresh(): Promise<boolean> {
-  if (!refreshing) {
+  if (!refreshing || refreshing.version !== sessionVersion) {
     const startedVersion = sessionVersion
+    const request = { version: startedVersion, promise: Promise.resolve(false) }
     const doRefresh = async () => {
       try {
         if (sessionVersion !== startedVersion) return false
@@ -72,23 +91,27 @@ async function tryRefresh(): Promise<boolean> {
         }
         const d = await r.json()
         if (sessionVersion !== startedVersion || typeof d?.access !== 'string' || !d.access) return false
+        // Another tab may have replaced the shared cookie with another account.
+        // Never replay this tab's operation under that different principal.
+        if (principalId && d.user?.id !== principalId) {
+          setAccessToken(null)
+          authLostCb?.()
+          return false
+        }
         // Refresh rotates the credential within the same principal generation.
         accessToken = d.access
         return true
       } catch {
         return false
       } finally {
-        setTimeout(() => (refreshing = null), 0)
+        setTimeout(() => { if (refreshing === request) refreshing = null }, 0)
       }
     }
-    // 跨标签页串行化：刷新令牌旋转是一次性的，两个 tab 并发 refresh 会触发服务端
-    // 重放检测（按令牌被盗处理，吊销全会话族）。Web Locks 保证同刻只有一个 tab 在旋转。
-    refreshing =
-      typeof navigator !== 'undefined' && 'locks' in navigator
-        ? navigator.locks.request('cps-auth-refresh', doRefresh)
-        : doRefresh()
+    // All cookie-changing auth endpoints share raw's queue and cross-tab lock.
+    request.promise = doRefresh()
+    refreshing = request
   }
-  return refreshing
+  return refreshing.promise
 }
 
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {

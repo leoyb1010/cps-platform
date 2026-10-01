@@ -6,9 +6,9 @@ import { ROLES, type RoleId } from '../../lib/auth'
 import { isRealApi } from '../../lib/http'
 import { adminApi } from '../../lib/adminApi'
 import { copyText } from '../../lib/format'
-import { buildMemberUpdatePayload } from '../../lib/memberAccess'
+import { buildMemberUpdatePayload, canAssignRole } from '../../lib/memberAccess'
 
-const ROLE_OPTS = (Object.keys(ROLES) as RoleId[]).map((r) => ({ id: r, name: ROLES[r].name }))
+const ROLE_OPTS = (Object.keys(ROLES) as RoleId[]).filter((r) => r !== 'super').map((r) => ({ id: r, name: ROLES[r].name }))
 // 角色 → scopeType（内部角色 platform；客户角色 brand/agent，需指定 scopeId）
 const roleScopeType = (r: string): 'platform' | 'brand' | 'agent' => (r === 'brand' ? 'brand' : r === 'agent' ? 'agent' : 'platform')
 
@@ -70,7 +70,7 @@ export function InviteMemberModal({ scopeOptions, onClose, onDone }: { scopeOpti
 }
 
 // 管理成员（改角色 / 停用）。real 调 adminApi.updateMember（端点已存在）。
-export function ManageMemberModal({ member, canChangeRole, onClose, onDone }: { member: { id: string; name: string; roleId: string; status: string }; canChangeRole: boolean; onClose: () => void; onDone?: () => void }) {
+export function ManageMemberModal({ member, canChangeRole, onClose, onDone }: { member: { id: string; name: string; roleId: string; status: string; scopeType: string }; canChangeRole: boolean; onClose: () => void; onDone?: () => void }) {
   const toast = useToast()
   const [roleId, setRoleId] = useState(member.roleId)
   const [disabled, setDisabled] = useState(member.status === 'disabled')
@@ -98,7 +98,7 @@ export function ManageMemberModal({ member, canChangeRole, onClose, onDone }: { 
     <Modal open onClose={onClose} title={`管理成员 · ${member.name}`} footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" onClick={save}>保存</Button></>}>
       <div className="space-y-3.5">
         {canChangeRole
-          ? <Field label="角色"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
+          ? <Field label="角色" hint="角色变更保留现有数据范围"><Select aria-label="角色" value={roleId} onChange={(e) => setRoleId(e.target.value)}>{ROLE_OPTS.filter((r) => canAssignRole(r.id, member.scopeType, member.roleId)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select></Field>
           : <Field label="角色"><div className="rounded-lg border border-line bg-surface-muted px-3 py-2 text-[13px] text-ink-2">{ROLES[member.roleId as RoleId]?.name ?? member.roleId}<span className="ml-2 text-[11px] text-ink-4">仅超级管理员可变更</span></div></Field>}
         <label className="flex items-center justify-between rounded-lg border border-line p-3">
           <div><div className="text-[12.5px] font-medium text-ink">停用账户</div><div className="text-[11px] text-ink-4">停用后无法登录，可恢复</div></div>

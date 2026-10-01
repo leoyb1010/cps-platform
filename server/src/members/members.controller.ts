@@ -31,17 +31,23 @@ class CreateMemberDto {
 export class MembersController {
   constructor(private prisma: PrismaService) {}
 
+  private assertPlatform(user: AuthUser) {
+    if (user?.scopeType !== 'platform') throw new ForbiddenException('成员与角色管理仅限平台账户')
+  }
+
   @Get('permissions')
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '权限点字典' })
-  perms() {
+  perms(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     return PERMISSIONS
   }
 
   @Get('roles')
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '角色列表（含权限点）' })
-  async roles() {
+  async roles(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const rs = await this.prisma.role.findMany({ orderBy: { id: 'asc' } })
     return rs.map((r) => ({ ...r, permissions: JSON.parse(r.permissions || '[]') }))
   }
@@ -50,6 +56,7 @@ export class MembersController {
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '更新角色权限（仅超管；超级管理员角色不可改）' })
   async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     // 角色/权限变更是最高信任操作：仅 super 可执行，避免 member.manage 成为提权万能键
     if (user.roleId !== 'super') throw new ForbiddenException('仅超级管理员可修改角色权限')
     if (id === 'super') return { ok: false, detail: '超级管理员权限不可修改' }
@@ -65,7 +72,8 @@ export class MembersController {
   @Get('members')
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '成员列表' })
-  async members() {
+  async members(@CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     const us = await this.prisma.user.findMany({ include: { role: true }, orderBy: { id: 'asc' } })
     return us.map((u) => ({ id: u.id, name: u.name, account: u.account, roleId: u.roleId, roleName: u.role.name, status: u.status, scopeType: u.scopeType, scopeId: u.scopeId }))
   }
@@ -74,6 +82,7 @@ export class MembersController {
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '邀请制建号（含客户账户）：仅超管，强校验角色↔scope 匹配 + scopeId 存在' })
   async createMember(@Body() dto: CreateMemberDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     if (user.roleId !== 'super') throw new ForbiddenException('仅超级管理员可创建成员')
     if (dto.roleId === 'super') throw new ForbiddenException('不可经此端点创建超级管理员')
     const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } })
@@ -110,10 +119,11 @@ export class MembersController {
   @RequirePerms('member.manage')
   @ApiOperation({ summary: '更新成员角色 / 停用（防自我提权）' })
   async updateMember(@Param('id') id: string, @Body() dto: UpdateMemberDto, @CurrentUser() user: AuthUser) {
+    this.assertPlatform(user)
     // 防自我提权 / 自我停用：不能编辑自己的成员记录
     if (id === user.id) throw new ForbiddenException('不能修改自己的角色或状态')
 
-    const target = await this.prisma.user.findUnique({ where: { id }, select: { roleId: true } })
+    const target = await this.prisma.user.findUnique({ where: { id }, select: { roleId: true, scopeType: true, scopeId: true } })
     if (!target) return { ok: false, detail: '目标成员不存在' }
     // super 账号只能由种子/DBA 维护，不能被团队管理员停用，也不能经 API 被降级。
     if (target.roleId === 'super') throw new ForbiddenException('不可修改超级管理员账号')
@@ -125,6 +135,15 @@ export class MembersController {
       if (dto.roleId === 'super') throw new ForbiddenException('不可经此端点赋予超级管理员')
       const role = await this.prisma.role.findUnique({ where: { id: dto.roleId } })
       if (!role) return { ok: false, detail: '目标角色不存在' }
+      // PATCH must preserve the same role/scope contract as account creation.
+      // Keep established scoped read-only audit accounts unchanged; changing
+      // scope requires an explicit account provisioning workflow, not a role edit.
+      if (dto.roleId !== target.roleId) {
+        const requiredScope = dto.roleId === 'brand' ? 'brand' : dto.roleId === 'agent' ? 'agent' : 'platform'
+        if (target.scopeType !== requiredScope || (requiredScope !== 'platform' && !target.scopeId)) {
+          throw new ForbiddenException('目标角色与成员现有数据范围不匹配，请通过建号流程设置正确范围')
+        }
+      }
       data.roleId = dto.roleId
     }
     if (dto.status) {

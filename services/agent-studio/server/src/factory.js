@@ -8,6 +8,7 @@ import {
   consumeCredits,
   createFactoryJob,
   getCreditAccount,
+  getFactoryJob as readFactoryJob,
   listCreditLedger,
   listFactoryJobs,
   listUsageEvents,
@@ -138,11 +139,12 @@ export async function generateFactoryJob(ctx, input = {}) {
 }
 
 export function getFactoryJobs(ctx, limit = 30) {
-  return { ok: true, jobs: listFactoryJobs(ctx.workspaceId, limit) };
+  const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 200) : 30;
+  return { ok: true, jobs: listFactoryJobs(ctx.workspaceId, boundedLimit) };
 }
 
 export function getFactoryJob(ctx, id) {
-  const job = listFactoryJobs(ctx.workspaceId, 200).find((item) => item.id === id);
+  const job = readFactoryJob(ctx.workspaceId, id);
   return job ? { ok: true, job } : { ok: false, message: "Factory job not found" };
 }
 

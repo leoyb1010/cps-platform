@@ -2,6 +2,28 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(()=>{vi.unstubAllGlobals();vi.resetModules()})
 describe('real API refresh boundaries',()=>{
+  it('a different account in the shared refresh cookie never receives a replayed mutation',async()=>{
+    const {api,setAccessToken,onAuthLost}=await import('./http')
+    setAccessToken('brand-a-access','brand-a')
+    const lost=vi.fn();onAuthLost(lost)
+    const fetch=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401}))
+      .mockResolvedValueOnce(Response.json({access:'brand-b-access',user:{id:'brand-b'}}))
+      .mockResolvedValue(Response.json({ok:true}))
+    vi.stubGlobal('fetch',fetch)
+    await expect(api('/portal/brand/products',{method:'POST',body:'{}'})).rejects.toMatchObject({status:401})
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(lost).toHaveBeenCalledOnce()
+  })
+  it('same-account refresh rotates credentials and replays once',async()=>{
+    const {api,setAccessToken}=await import('./http')
+    setAccessToken('old','brand-a')
+    const fetch=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401}))
+      .mockResolvedValueOnce(Response.json({access:'new',user:{id:'brand-a'}}))
+      .mockResolvedValueOnce(Response.json({ok:true}))
+    vi.stubGlobal('fetch',fetch)
+    await expect(api('/portal/summary')).resolves.toEqual({ok:true})
+    expect(fetch.mock.calls[2][1].headers.Authorization).toBe('Bearer new')
+  })
   it('late successful old-account body is discarded after logout/new login',async()=>{
     const {api,setAccessToken}=await import('./http')
     setAccessToken('old-account')
