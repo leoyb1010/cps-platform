@@ -94,7 +94,7 @@ export async function generateFactoryJob(ctx, input = {}) {
   });
 
   try {
-    reserveCredits({ workspaceId: ctx.workspaceId, amount: estimate.creditsEstimated });
+    reserveCredits({ workspaceId: ctx.workspaceId, amount: estimate.creditsEstimated, jobId: job.id });
     const result = await executeFactoryJob(ctx, job, input, assetType, estimate);
     const usage = recordUsageEvent(ctx.workspaceId, {
       userId: ctx.userId,
@@ -163,6 +163,8 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
     preset: input.modelPreset || "balanced",
     input: { ...input, topic: input.prompt, platform, direction, tone }
   });
+
+  if (!gateway.ok) throw new Error("Model generation failed; credits were released");
 
   const pack = buildPack(input.prompt, direction, tone, generation, input.extraContext || input.audience || "", gateway.ok && assetType.modality === "text" ? { creative: null } : {});
 

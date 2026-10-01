@@ -30,11 +30,13 @@ function blockedIpv4(host: string): boolean {
     inRange(host, '169.254.0.0', 16) ||
     inRange(host, '172.16.0.0', 12) ||
     inRange(host, '192.0.0.0', 24) ||
+    inRange(host, '192.0.2.0', 24) ||
     inRange(host, '192.168.0.0', 16) ||
     inRange(host, '198.18.0.0', 15) ||
     inRange(host, '198.51.100.0', 24) ||
     inRange(host, '203.0.113.0', 24) ||
-    inRange(host, '224.0.0.0', 4)
+    inRange(host, '224.0.0.0', 4) ||
+    inRange(host, '240.0.0.0', 4)
   )
 }
 
@@ -48,6 +50,8 @@ function blockedIpv6(host: string): boolean {
   // 出站 webhook 只允许公网 global-unicast IPv6（2000::/3），并排除其中的文档/基准保留段。
   if (!inIpv6Range(value, ipv6ToBigInt('2000::')!, 3)) return true
   return (
+    inIpv6Range(value, ipv6ToBigInt('2002::')!, 16) ||
+    inIpv6Range(value, ipv6ToBigInt('2001::')!, 32) ||
     inIpv6Range(value, ipv6ToBigInt('2001:2::')!, 48) ||
     inIpv6Range(value, ipv6ToBigInt('2001:db8::')!, 32)
   )
@@ -114,7 +118,7 @@ export async function validatePublicCallbackUrl(raw: string): Promise<CallbackUr
   if (url.protocol !== 'https:') return { ok: false, detail: '回调地址必须使用 HTTPS 公网地址' }
   if (url.username || url.password) return { ok: false, detail: '回调地址不能包含用户名或密码' }
 
-  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '')
   if (!host) return { ok: false, detail: '回调地址缺少主机名' }
   if (BLOCKED_HOSTS.has(host) || host.endsWith('.localhost') || host.endsWith('.local')) {
     return { ok: false, detail: '回调地址不能指向本机或内网主机' }

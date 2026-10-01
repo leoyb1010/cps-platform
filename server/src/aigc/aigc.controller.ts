@@ -1,4 +1,4 @@
-import { All, Controller, Req, Res } from '@nestjs/common'
+import { All, Controller, Req, Res, ForbiddenException } from '@nestjs/common'
 import { ApiExcludeController } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import { randomUUID, createHmac } from 'crypto'
@@ -31,7 +31,8 @@ export class AigcController {
   private tenantWorkspace(user: AuthUser): string {
     if (user.scopeType === 'brand' && user.scopeId) return `brand-${user.scopeId}`
     if (user.scopeType === 'agent' && user.scopeId) return `agent-${user.scopeId}`
-    return 'platform'
+    if (user.scopeType === 'platform') return 'platform'
+    throw new ForbiddenException('素材工作区身份不完整')
   }
 
   private signTenant(workspaceId: string, userId: string, secret: string): string {
@@ -95,9 +96,13 @@ export class AigcController {
     delete fwdBody.workspaceId; delete fwdBody.userId
 
     // 可信租户头：按登录 scope 生成 workspaceId + HMAC 签名注入。需两侧配 AIGC_INTERNAL_SECRET；
-    //   未配则不注入签名头，下游落隔离的 default 工作区（不泄漏他人租户，仅失去多租户隔离粒度）。
+    // Missing signing configuration must never merge distinct tenants into default.
     const headers: Record<string, string> = { 'content-type': 'application/json' }
     const secret = this.internalSecret()
+    if (!user || !secret) {
+      res.status(503).json({ code: 503, message: '素材工作区安全连接尚未配置，请联系管理员' })
+      return
+    }
     if (user && secret) {
       const ws = this.tenantWorkspace(user)
       const uid = user.id || 'cps-user'

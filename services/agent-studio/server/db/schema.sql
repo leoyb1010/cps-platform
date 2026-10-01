@@ -150,3 +150,10 @@ create table brand_learnings (
   learning_json jsonb not null,
   created_at timestamptz not null default now()
 );
+
+CREATE TABLE IF NOT EXISTS credit_reservations (
+  workspace_id TEXT NOT NULL, job_id TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount >= 0),
+  status TEXT NOT NULL CHECK (status IN ('reserved','consumed','released','refunded')),
+  updated_at TEXT NOT NULL, PRIMARY KEY (workspace_id, job_id)
+);

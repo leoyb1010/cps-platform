@@ -223,3 +223,13 @@ CREATE TABLE IF NOT EXISTS factory_jobs (
 
 INSERT OR IGNORE INTO credit_accounts (workspace_id, plan, balance, included_monthly_credits, purchased_credits, reserved_credits, updated_at)
 VALUES ('default', 'free', 1000, 1000, 0, 0, CURRENT_TIMESTAMP);
+
+-- Job-scoped reservation state prevents failed/repeated jobs from minting credit.
+CREATE TABLE IF NOT EXISTS credit_reservations (
+  workspace_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount >= 0),
+  status TEXT NOT NULL CHECK (status IN ('reserved','consumed','released','refunded')),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, job_id)
+);

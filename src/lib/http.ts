@@ -6,9 +6,11 @@ export const API_BASE: string = import.meta.env.VITE_API_BASE || 'http://localho
 export const API_MODE: string = import.meta.env.VITE_API_MODE || 'mock'
 export const isRealApi = API_MODE === 'real'
 
+let sessionVersion = 0
 let accessToken: string | null = null
 export const setAccessToken = (t: string | null) => {
   accessToken = t
+  sessionVersion += 1
 }
 
 export class ApiError extends Error {
@@ -58,11 +60,18 @@ export function onAuthLost(cb: () => void) {
 let refreshing: Promise<boolean> | null = null
 async function tryRefresh(): Promise<boolean> {
   if (!refreshing) {
+    const startedVersion = sessionVersion
     const doRefresh = async () => {
       try {
+        if (sessionVersion !== startedVersion) return false
         const r = await raw('/auth/refresh', { method: 'POST' })
-        if (!r.ok) return false
+        if (sessionVersion !== startedVersion) return false
+        if (!r.ok) {
+          if (r.status === 401 || r.status === 403) authLostCb?.()
+          return false
+        }
         const d = await r.json()
+        if (sessionVersion !== startedVersion || typeof d?.access !== 'string' || !d.access) return false
         setAccessToken(d.access)
         return true
       } catch {
@@ -78,14 +87,13 @@ async function tryRefresh(): Promise<boolean> {
         ? navigator.locks.request('cps-auth-refresh', doRefresh)
         : doRefresh()
   }
-  const ok = await refreshing
-  if (!ok) authLostCb?.()
-  return ok
+  return refreshing
 }
 
 export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const startedVersion = sessionVersion
   let res = await raw(path, init)
-  if (res.status === 401 && !path.startsWith('/auth/')) {
+  if (sessionVersion === startedVersion && res.status === 401 && !path.startsWith('/auth/')) {
     const ok = await tryRefresh()
     if (ok) res = await raw(path, init)
   }

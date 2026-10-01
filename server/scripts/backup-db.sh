@@ -14,52 +14,57 @@
 #                    'aws s3 cp {} s3://my-bucket/cps/'  或  'rclone copy {} nas:cps/'
 #
 # 退出码非 0 表示备份失败，cron 应告警（配合监控/邮件）。
-set -e
+set -eu
+umask 077
 
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-14}"
 PROVIDER="${DATABASE_PROVIDER:-sqlite}"
+case "$BACKUP_KEEP" in ''|*[!0-9]*|0) echo "[backup] BACKUP_KEEP must be a positive integer" >&2; exit 1 ;; esac
+case "$PROVIDER" in sqlite|postgresql) ;; *) echo "[backup] Unsupported database provider" >&2; exit 1 ;; esac
 STAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$BACKUP_DIR"
+WORK=$(mktemp -d "$BACKUP_DIR/.cps-backup.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT HUP INT TERM
+SUFFIX=${WORK##*.}
 
 if [ "$PROVIDER" = "postgresql" ]; then
-  OUT="$BACKUP_DIR/cps-pg-$STAMP.sql.gz"
-  echo "[backup] pg_dump → $OUT"
-  # -Fc 自定义格式更利于 pg_restore 选择性恢复；此处用纯 SQL + gzip 便于跨环境
-  pg_dump --no-owner --no-privileges "${PGDATABASE:-cps}" | gzip > "$OUT"
+  OUT="$BACKUP_DIR/cps-pg-$STAMP-$SUFFIX.sql.gz"
+  echo "[backup] Creating PostgreSQL snapshot"
+  # A POSIX shell pipeline reports gzip's status, masking a failed pg_dump.
+  # Complete and verify the producer first; never promote or rotate on failure.
+  pg_dump --no-owner --no-privileges "${PGDATABASE:-cps}" > "$WORK/snapshot.sql"
+  test -s "$WORK/snapshot.sql" || { echo "[backup] Empty database dump" >&2; exit 1; }
+  gzip -c "$WORK/snapshot.sql" > "$WORK/snapshot.gz"
 else
   DB="${SQLITE_DB_PATH:-/data/prod.db}"
-  OUT="$BACKUP_DIR/cps-sqlite-$STAMP.db"
-  echo "[backup] sqlite .backup $DB → $OUT"
-  if [ ! -f "$DB" ]; then
-    echo "[backup] 数据库文件不存在：$DB" >&2
-    exit 1
-  fi
-  # sqlite3 .backup 是热备（对在写库安全），优于直接 cp
-  sqlite3 "$DB" ".backup '$OUT'"
-  gzip -f "$OUT"
-  OUT="$OUT.gz"
+  OUT="$BACKUP_DIR/cps-sqlite-$STAMP-$SUFFIX.db.gz"
+  test -f "$DB" || { echo "[backup] SQLite database does not exist" >&2; exit 1; }
+  # Work inside the private temporary directory, keeping the dot-command path fixed.
+  # Resolve DB before changing directory so relative caller paths remain valid.
+  case "$DB" in /*) ;; *) DB="$PWD/$DB" ;; esac
+  (cd "$WORK" && sqlite3 "$DB" ".backup snapshot.db")
+  test -s "$WORK/snapshot.db" || { echo "[backup] Empty SQLite snapshot" >&2; exit 1; }
+  gzip -c "$WORK/snapshot.db" > "$WORK/snapshot.gz"
 fi
 
-# 校验产物非空
-if [ ! -s "$OUT" ]; then
-  echo "[backup] 备份产物为空，判定失败：$OUT" >&2
-  exit 1
-fi
-echo "[backup] 完成：$OUT ($(du -h "$OUT" | cut -f1))"
+gzip -t "$WORK/snapshot.gz"
+mv "$WORK/snapshot.gz" "$OUT"
+echo "[backup] Completed: $OUT"
 
-# 异地同步（可选）
-if [ -n "$REMOTE_SYNC_CMD" ]; then
-  CMD=$(echo "$REMOTE_SYNC_CMD" | sed "s#{}#$OUT#g")
-  echo "[backup] 异地同步：$CMD"
-  sh -c "$CMD" || { echo "[backup] 异地同步失败" >&2; exit 1; }
+# The configured command is trusted operator configuration. Do not echo it:
+# it may contain service credentials. Quote the injected file as one argument.
+if [ -n "${REMOTE_SYNC_CMD:-}" ]; then
+  BACKUP_FILE=$OUT
+  export BACKUP_FILE
+  CMD=$(printf '%s' "$REMOTE_SYNC_CMD" | sed 's/{}/"$BACKUP_FILE"/g')
+  sh -c "$CMD" || { echo "[backup] Remote sync failed; old backups retained" >&2; exit 1; }
 fi
 
-# 本地滚动清理：仅保留最近 BACKUP_KEEP 份
-COUNT=$(ls -1t "$BACKUP_DIR"/cps-*.gz 2>/dev/null | wc -l | tr -d ' ')
+COUNT=$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'cps-*.gz' | wc -l | tr -d ' ')
 if [ "$COUNT" -gt "$BACKUP_KEEP" ]; then
-  ls -1t "$BACKUP_DIR"/cps-*.gz | tail -n +"$((BACKUP_KEEP + 1))" | while read -r old; do
-    echo "[backup] 清理旧备份：$old"
+  ls -1t "$BACKUP_DIR"/cps-*.gz | tail -n +"$((BACKUP_KEEP + 1))" | while IFS= read -r old; do
+    echo "[backup] Removing retained-age snapshot: $old"
     rm -f "$old"
   done
 fi

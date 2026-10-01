@@ -8,6 +8,11 @@ describe('callback URL SSRF guard', () => {
     'https://[fe90::1]/x',
     'https://[ff02::1]/x',
     'https://[2001:db8::1]/x',
+    'https://[2002:7f00:1::]/x',
+    'https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/x',
+    'https://240.0.0.1/x',
+    'https://192.0.2.1/x',
+    'https://localhost./x',
   ])('拒绝非公网 IPv6: %s', async (url) => {
     await expect(validatePublicCallbackUrl(url)).resolves.toMatchObject({ ok: false })
   })

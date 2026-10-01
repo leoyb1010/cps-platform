@@ -1591,7 +1591,9 @@ describe('有道续费对接（RSA + 模拟全链路，恒等式不破）', () =
     expect(privateIp.body.ok).toBe(false)
     const dnsLoopback = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://127.0.0.1.nip.io/cb' }).expect(200)
     expect(dnsLoopback.body.ok).toBe(false)
-    const publicHttps = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://example.com/youdao/cb' }).expect(200)
+    // Literal globally routed address makes this validation-only test offline;
+    // no DNS or webhook transmission is needed to assert acceptance.
+    const publicHttps = await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: 'https://8.8.8.8/youdao/cb' }).expect(200)
     expect(publicHttps.body.ok).toBe(true)
     await request(httpServer).patch('/portal/brand/developer/callback').set('Authorization', `Bearer ${bt}`).send({ callbackUrl: '' }).expect(200)
   })

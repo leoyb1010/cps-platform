@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataDir = path.join(serverRoot, "data");
+const dataDir = process.env.AGENT_STUDIO_DATA_DIR ? path.resolve(process.env.AGENT_STUDIO_DATA_DIR) : path.join(serverRoot, "data");
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -103,31 +103,73 @@ export function grantCredits({ workspaceId = "default", userId = "local-user", a
   return putLedgerEntry({ workspaceId, userId, type: "grant", amount: Math.abs(Number(amount || 0)), reason, metadata });
 }
 
-export function reserveCredits({ workspaceId = "default", amount = 0 }) {
-  ensureWorkspace(workspaceId);
-  const account = getCreditAccount(workspaceId);
-  const n = Math.max(0, Number(amount || 0));
-  const available = Number(account.balance || 0) - Number(account.reserved_credits || 0);
-  if (available < n) throw new Error(`Insufficient credits: need ${n}, available ${available}`);
-  db.prepare(`UPDATE credit_accounts SET reserved_credits = reserved_credits + ?, updated_at = ? WHERE workspace_id = ?`).run(n, new Date().toISOString(), workspaceId);
-  return getCreditAccount(workspaceId);
+function creditAmount(amount) {
+  const n = Number(amount);
+  if (!Number.isSafeInteger(n) || n < 0) throw new Error("Credits must be a nonnegative safe integer");
+  return n;
+}
+
+function reservation(workspaceId, jobId, amount) {
+  if (typeof jobId !== "string" || !jobId) throw new Error("A job ID is required for credit accounting");
+  const row = db.prepare("SELECT * FROM credit_reservations WHERE workspace_id = ? AND job_id = ?").get(workspaceId, jobId);
+  if (row && row.amount !== amount) throw new Error("Credit reservation amount mismatch");
+  return row;
+}
+
+export function reserveCredits({ workspaceId = "default", amount = 0, jobId = "" }) {
+  const n = creditAmount(amount);
+  return db.transaction(() => {
+    ensureWorkspace(workspaceId);
+    const existing = reservation(workspaceId, jobId, n);
+    if (existing) {
+      if (existing.status !== "reserved") throw new Error("Credit reservation is already final");
+      return getCreditAccount(workspaceId);
+    }
+    const update = db.prepare(`UPDATE credit_accounts SET reserved_credits = reserved_credits + ?, updated_at = ?
+      WHERE workspace_id = ? AND balance - reserved_credits >= ?`).run(n, new Date().toISOString(), workspaceId, n);
+    if (update.changes !== 1) throw new Error("Insufficient available credits");
+    db.prepare("INSERT INTO credit_reservations (workspace_id, job_id, amount, status, updated_at) VALUES (?, ?, ?, 'reserved', ?)")
+      .run(workspaceId, jobId, n, new Date().toISOString());
+    return getCreditAccount(workspaceId);
+  }).immediate();
 }
 
 export function consumeCredits({ workspaceId = "default", userId = "local-user", amount = 0, jobId = "", usageEventId = "", reason = "consume", metadata = {} }) {
-  ensureWorkspace(workspaceId);
-  const n = Math.max(0, Number(amount || 0));
-  const account = getCreditAccount(workspaceId);
-  db.prepare(`UPDATE credit_accounts SET reserved_credits = MAX(0, reserved_credits - ?), updated_at = ? WHERE workspace_id = ?`).run(n, new Date().toISOString(), workspaceId);
-  if (n === 0) return null;
-  if (Number(account.balance || 0) < n) throw new Error(`Insufficient credits: need ${n}, balance ${account.balance}`);
-  return putLedgerEntry({ workspaceId, userId, type: "consume", amount: -n, reason, jobId, usageEventId, metadata });
+  const n = creditAmount(amount);
+  return db.transaction(() => {
+    const row = reservation(workspaceId, jobId, n);
+    if (row?.status === "consumed") return null;
+    if (!row || row.status !== "reserved") throw new Error("No active credit reservation");
+    const account = getCreditAccount(workspaceId);
+    if (account.balance < n || account.reserved_credits < n) throw new Error("Credit account invariant violated");
+    db.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - ?, updated_at = ? WHERE workspace_id = ?")
+      .run(n, new Date().toISOString(), workspaceId);
+    const entry = n ? putLedgerEntry({ workspaceId, userId, type: "consume", amount: -n, reason, jobId, usageEventId, metadata }) : null;
+    db.prepare("UPDATE credit_reservations SET status = 'consumed', updated_at = ? WHERE workspace_id = ? AND job_id = ?")
+      .run(new Date().toISOString(), workspaceId, jobId);
+    return entry;
+  }).immediate();
 }
 
 export function refundCredits({ workspaceId = "default", userId = "local-user", amount = 0, jobId = "", usageEventId = "", reason = "refund", metadata = {} }) {
-  ensureWorkspace(workspaceId);
-  const n = Math.max(0, Number(amount || 0));
-  db.prepare(`UPDATE credit_accounts SET reserved_credits = MAX(0, reserved_credits - ?), updated_at = ? WHERE workspace_id = ?`).run(n, new Date().toISOString(), workspaceId);
-  return n ? putLedgerEntry({ workspaceId, userId, type: "refund", amount: n, reason, jobId, usageEventId, metadata }) : null;
+  const n = creditAmount(amount);
+  return db.transaction(() => {
+    const row = reservation(workspaceId, jobId, n);
+    // A denied reservation did not move money or reserve another job's balance.
+    if (!row || ["released", "refunded"].includes(row.status)) return null;
+    const consumed = row.status === "consumed";
+    if (!consumed) {
+      const released = db.prepare("UPDATE credit_accounts SET reserved_credits = reserved_credits - ?, updated_at = ? WHERE workspace_id = ? AND reserved_credits >= ?")
+        .run(n, new Date().toISOString(), workspaceId, n);
+      if (released.changes !== 1) throw new Error("Credit reservation invariant violated");
+    }
+    // Reservation release is a zero-value ledger event. Only a real prior debit
+    // may add balance back; both transitions are idempotent and transactional.
+    const entry = putLedgerEntry({ workspaceId, userId, type: "refund", amount: consumed ? n : 0, reason, jobId, usageEventId, metadata: { ...metadata, reservationReleased: !consumed } });
+    db.prepare("UPDATE credit_reservations SET status = ?, updated_at = ? WHERE workspace_id = ? AND job_id = ?")
+      .run(consumed ? "refunded" : "released", new Date().toISOString(), workspaceId, jobId);
+    return entry;
+  }).immediate();
 }
 
 export function recordUsageEvent(workspaceId = "default", event = {}) {
