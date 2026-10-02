@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Wand2, Loader2, CheckCircle2 } from 'lucide-react'
 import {
   Card,
@@ -31,6 +31,7 @@ import {
 import { aigcApi, type FactoryConfig, type GeneratePayload } from '../lib/aigcApi'
 import { isRealApi } from '../lib/http'
 import { int, cx } from '../lib/format'
+import { useAigcEstimate } from '../lib/useAigcEstimate'
 
 // 本次会话内真实生成的素材（来自 agent-studio 微服务），展示在实验台之上
 interface GenItem {
@@ -38,7 +39,7 @@ interface GenItem {
   assetType: string
   assetLabel: string
   prompt: string
-  credits: number
+  credits: number | null
 }
 
 // 演示态素材类型配置：无需连 agent-studio 也能完整体验「生成素材」流程（模拟生成）
@@ -65,6 +66,7 @@ export default function Aigc() {
   const [genOpen, setGenOpen] = useState(false)
   const [gens, setGens] = useState<GenItem[]>([])
   const [credits, setCredits] = useState<number | null>(null)
+  const creditRevision = useRef(0)
   const list = seed.filter((a) => (f === 'all' ? true : a.type === f))
   const active = seed.find((a) => a.id === openId) ?? null
 
@@ -73,13 +75,15 @@ export default function Aigc() {
   const avgCvr = total ? seed.reduce((s, a) => s + a.cvr, 0) / total : 0
   const bestLtv = Math.max(0, ...seed.map((a) => a.ltv))
 
-  // 真实模式：拉取素材引擎积分余额（连不上则保持 mock 占位）
+  // A failed real read is unknown, never the demo account's credit balance.
   useEffect(() => {
     if (!isRealApi) return
+    const revision = creditRevision.current
     aigcApi.credits().then((r) => {
       const c = r.credits?.availableCredits ?? r.credits?.balance
-      if (typeof c === 'number') setCredits(c)
+      if (creditRevision.current === revision && typeof c === 'number') setCredits(c)
     }).catch(() => {})
+    return () => { creditRevision.current += 1 }
   }, [])
 
   return (
@@ -106,7 +110,7 @@ export default function Aigc() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card mark><Stat label="素材实验" value={String(total + gens.length)} sub={<span>接入 CPS 投放链路</span>} /></Card>
-        <Card mark><Stat label="积分余额" value={int(credits ?? aigcCredits)} sub={<span>{credits != null ? '素材引擎实时' : '按量计费 · 软件服务'}</span>} /></Card>
+        <Card mark><Stat label="积分余额" value={credits != null ? int(credits) : isRealApi ? '—' : int(aigcCredits)} sub={<span>{credits != null ? '素材引擎实时' : isRealApi ? '余额暂不可用' : '按量计费 · 软件服务'}</span>} /></Card>
         <Card mark><Stat label="平均点击率" value={isRealApi ? '—' : `${avgCtr.toFixed(1)}%`} sub={<span>{isRealApi ? '待投放回流接入' : 'CTR'}</span>} /></Card>
         <Card mark><Stat label="最高素材 LTV" value={isRealApi ? '—' : `¥${bestLtv}`} hint="按净 LTV 排名，不只看点击率" sub={<span>{isRealApi ? '待 LTV 回流接入' : '转化闭环排名'}</span>} /></Card>
       </div>
@@ -121,7 +125,7 @@ export default function Aigc() {
                 <CheckCircle2 size={16} className="shrink-0 text-good-ink" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[12.5px] font-medium text-ink">{g.assetLabel} · {g.prompt}</div>
-                  <div className="text-[11px] text-ink-4">{g.jobId} · 消耗 {g.credits} 积分</div>
+                  <div className="text-[11px] text-ink-4">{g.jobId} · {g.credits == null ? '消耗积分待确认' : `消耗 ${g.credits} 积分`}</div>
                 </div>
                 <Badge tone="info">待接入投放</Badge>
               </div>
@@ -190,7 +194,8 @@ export default function Aigc() {
           onClose={() => setGenOpen(false)}
           onGenerated={(item, balance) => {
             setGens((prev) => [item, ...prev])
-            if (typeof balance === 'number') setCredits(balance)
+            creditRevision.current += 1
+            if (isRealApi) setCredits(typeof balance === 'number' ? balance : null)
           }}
         />
       )}
@@ -206,7 +211,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
   const [intent, setIntent] = useState('educate')
   const [prompt, setPrompt] = useState('')
   const [preset, setPreset] = useState('balanced')
-  const [estimate, setEstimate] = useState<number | null>(null)
+  const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
 
   // 演示态：用内置素材类型让"生成素材"可完整体验（模拟生成，不调真实 agent-studio）。
@@ -233,10 +238,13 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
 
   const doEstimate = async () => {
     if (!prompt.trim()) { toast({ tone: 'info', text: '先填一句话描述要生成什么' }); return }
-    if (!isRealApi) { setEstimate(demoEstimate()); return }
     try {
-      const r = await aigcApi.estimate(payload())
-      setEstimate(r.creditsEstimated)
+      await estimateWith(async () => {
+        if (!isRealApi) return demoEstimate()
+        const r = await aigcApi.estimate(payload())
+        if (!r.ok) throw new Error('Estimate rejected')
+        return r.creditsEstimated
+      })
     } catch {
       toast({ tone: 'alert', text: '估算失败：素材服务未连接' })
     }
@@ -265,7 +273,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
           assetType,
           assetLabel: current?.label ?? assetType,
           prompt: prompt.trim(),
-          credits: estimate ?? 0,
+          credits: typeof r.job.credits_charged === 'number' && Number.isFinite(r.job.credits_charged) && r.job.credits_charged >= 0 ? r.job.credits_charged : null,
         },
         r.credits?.availableCredits ?? r.credits?.balance,
       )
@@ -282,7 +290,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
     <Modal open onClose={onClose} width={500} title="生成素材" footer={
       <>
         <Button variant="ghost" onClick={onClose}>取消</Button>
-        <Button variant="primary" onClick={doGenerate} disabled={busy || loadErr}>
+        <Button variant="primary" onClick={doGenerate} disabled={busy || loadErr || !cfg || !current}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} 生成{estimate != null ? ` · ${estimate} 积分` : ''}
         </Button>
       </>
@@ -295,28 +303,28 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
       ) : (
         <div className="space-y-3.5">
           <Field label="素材类型">
-            <Select value={assetType} onChange={(e) => { setAssetType(e.target.value); setEstimate(null) }}>
+            <Select disabled={busy} value={assetType} onChange={(e) => { setAssetType(e.target.value); invalidateEstimate() }}>
               {assetTypes.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </Select>
           </Field>
           <Field label="目标" hint="生成意图，影响文案口吻">
-            <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
+            <Select disabled={busy} value={intent} onChange={(e) => { setIntent(e.target.value); invalidateEstimate() }}>
               <option value="educate">种草科普</option>
               <option value="convert">促转化</option>
               <option value="retain">促续费</option>
             </Select>
           </Field>
           <Field label="一句话描述" required>
-            <Textarea rows={3} value={prompt} onChange={(e) => { setPrompt(e.target.value); setEstimate(null) }} placeholder="例：有道词典会员续费提醒，强调连续包月更划算" />
+            <Textarea disabled={busy} rows={3} value={prompt} onChange={(e) => { setPrompt(e.target.value); invalidateEstimate() }} placeholder="例：有道词典会员续费提醒，强调连续包月更划算" />
           </Field>
           <Field label="模型档位" hint="便宜档省积分，均衡档质量更稳">
-            <Select value={preset} onChange={(e) => { setPreset(e.target.value); setEstimate(null) }}>
+            <Select disabled={busy} value={preset} onChange={(e) => { setPreset(e.target.value); invalidateEstimate() }}>
               <option value="cheap">便宜</option>
               <option value="balanced">均衡</option>
               <option value="quality">高质量</option>
             </Select>
           </Field>
-          <button onClick={doEstimate} className="text-[12px] font-medium text-brand hover:underline">先估算积分 →</button>
+          <button onClick={doEstimate} disabled={busy || !cfg || !current} className="text-[12px] font-medium text-brand hover:underline disabled:opacity-50">先估算积分 →</button>
         </div>
       )}
     </Modal>

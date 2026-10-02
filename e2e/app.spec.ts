@@ -216,10 +216,12 @@ test('减少动效偏好下入场与实时脉冲停止', async ({ page }) => {
 
 test('关键路由无 console、页面异常或 5xx', async ({ page }) => {
   const errors = watchRuntimeErrors(page)
+  mkdirSync('/tmp/cps-ui-audit', { recursive: true })
   await login(page)
-  for (const route of ['/#/', '/#/brands', '/#/orders', '/#/settlement', '/#/merchants']) {
+  for (const route of ['/#/', '/#/brands', '/#/orders', '/#/settlement', '/#/merchants', '/#/marketplace', '/#/agents', '/#/contracts', '/#/barter', '/#/aigc', '/#/products', '/#/risk', '/#/complaints', '/#/compliance', '/#/analytics', '/#/members', '/#/audit', '/#/settings', '/#/profile']) {
     await page.goto(route)
     await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: `/tmp/cps-ui-audit/route-${route.replace(/[^a-z]+/g, '') || 'dashboard'}.png`, fullPage: true, animations: 'disabled' })
   }
   expect(errors).toEqual([])
 })

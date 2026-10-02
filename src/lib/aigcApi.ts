@@ -32,7 +32,7 @@ export interface EstimateResult {
 }
 export interface GenerateResult {
   ok: boolean
-  job?: { id: string; assetType?: string; status?: string }
+  job?: { id: string; assetType?: string; status?: string; credits_charged?: number }
   result?: unknown
   usage?: unknown
   credits?: { availableCredits?: number; balance?: number }

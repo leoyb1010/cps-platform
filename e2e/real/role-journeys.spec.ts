@@ -27,6 +27,63 @@ test.beforeEach(async ({ context }) => {
   })
 })
 
+// Real CPS authentication/navigation; the engine boundary is explicitly mocked
+// to exercise delayed, unavailable and confirmed-charge UI without any provider.
+for (const portal of [false, true]) {
+  test(`AIGC estimate revision and truthful credit UI (${portal ? 'portal' : 'platform'})`, async ({ page }) => {
+    await signIn(page, portal ? 'brand' : 'admin', portal)
+    const headers = { 'access-control-allow-origin': 'http://localhost:5273', 'access-control-allow-credentials': 'true' }
+    const fixture = { ok: true, assetTypes: [{ id: 'copy', label: '投放文案', modality: 'text', defaultPlatform: 'xhs' }] }
+    let releaseConfig!: () => void
+    const configGate = new Promise<void>(resolve => { releaseConfig = resolve })
+    await page.route('**/aigc/factory/config', async route => {
+      await configGate
+      return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify(fixture) })
+    })
+    await page.route('**/aigc/billing/credits', route => route.fulfill({ status: 503, contentType: 'application/json', headers, body: '{"message":"Synthetic credits outage"}' }))
+    await page.goto(portal ? '/#/portal/brand/aigc' : '/#/aigc')
+    if (!portal) {
+      await expect(page.getByText('余额暂不可用', { exact: true })).toBeVisible()
+      await expect(page.locator('main')).not.toContainText('84,200')
+      await capture(page, 'aigc-real-balance-unknown')
+      await page.getByRole('button', { name: '生成素材', exact: true }).click()
+    }
+    const form = portal ? page.locator('main') : page.getByRole('dialog')
+    await expect(form.getByRole('button', { name: '生成', exact: true })).toBeDisabled()
+    releaseConfig()
+    await expect(form.getByRole('button', { name: '生成', exact: true })).toBeEnabled()
+    await form.locator('textarea').fill('Synthetic copy for a fictional notebook')
+    let releaseEstimate!: () => void, entered!: () => void, delivered!: () => void
+    const estimateGate = new Promise<void>(resolve => { releaseEstimate = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const finished = new Promise<void>(resolve => { delivered = resolve })
+    await page.route('**/aigc/factory/estimate', async route => {
+      entered(); await estimateGate
+      await route.fulfill({ status: 200, contentType: 'application/json', headers, body: '{"ok":true,"creditsEstimated":17}' })
+      delivered()
+    })
+    await form.getByRole('button', { name: '先估算积分 →', exact: true }).click()
+    await started
+    await form.locator('textarea').fill('Changed synthetic copy')
+    releaseEstimate(); await finished
+    await page.waitForLoadState('networkidle')
+    await expect(form.getByRole('button', { name: '生成', exact: true })).toBeVisible()
+    await form.getByRole('button', { name: '先估算积分 →', exact: true }).click()
+    await expect(form.getByRole('button', { name: '生成 · 17 积分', exact: true })).toBeVisible()
+    await form.locator('select').nth(1).selectOption('convert')
+    await expect(form.getByRole('button', { name: '生成', exact: true })).toBeVisible()
+    await capture(page, `aigc-${portal ? 'portal' : 'platform'}-estimate-revision`)
+    if (!portal) {
+      await page.route('**/aigc/factory/generate', route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ ok: true, job: { id: 'synthetic-confirmed-charge', status: 'completed', credits_charged: 37 }, credits: { availableCredits: 63 } }) }))
+      await form.getByRole('button', { name: '生成', exact: true }).click()
+      await expect(page.getByText(/synthetic-confirmed-charge · 消耗 37 积分/)).toBeVisible()
+      await page.setViewportSize({ width: 390, height: 844 })
+      await capture(page, 'aigc-confirmed-charge-mobile')
+      await expect(page.locator('main')).not.toContainText('消耗 0 积分')
+    }
+  })
+}
+
 for (const account of ['admin', 'finance', 'risk', 'ops', 'audit', 'teamadmin', 'brand', 'agent', 'brandaudit']) {
   test(`real role normal login and cross-zone denial: ${account}`, async ({ page }) => {
     const portal = ['brand', 'agent', 'brandaudit'].includes(account)

@@ -1,0 +1,40 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> cps-union-platform@1.0.0 test
+> vitest run src/pages/aigc-product.test.tsx
+
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/audit-20261003/cps-platform
+
+ ❯ src/pages/aigc-product.test.tsx (12 tests | 2 failed) 578ms
+   × does not enable a generation before engine configuration arrives (portal=false) 34ms
+   × does not enable a generation before engine configuration arrives (portal=true) 10ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > does not enable a generation before engine configuration arrives (portal=false)
+ FAIL  src/pages/aigc-product.test.tsx > does not enable a generation before engine configuration arrives (portal=true)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/pages/aigc-product.test.tsx:77:29
+     75|   await mount(portal)
+     76|   const generate = [...host.querySelectorAll('button')].find(b => b.te…
+     77|   expect(generate.disabled).toBe(true)
+       |                             ^
+     78|   await act(async () => generate.click())
+     79|   expect(calls.generate).not.toHaveBeenCalled()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 10 passed (12)
+   Start at  07:37:07
+   Duration  1.75s (transform 272ms, setup 73ms, import 380ms, tests 578ms, environment 557ms)
+

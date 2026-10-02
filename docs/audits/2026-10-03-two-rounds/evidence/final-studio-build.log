@@ -1,0 +1,14 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> agent-studio@0.8.0 build
+> vite build
+
+vite v7.3.5 building client environment for production...
+transforming...
+✓ 1598 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.05 kB │ gzip:   0.63 kB
+dist/assets/index-CbnbREFf.css   57.15 kB │ gzip:  11.26 kB
+dist/assets/index-xbWc7OoQ.js   377.17 kB │ gzip: 120.03 kB
+✓ built in 1.92s

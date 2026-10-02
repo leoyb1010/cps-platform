@@ -1,0 +1,20 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+Listing tests:
+  [real-chromium] › role-journeys.spec.ts:33:3 › AIGC estimate revision and truthful credit UI (platform)
+  [real-chromium] › role-journeys.spec.ts:33:3 › AIGC estimate revision and truthful credit UI (portal)
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: admin
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: finance
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: risk
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: ops
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: audit
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: teamadmin
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: brand
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: agent
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: brandaudit
+  [real-chromium] › role-journeys.spec.ts:107:1 › real team manager sees customer-only management and can cancel with Escape
+  [real-chromium] › role-journeys.spec.ts:122:1 › real admin gets scope-compatible role choices and mobile member controls
+  [real-chromium] › role-journeys.spec.ts:135:1 › cross-tab cookie replacement never replays a brand mutation as the agent
+  [real-chromium] › role-journeys.spec.ts:159:3 › late login Set-Cookie cannot restore a logged-out browser
+  [real-chromium] › role-journeys.spec.ts:159:3 › late refresh Set-Cookie cannot restore a logged-out browser
+  [real-chromium] › role-journeys.spec.ts:198:1 › latest overlapping login owns both UI identity and final refresh cookie
+Total: 17 tests in 1 file

@@ -1,0 +1,74 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> cps-union-platform@1.0.0 test
+> vitest run src/pages/aigc-product.test.tsx
+
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/audit-20261003/cps-platform
+
+ ❯ src/pages/aigc-product.test.tsx (17 tests | 4 failed) 656ms
+   × a late initial balance cannot overwrite a completed generation balance (portal=false) 27ms
+   × a late initial balance cannot overwrite a completed generation balance (portal=true) 12ms
+   × freezes the submitted form while generation is in flight (portal=false) 24ms
+   × freezes the submitted form while generation is in flight (portal=true) 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > a late initial balance cannot overwrite a completed generation balance (portal=false)
+AssertionError: expected 'AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费…' to contain '63'
+
+Expected: "63"
+Received: "AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费/退款数据，按 LTV 而非 CTR 排名。不卖 AIGC，卖更低风险、更高 LTV 的订阅增长。全部图片短视频文案 生成素材素材实验5接入 CPS 投放链路积分余额100素材引擎实时平均点击率—待投放回流接入最高素材 LTV?—待 LTV 回流接入本次生成经素材引擎实时生成 · 可继续接入投放回收 LTV1 条投放文案 · Synthetic descriptionsynthetic-job · 消耗 37 积分待接入投放素材实验台演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中平均转化率 2.6%素材类型关联投放消耗积分点击率转化率素材 LTV状态有道词典·考研冲刺图图片有道网易有道词典 VIP1204.8%3.1%¥104已回收数据芒果会员·热剧短视频短视频芒芒果 TV 会员4806.2%2.4%¥78投放中WPS·职场效率文案文案WWPS 超级会员403.5%2.9%¥96已回收数据喜马拉雅·助眠图图片喜喜马拉雅 会员1205.1%1.8%¥52生成中共 4 条素材实验AIGC 内容标识与素材审查内置（合规要求）"
+
+ ❯ src/pages/aigc-product.test.tsx:124:28
+    122|   expect(host.textContent).toContain('63')
+    123|   await act(async () => resolve({ ok: true, credits: { availableCredit…
+    124|   expect(host.textContent).toContain('63')
+       |                            ^
+    125|   expect(host.textContent).not.toContain(portal ? '100 积分' : '积分余额100')
+    126| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > a late initial balance cannot overwrite a completed generation balance (portal=true)
+AssertionError: expected 'AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计…' to contain '63'
+
+Expected: "63"
+Received: "AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。素材可直接用于你的推广投放。生成素材选类型 → 一句话描述 → 生成100 积分素材类型投放文案目标· 影响文案口吻种草科普促转化促续费一句话描述*模型档位· 便宜档省积分，均衡档质量更稳便宜均衡高质量先估算积分 → 生成本次生成经素材引擎实时生成，可继续用于投放1 条投放文案 · Synthetic descriptionsynthetic-job可用于投放"
+
+ ❯ src/pages/aigc-product.test.tsx:124:28
+    122|   expect(host.textContent).toContain('63')
+    123|   await act(async () => resolve({ ok: true, credits: { availableCredit…
+    124|   expect(host.textContent).toContain('63')
+       |                            ^
+    125|   expect(host.textContent).not.toContain(portal ? '100 积分' : '积分余额100')
+    126| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > freezes the submitted form while generation is in flight (portal=false)
+ FAIL  src/pages/aigc-product.test.tsx > freezes the submitted form while generation is in flight (portal=true)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/pages/aigc-product.test.tsx:133:52
+    131|   await mount(portal)
+    132|   await click('生成')
+    133|   expect(host.querySelector('textarea')!.disabled).toBe(true)
+       |                                                    ^
+    134|   for (const select of host.querySelectorAll('select')) expect(select.…
+    135|   await act(async () => resolve({ ok: true, job: { id: 'synthetic-busy…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 13 passed (17)
+   Start at  07:41:20
+   Duration  2.29s (transform 334ms, setup 85ms, import 431ms, tests 656ms, environment 846ms)
+

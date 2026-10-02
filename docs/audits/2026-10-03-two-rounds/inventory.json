@@ -1,0 +1,885 @@
+{
+  "base": "fdfc1b1e9016f3fa20597c5c3060b8bce2727e26",
+  "pages": [
+    {
+      "file": "src/pages/Agents.tsx",
+      "declared_button_nodes": 13,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Aigc.tsx",
+      "declared_button_nodes": 5,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Analytics.tsx",
+      "declared_button_nodes": 3,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Audit.tsx",
+      "declared_button_nodes": 1,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Barter.tsx",
+      "declared_button_nodes": 6,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/BrandDetail.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Brands.tsx",
+      "declared_button_nodes": 11,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/ChangePassword.tsx",
+      "declared_button_nodes": 1,
+      "declared_form_nodes": 1,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Complaints.tsx",
+      "declared_button_nodes": 11,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Compliance.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Contracts.tsx",
+      "declared_button_nodes": 3,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Dashboard.tsx",
+      "declared_button_nodes": 17,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Login.tsx",
+      "declared_button_nodes": 2,
+      "declared_form_nodes": 1,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Marketplace.tsx",
+      "declared_button_nodes": 7,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Members.tsx",
+      "declared_button_nodes": 5,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Merchants.tsx",
+      "declared_button_nodes": 12,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Orders.tsx",
+      "declared_button_nodes": 7,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/PortalLogin.tsx",
+      "declared_button_nodes": 2,
+      "declared_form_nodes": 1,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Products.tsx",
+      "declared_button_nodes": 9,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Profile.tsx",
+      "declared_button_nodes": 1,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Risk.tsx",
+      "declared_button_nodes": 9,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Settings.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/Settlement.tsx",
+      "declared_button_nodes": 11,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/legal/LegalShell.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/legal/Privacy.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/legal/Terms.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/market/LandingPage.tsx",
+      "declared_button_nodes": 1,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/market/MySubscriptions.tsx",
+      "declared_button_nodes": 9,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/market/Supermarket.tsx",
+      "declared_button_nodes": 14,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/AgentLanding.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/AgentPortal.tsx",
+      "declared_button_nodes": 15,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandDeveloper.tsx",
+      "declared_button_nodes": 11,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandInsights.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandLanding.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandPlaza.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandPortal.tsx",
+      "declared_button_nodes": 14,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/BrandProducts.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/LandingWorkshop.tsx",
+      "declared_button_nodes": 4,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/portal/PortalAigc.tsx",
+      "declared_button_nodes": 2,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/workspaces/IncidentRoom.tsx",
+      "declared_button_nodes": 3,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/workspaces/RiskWorkspace.tsx",
+      "declared_button_nodes": 0,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    },
+    {
+      "file": "src/pages/workspaces/SettlementRun.tsx",
+      "declared_button_nodes": 15,
+      "declared_form_nodes": 0,
+      "static_inventory": true,
+      "runtime_status": "See flow-ledger.md; source counts do not certify clicked controls"
+    }
+  ],
+  "routes": [
+    "/login",
+    "/portal/login",
+    "/change-password",
+    "/settings/password",
+    "/market",
+    "/market/me",
+    "/land/:id",
+    "/legal/terms",
+    "/legal/privacy",
+    "/portal/brand",
+    "/portal/brand/orders",
+    "/portal/brand/settlement",
+    "/portal/brand/onboarding",
+    "/portal/brand/tickets",
+    "/portal/brand/contracts",
+    "/portal/brand/products",
+    "/portal/brand/developer",
+    "/portal/brand/landing",
+    "/portal/brand/barter",
+    "/portal/brand/aigc",
+    "/portal/brand/insights",
+    "/portal/brand/plaza",
+    "/portal/brand/*",
+    "/portal/agent",
+    "/portal/agent/market",
+    "/portal/agent/plans",
+    "/portal/agent/payouts",
+    "/portal/agent/credit",
+    "/portal/agent/contracts",
+    "/portal/agent/tickets",
+    "/portal/agent/aigc",
+    "/portal/agent/landing",
+    "/portal/agent/*",
+    "/",
+    "/brands",
+    "/brands/:id",
+    "/marketplace",
+    "/agents",
+    "/orders",
+    "/contracts",
+    "/barter",
+    "/aigc",
+    "/products",
+    "/supermarket",
+    "/settlement",
+    "/settlement/run",
+    "/merchants",
+    "/risk/incident/:mid",
+    "/risk",
+    "/complaints",
+    "/compliance",
+    "/analytics",
+    "/members",
+    "/audit",
+    "/settings",
+    "/profile",
+    "*"
+  ],
+  "controllers": [
+    {
+      "file": "server/src/aigc/aigc.controller.ts",
+      "prefix": [
+        "aigc"
+      ],
+      "declared_actions": [
+        {
+          "method": "All",
+          "path": "factory/*path"
+        },
+        {
+          "method": "All",
+          "path": "billing/*path"
+        }
+      ]
+    },
+    {
+      "file": "server/src/audit/audit.controller.ts",
+      "prefix": [
+        "audit-logs"
+      ],
+      "declared_actions": []
+    },
+    {
+      "file": "server/src/auth/auth.controller.ts",
+      "prefix": [
+        "auth"
+      ],
+      "declared_actions": [
+        {
+          "method": "Post",
+          "path": "login"
+        },
+        {
+          "method": "Post",
+          "path": "refresh"
+        },
+        {
+          "method": "Get",
+          "path": "me"
+        },
+        {
+          "method": "Post",
+          "path": "change-password"
+        },
+        {
+          "method": "Post",
+          "path": "logout"
+        }
+      ]
+    },
+    {
+      "file": "server/src/business/business.controller.ts",
+      "prefix": [],
+      "declared_actions": [
+        {
+          "method": "Post",
+          "path": "reconciliation/run"
+        },
+        {
+          "method": "Post",
+          "path": "settlements/run"
+        },
+        {
+          "method": "Get",
+          "path": "reserve-releases"
+        },
+        {
+          "method": "Post",
+          "path": "reserve/:rrId/release"
+        },
+        {
+          "method": "Post",
+          "path": "reserve/release-due"
+        },
+        {
+          "method": "Post",
+          "path": "reserve/:rrId/freeze"
+        },
+        {
+          "method": "Get",
+          "path": "brands"
+        },
+        {
+          "method": "Get",
+          "path": "agents"
+        },
+        {
+          "method": "Get",
+          "path": "merchants"
+        },
+        {
+          "method": "Get",
+          "path": "orders"
+        },
+        {
+          "method": "Get",
+          "path": "settlements"
+        },
+        {
+          "method": "Get",
+          "path": "tickets"
+        },
+        {
+          "method": "Get",
+          "path": "summary"
+        },
+        {
+          "method": "Post",
+          "path": "settlements/:id/clear"
+        },
+        {
+          "method": "Post",
+          "path": "settlements/:id/reconcile"
+        },
+        {
+          "method": "Post",
+          "path": "tickets/:id/refund"
+        },
+        {
+          "method": "Post",
+          "path": "merchants/:id/state"
+        },
+        {
+          "method": "Post",
+          "path": "agents/:id/status"
+        },
+        {
+          "method": "Post",
+          "path": "agents/:id/settle"
+        },
+        {
+          "method": "Get",
+          "path": "payout-requests"
+        },
+        {
+          "method": "Post",
+          "path": "payout-requests/:id/approve"
+        },
+        {
+          "method": "Post",
+          "path": "payout-requests/:id/reject"
+        },
+        {
+          "method": "Post",
+          "path": "brands"
+        },
+        {
+          "method": "Patch",
+          "path": "brands/:id/status"
+        },
+        {
+          "method": "Patch",
+          "path": "brands/:id/config"
+        },
+        {
+          "method": "Delete",
+          "path": "brands/:id"
+        },
+        {
+          "method": "Post",
+          "path": "merchants"
+        },
+        {
+          "method": "Post",
+          "path": "orders/:id/refund"
+        },
+        {
+          "method": "Patch",
+          "path": "tickets/:id"
+        },
+        {
+          "method": "Get",
+          "path": "config"
+        },
+        {
+          "method": "Post",
+          "path": "config"
+        },
+        {
+          "method": "Get",
+          "path": "products"
+        },
+        {
+          "method": "Post",
+          "path": "products/:id/review"
+        },
+        {
+          "method": "Get",
+          "path": "bundle-rules"
+        },
+        {
+          "method": "Post",
+          "path": "bundle-rules"
+        },
+        {
+          "method": "Patch",
+          "path": "bundle-rules/:id"
+        },
+        {
+          "method": "Get",
+          "path": "contracts"
+        },
+        {
+          "method": "Post",
+          "path": "contracts"
+        },
+        {
+          "method": "Patch",
+          "path": "contracts/:id/status"
+        },
+        {
+          "method": "Get",
+          "path": "barter"
+        },
+        {
+          "method": "Post",
+          "path": "barter"
+        },
+        {
+          "method": "Patch",
+          "path": "barter/:id/status"
+        },
+        {
+          "method": "Get",
+          "path": "notifications"
+        },
+        {
+          "method": "Post",
+          "path": "notifications/:id/read"
+        },
+        {
+          "method": "Post",
+          "path": "notifications/read-all"
+        },
+        {
+          "method": "Post",
+          "path": "fulfillment/ingest"
+        },
+        {
+          "method": "Post",
+          "path": "complaints/ingest"
+        },
+        {
+          "method": "Get",
+          "path": "bundles"
+        },
+        {
+          "method": "Post",
+          "path": "bundles/:id/fulfill"
+        }
+      ]
+    },
+    {
+      "file": "server/src/common/health.controller.ts",
+      "prefix": [],
+      "declared_actions": [
+        {
+          "method": "Get",
+          "path": "health"
+        },
+        {
+          "method": "Get",
+          "path": "ready"
+        },
+        {
+          "method": "Get",
+          "path": "metrics"
+        }
+      ]
+    },
+    {
+      "file": "server/src/cps/cps.controller.ts",
+      "prefix": [
+        "cps"
+      ],
+      "declared_actions": [
+        {
+          "method": "Post",
+          "path": "sim/first-charge"
+        },
+        {
+          "method": "Post",
+          "path": "sim/renew"
+        },
+        {
+          "method": "Post",
+          "path": "sim/fail"
+        },
+        {
+          "method": "Post",
+          "path": "retry/sweep"
+        }
+      ]
+    },
+    {
+      "file": "server/src/market/market.controller.ts",
+      "prefix": [
+        "market"
+      ],
+      "declared_actions": [
+        {
+          "method": "Get",
+          "path": "products"
+        },
+        {
+          "method": "Get",
+          "path": "rules"
+        },
+        {
+          "method": "Post",
+          "path": "quote"
+        },
+        {
+          "method": "Post",
+          "path": "bundle"
+        },
+        {
+          "method": "Post",
+          "path": "bundle/:id/pay"
+        }
+      ]
+    },
+    {
+      "file": "server/src/members/members.controller.ts",
+      "prefix": [],
+      "declared_actions": [
+        {
+          "method": "Get",
+          "path": "permissions"
+        },
+        {
+          "method": "Get",
+          "path": "roles"
+        },
+        {
+          "method": "Patch",
+          "path": "roles/:id"
+        },
+        {
+          "method": "Get",
+          "path": "members"
+        },
+        {
+          "method": "Post",
+          "path": "members"
+        },
+        {
+          "method": "Patch",
+          "path": "members/:id"
+        }
+      ]
+    },
+    {
+      "file": "server/src/portal/portal.controller.ts",
+      "prefix": [
+        "portal"
+      ],
+      "declared_actions": [
+        {
+          "method": "Get",
+          "path": "summary"
+        },
+        {
+          "method": "Get",
+          "path": "brand/orders"
+        },
+        {
+          "method": "Get",
+          "path": "brand/settlements"
+        },
+        {
+          "method": "Get",
+          "path": "brand/onboarding"
+        },
+        {
+          "method": "Get",
+          "path": "brand/tickets"
+        },
+        {
+          "method": "Post",
+          "path": "brand/tickets/:id/reply"
+        },
+        {
+          "method": "Get",
+          "path": "agent/tickets"
+        },
+        {
+          "method": "Post",
+          "path": "agent/tickets/:id/reply"
+        },
+        {
+          "method": "Get",
+          "path": "brand/barter"
+        },
+        {
+          "method": "Get",
+          "path": "brand/candidates"
+        },
+        {
+          "method": "Get",
+          "path": "contracts"
+        },
+        {
+          "method": "Get",
+          "path": "market/brands"
+        },
+        {
+          "method": "Get",
+          "path": "agent/payouts"
+        },
+        {
+          "method": "Get",
+          "path": "agent/credit"
+        },
+        {
+          "method": "Get",
+          "path": "agent/plans"
+        },
+        {
+          "method": "Post",
+          "path": "contracts/:id/claim"
+        },
+        {
+          "method": "Get",
+          "path": "brand/products"
+        },
+        {
+          "method": "Post",
+          "path": "brand/products"
+        },
+        {
+          "method": "Post",
+          "path": "brand/products/:id/submit"
+        },
+        {
+          "method": "Get",
+          "path": "brand/developer"
+        },
+        {
+          "method": "Post",
+          "path": "brand/developer/rsa/keygen"
+        },
+        {
+          "method": "Post",
+          "path": "brand/developer/rsa/upload"
+        },
+        {
+          "method": "Patch",
+          "path": "brand/developer/callback"
+        },
+        {
+          "method": "Get",
+          "path": "brand/developer/logs"
+        },
+        {
+          "method": "Post",
+          "path": "brand/developer/console/sign"
+        },
+        {
+          "method": "Post",
+          "path": "brand/developer/health-check"
+        },
+        {
+          "method": "Post",
+          "path": "contracts"
+        },
+        {
+          "method": "Post",
+          "path": "barter"
+        },
+        {
+          "method": "Post",
+          "path": "barter/:id/respond"
+        },
+        {
+          "method": "Post",
+          "path": "agent/claims"
+        },
+        {
+          "method": "Get",
+          "path": "agent/claims"
+        },
+        {
+          "method": "Post",
+          "path": "agent/payout-requests"
+        },
+        {
+          "method": "Get",
+          "path": "agent/payout-requests"
+        },
+        {
+          "method": "Get",
+          "path": "notifications"
+        },
+        {
+          "method": "Post",
+          "path": "notifications/:id/read"
+        }
+      ]
+    },
+    {
+      "file": "server/src/youdao/youdao.controller.ts",
+      "prefix": [],
+      "declared_actions": [
+        {
+          "method": "Post",
+          "path": "pay/outside/order"
+        },
+        {
+          "method": "Post",
+          "path": "order/outside/refund"
+        },
+        {
+          "method": "Post",
+          "path": "order/outside/unsign"
+        },
+        {
+          "method": "Get",
+          "path": "order/outside/orderQuery"
+        }
+      ]
+    }
+  ],
+  "page_count": 42,
+  "route_count": 57
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Wand2, Loader2, CheckCircle2, Sparkles } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button } from '../../components/ui/primitives'
 import { Field, Select, Textarea } from '../../components/ui/forms'
@@ -6,6 +6,7 @@ import { aigcApi, type FactoryConfig, type GeneratePayload } from '../../lib/aig
 import { isRealApi } from '../../lib/http'
 import { DemoNotice } from '../../components/portal/kit'
 import { int } from '../../lib/format'
+import { useAigcEstimate } from '../../lib/useAigcEstimate'
 
 // 客户门户 AIGC 素材生成（轻量版）：复用 cps 的 /aigc 代理（→ agent-studio 微服务），
 // 与门户 UI 风格统一，客户不感知背后是独立微服务。品牌方/代理共用同一页。
@@ -19,28 +20,32 @@ export function PortalAigc() {
   const [cfg, setCfg] = useState<FactoryConfig | null>(null)
   const [loadErr, setLoadErr] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
+  const creditRevision = useRef(0)
   const [gens, setGens] = useState<GenItem[]>([])
 
   const [assetType, setAssetType] = useState('carousel')
   const [intent, setIntent] = useState('educate')
   const [prompt, setPrompt] = useState('')
   const [preset, setPreset] = useState('balanced')
-  const [estimate, setEstimate] = useState<number | null>(null)
+  const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
     if (!isRealApi) { setLoadErr(true); return }
+    const revision = creditRevision.current
     aigcApi.config().then((c) => {
+      if (creditRevision.current !== revision) return
       setCfg(c)
       if (c.assetTypes?.[0]) setAssetType(c.assetTypes[0].id)
       const bal = c.credits?.availableCredits ?? c.credits?.balance
       if (typeof bal === 'number') setCredits(bal)
-    }).catch(() => setLoadErr(true))
+    }).catch(() => { if (creditRevision.current === revision) setLoadErr(true) })
     aigcApi.credits().then((r) => {
       const c = r.credits?.availableCredits ?? r.credits?.balance
-      if (typeof c === 'number') setCredits(c)
+      if (creditRevision.current === revision && typeof c === 'number') setCredits(c)
     }).catch(() => {})
+    return () => { creditRevision.current += 1 }
   }, [])
 
   const assetTypes = cfg?.assetTypes ?? []
@@ -50,7 +55,13 @@ export function PortalAigc() {
   const doEstimate = async () => {
     if (!prompt.trim()) { setMsg('先填一句话描述要生成什么'); return }
     setMsg('')
-    try { const r = await aigcApi.estimate(payload()); setEstimate(r.creditsEstimated) } catch { setMsg('估算失败：素材服务未连接') }
+    try {
+      await estimateWith(async () => {
+        const r = await aigcApi.estimate(payload())
+        if (!r.ok) throw new Error('Estimate rejected')
+        return r.creditsEstimated
+      })
+    } catch { setMsg('估算失败：素材服务未连接') }
   }
   const doGenerate = async () => {
     if (!prompt.trim()) { setMsg('先填一句话描述要生成什么'); return }
@@ -60,8 +71,9 @@ export function PortalAigc() {
       if (!r.ok || !r.job) throw new Error('no job')
       setGens((p) => [{ jobId: r.job!.id, assetLabel: current?.label ?? assetType, prompt: prompt.trim() }, ...p])
       const bal = r.credits?.availableCredits ?? r.credits?.balance
-      if (typeof bal === 'number') setCredits(bal)
-      setPrompt(''); setEstimate(null); setMsg('')
+      creditRevision.current += 1
+      setCredits(typeof bal === 'number' ? bal : null)
+      setPrompt(''); invalidateEstimate(); setMsg('')
     } catch { setMsg('生成失败：素材服务未连接') } finally { setBusy(false) }
   }
 
@@ -75,22 +87,22 @@ export function PortalAigc() {
             <CardTitle title="生成素材" desc="选类型 → 一句话描述 → 生成" right={<Badge tone="info" dot>{credits != null ? `${int(credits)} 积分` : '积分'}</Badge>} />
             <div className="space-y-3">
               <Field label="素材类型">
-                <Select value={assetType} onChange={(e) => { setAssetType(e.target.value); setEstimate(null) }}>
+                <Select disabled={busy} value={assetType} onChange={(e) => { setAssetType(e.target.value); invalidateEstimate() }}>
                   {assetTypes.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
                 </Select>
               </Field>
               <Field label="目标" hint="影响文案口吻">
-                <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
+                <Select disabled={busy} value={intent} onChange={(e) => { setIntent(e.target.value); invalidateEstimate() }}>
                   <option value="educate">种草科普</option>
                   <option value="convert">促转化</option>
                   <option value="retain">促续费</option>
                 </Select>
               </Field>
               <Field label="一句话描述" required>
-                <Textarea rows={3} value={prompt} onChange={(e) => { setPrompt(e.target.value); setEstimate(null) }} placeholder="例：会员续费提醒，强调连续包月更划算" />
+                <Textarea disabled={busy} rows={3} value={prompt} onChange={(e) => { setPrompt(e.target.value); invalidateEstimate() }} placeholder="例：会员续费提醒，强调连续包月更划算" />
               </Field>
               <Field label="模型档位" hint="便宜档省积分，均衡档质量更稳">
-                <Select value={preset} onChange={(e) => { setPreset(e.target.value); setEstimate(null) }}>
+                <Select disabled={busy} value={preset} onChange={(e) => { setPreset(e.target.value); invalidateEstimate() }}>
                   <option value="cheap">便宜</option>
                   <option value="balanced">均衡</option>
                   <option value="quality">高质量</option>
@@ -98,8 +110,8 @@ export function PortalAigc() {
               </Field>
               {msg && <div className="rounded-md bg-warn-soft/50 px-2.5 py-1.5 text-[12px] text-warn-ink">{msg}</div>}
               <div className="flex items-center justify-between gap-2">
-                <button onClick={doEstimate} className="text-[12px] font-medium text-brand hover:underline">先估算积分 →</button>
-                <Button variant="primary" onClick={doGenerate} disabled={busy}>
+                <button onClick={doEstimate} disabled={busy || !cfg || !current} className="text-[12px] font-medium text-brand hover:underline disabled:opacity-50">先估算积分 →</button>
+                <Button variant="primary" onClick={doGenerate} disabled={busy || !cfg || !current}>
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} 生成{estimate != null ? ` · ${estimate} 积分` : ''}
                 </Button>
               </div>

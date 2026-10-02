@@ -1,0 +1,120 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> cps-union-platform@1.0.0 test
+> vitest run src/pages/aigc-product.test.tsx
+
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/audit-20261003/cps-platform
+
+ ❯ src/pages/aigc-product.test.tsx (6 tests | 6 failed) 387ms
+   × does not present the demo balance as a real balance on a failed credits read 148ms
+   × shows the server-confirmed charge even when the user did not estimate first 84ms
+   × ignores a delayed estimate after form edits (portal=false) 52ms
+   × ignores a delayed estimate after form edits (portal=true) 31ms
+   × invalidates a settled estimate when the intent changes (portal=false) 53ms
+   × invalidates a settled estimate when the intent changes (portal=true) 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > does not present the demo balance as a real balance on a failed credits read
+AssertionError: expected 'AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费…' not to contain '84,200'
+
+Expected: "84,200"
+Received: "AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费/退款数据，按 LTV 而非 CTR 排名。不卖 AIGC，卖更低风险、更高 LTV 的订阅增长。全部图片短视频文案 生成素材素材实验4接入 CPS 投放链路积分余额84,200按量计费 · 软件服务平均点击率—待投放回流接入最高素材 LTV?—待 LTV 回流接入素材实验台演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中平均转化率 2.6%素材类型关联投放消耗积分点击率转化率素材 LTV状态有道词典·考研冲刺图图片有道网易有道词典 VIP1204.8%3.1%¥104已回收数据芒果会员·热剧短视频短视频芒芒果 TV 会员4806.2%2.4%¥78投放中WPS·职场效率文案文案WWPS 超级会员403.5%2.9%¥96已回收数据喜马拉雅·助眠图图片喜喜马拉雅 会员1205.1%1.8%¥52生成中共 4 条素材实验AIGC 内容标识与素材审查内置（合规要求）"
+
+ ❯ src/pages/aigc-product.test.tsx:44:32
+     42|   calls.credits.mockRejectedValue(new Error('synthetic unavailable ser…
+     43|   await act(async () => root.render(<Aigc />))
+     44|   expect(host.textContent).not.toContain('84,200')
+       |                                ^
+     45|   expect(host.textContent).toContain('余额暂不可用')
+     46| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > shows the server-confirmed charge even when the user did not estimate first
+AssertionError: expected 'AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费…' to contain '消耗 37 积分'
+
+Expected: "消耗 37 积分"
+Received: "AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费/退款数据，按 LTV 而非 CTR 排名。不卖 AIGC，卖更低风险、更高 LTV 的订阅增长。全部图片短视频文案 生成素材素材实验5接入 CPS 投放链路积分余额63素材引擎实时平均点击率—待投放回流接入最高素材 LTV?—待 LTV 回流接入本次生成经素材引擎实时生成 · 可继续接入投放回收 LTV1 条投放文案 · Synthetic descriptionsynthetic-job · 消耗 0 积分待接入投放素材实验台演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中平均转化率 2.6%素材类型关联投放消耗积分点击率转化率素材 LTV状态有道词典·考研冲刺图图片有道网易有道词典 VIP1204.8%3.1%¥104已回收数据芒果会员·热剧短视频短视频芒芒果 TV 会员4806.2%2.4%¥78投放中WPS·职场效率文案文案WWPS 超级会员403.5%2.9%¥96已回收数据喜马拉雅·助眠图图片喜喜马拉雅 会员1205.1%1.8%¥52生成中共 4 条素材实验AIGC 内容标识与素材审查内置（合规要求）"
+
+ ❯ src/pages/aigc-product.test.tsx:51:28
+     49|   await click('生成', host.querySelector('[role=dialog]')!)
+     50|   expect(calls.generate).toHaveBeenCalledOnce()
+     51|   expect(host.textContent).toContain('消耗 37 积分')
+       |                            ^
+     52|   expect(host.textContent).not.toContain('消耗 0 积分')
+     53| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > ignores a delayed estimate after form edits (portal=false)
+AssertionError: expected 'AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费…' not to contain '生成 · 17 积分'
+
+Expected: "生成 · 17 积分"
+Received: "AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费/退款数据，按 LTV 而非 CTR 排名。不卖 AIGC，卖更低风险、更高 LTV 的订阅增长。全部图片短视频文案 生成素材素材实验4接入 CPS 投放链路积分余额100素材引擎实时平均点击率—待投放回流接入最高素材 LTV?—待 LTV 回流接入素材实验台演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中平均转化率 2.6%素材类型关联投放消耗积分点击率转化率素材 LTV状态有道词典·考研冲刺图图片有道网易有道词典 VIP1204.8%3.1%¥104已回收数据芒果会员·热剧短视频短视频芒芒果 TV 会员4806.2%2.4%¥78投放中WPS·职场效率文案文案WWPS 超级会员403.5%2.9%¥96已回收数据喜马拉雅·助眠图图片喜喜马拉雅 会员1205.1%1.8%¥52生成中共 4 条素材实验AIGC 内容标识与素材审查内置（合规要求）生成素材素材类型投放文案目标· 生成意图，影响文案口吻种草科普促转化促续费一句话描述*Changed synthetic description模型档位· 便宜档省积分，均衡档质量更稳便宜均衡高质量先估算积分 →取消 生成 · 17 积分"
+
+ ❯ src/pages/aigc-product.test.tsx:62:32
+     60|   await input('Changed synthetic description')
+     61|   await act(async () => resolve({ ok: true, creditsEstimated: 17 }))
+     62|   expect(host.textContent).not.toContain('生成 · 17 积分')
+       |                                ^
+     63| })
+     64| it.each([false, true])('invalidates a settled estimate when the intent…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > ignores a delayed estimate after form edits (portal=true)
+AssertionError: expected 'AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计…' not to contain '生成 · 17 积分'
+
+Expected: "生成 · 17 积分"
+Received: "AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。素材可直接用于你的推广投放。生成素材选类型 → 一句话描述 → 生成100 积分素材类型投放文案目标· 影响文案口吻种草科普促转化促续费一句话描述*Changed synthetic description模型档位· 便宜档省积分，均衡档质量更稳便宜均衡高质量先估算积分 → 生成 · 17 积分本次生成经素材引擎实时生成，可继续用于投放还没有生成素材在左侧填一句话描述，点击生成。"
+
+ ❯ src/pages/aigc-product.test.tsx:62:32
+     60|   await input('Changed synthetic description')
+     61|   await act(async () => resolve({ ok: true, creditsEstimated: 17 }))
+     62|   expect(host.textContent).not.toContain('生成 · 17 积分')
+       |                                ^
+     63| })
+     64| it.each([false, true])('invalidates a settled estimate when the intent…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > invalidates a settled estimate when the intent changes (portal=false)
+AssertionError: expected 'AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费…' not to contain '生成 · 17 积分'
+
+Expected: "生成 · 17 积分"
+Received: "AIGC · 素材实验积分制自助生成投放素材，每条素材回收点击/转化/续费/退款数据，按 LTV 而非 CTR 排名。不卖 AIGC，卖更低风险、更高 LTV 的订阅增长。全部图片短视频文案 生成素材素材实验4接入 CPS 投放链路积分余额100素材引擎实时平均点击率—待投放回流接入最高素材 LTV?—待 LTV 回流接入素材实验台演示种子素材（CTR/CVR/LTV 为示意）· 真实投放回流接入中平均转化率 2.6%素材类型关联投放消耗积分点击率转化率素材 LTV状态有道词典·考研冲刺图图片有道网易有道词典 VIP1204.8%3.1%¥104已回收数据芒果会员·热剧短视频短视频芒芒果 TV 会员4806.2%2.4%¥78投放中WPS·职场效率文案文案WWPS 超级会员403.5%2.9%¥96已回收数据喜马拉雅·助眠图图片喜喜马拉雅 会员1205.1%1.8%¥52生成中共 4 条素材实验AIGC 内容标识与素材审查内置（合规要求）生成素材素材类型投放文案目标· 生成意图，影响文案口吻种草科普促转化促续费一句话描述*Synthetic description模型档位· 便宜档省积分，均衡档质量更稳便宜均衡高质量先估算积分 →取消 生成 · 17 积分"
+
+ ❯ src/pages/aigc-product.test.tsx:70:32
+     68|   const intent = host.querySelectorAll('select')[1]
+     69|   await act(async () => { intent.value = 'convert'; intent.dispatchEve…
+     70|   expect(host.textContent).not.toContain('生成 · 17 积分')
+       |                                ^
+     71| })
+     72|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/pages/aigc-product.test.tsx > invalidates a settled estimate when the intent changes (portal=true)
+AssertionError: expected 'AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计…' not to contain '生成 · 17 积分'
+
+Expected: "生成 · 17 积分"
+Received: "AIGC 素材一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。素材可直接用于你的推广投放。生成素材选类型 → 一句话描述 → 生成100 积分素材类型投放文案目标· 影响文案口吻种草科普促转化促续费一句话描述*Synthetic description模型档位· 便宜档省积分，均衡档质量更稳便宜均衡高质量先估算积分 → 生成 · 17 积分本次生成经素材引擎实时生成，可继续用于投放还没有生成素材在左侧填一句话描述，点击生成。"
+
+ ❯ src/pages/aigc-product.test.tsx:70:32
+     68|   const intent = host.querySelectorAll('select')[1]
+     69|   await act(async () => { intent.value = 'convert'; intent.dispatchEve…
+     70|   expect(host.textContent).not.toContain('生成 · 17 积分')
+       |                                ^
+     71| })
+     72|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed (6)
+   Start at  07:35:22
+   Duration  2.35s (transform 440ms, setup 113ms, import 597ms, tests 387ms, environment 983ms)
+
