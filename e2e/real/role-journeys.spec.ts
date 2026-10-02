@@ -10,6 +10,12 @@ async function signIn(page: Page, account: string, portal = false) {
   await expect(page).not.toHaveURL(/\/login$/)
 }
 async function capture(page: Page, name: string) {
+  // Capture settled UI, not a transient entrance fade or unfinished font load.
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+    await Promise.all(finite.map((animation) => animation.finished.catch(() => {})))
+  })
   mkdirSync(evidence, { recursive: true })
   await page.screenshot({ path: `${evidence}/${name}.png`, fullPage: true, animations: 'disabled' })
 }
@@ -31,6 +37,12 @@ for (const account of ['admin', 'finance', 'risk', 'ops', 'audit', 'teamadmin', 
     else await expect(page.locator('main')).toBeVisible()
     await page.goto(portal ? '/#/members' : '/#/portal/brand')
     await expect(page).toHaveURL(new RegExp(`#${home}$`))
+    // Redirect completion only proves routing; the portal resource can still be
+    // loading. Assert loaded business content before saving visual evidence.
+    if (account === 'brand') await expect(page.getByText('我的回款', { exact: true })).toBeVisible()
+    if (account === 'agent') await expect(page.getByText('继续选品投放', { exact: true })).toBeVisible()
+    if (account === 'teamadmin') await expect(page.getByText('成员状态管理', { exact: true })).toBeVisible()
+    await expect(page.locator('main .skeleton')).toHaveCount(0)
     await capture(page, `role-${account}`)
   })
 }
