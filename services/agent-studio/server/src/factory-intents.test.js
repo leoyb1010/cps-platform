@@ -53,3 +53,19 @@ describe('CPS and Studio share business intent semantics', () => {
     expect(factory.getFactoryJob(ctx, result.job.id).job.output_json.copy.body).toBe(result.result.copy.body);
   });
 });
+
+describe('ordinary product brief fidelity',()=>{
+ const brief='虚构青禾读书会员，每月三本科普书摘要，年费99元。面向已订阅客户，回顾实际阅读情况后提醒自主续费，不承诺额外优惠。';
+ it('all platform copy and all six cards remain on the stated membership facts and renewal decision',()=>{
+  const pack=buildPack(brief,'howto','balanced',1,'',{businessGoal:FACTORY_INTENTS.retain,businessBrief:brief,businessIntent:'retain'});
+  for(const copy of Object.values(pack.platformCopy)){
+   expect(copy.body).toContain('每月三本科普书摘要');expect(copy.body).toContain('年费99元');expect(copy.body).not.toContain('评论区');expect(copy.body).not.toContain('先分任务再选工具');expect(copy.body.trim().endsWith(FACTORY_INTENTS.retain.action)).toBe(true);
+  }
+  expect(pack.cards).toHaveLength(6);expect(pack.cards[0].body).toContain('年费99元');expect(pack.cards[2].body).toContain('实际使用频次');expect(pack.cards[3].body).toContain('相同需求');expect(pack.cards.at(-1).body).toBe(FACTORY_INTENTS.retain.action);expect(pack.videoFrames[0].voice).toContain('青禾读书会员');expect(pack.videoFrames.at(-1).voice).toContain('续费');
+ });
+ it.each(['educate','convert','retain'])('real local %s generation keeps concrete notebook facts and its chosen action',async intent=>{
+  const prompt='虚构青禾笔记本，采用可回收纸材，适合日常记录；每本24元。不承诺提高学习成绩。';
+  const result=await factory.generateFactoryJob({workspaceId:`brief-${intent}`,userId:'synthetic'},{assetType:'social_pack',prompt,intent,modelPreset:'cheap'});
+  expect(result.ok).toBe(true);expect(result.result.copy.body).toContain('可回收纸材');expect(result.result.copy.body).toContain('每本24元');expect(result.result.copy.body).not.toContain('先分任务再选工具');expect(result.result.copy.body.trim().endsWith(FACTORY_INTENTS[intent].action)).toBe(true);expect(result.job.input_json.prompt).toBe(prompt);
+ });
+});

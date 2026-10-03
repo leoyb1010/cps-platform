@@ -6,6 +6,9 @@ import { Field, Input, Select, Textarea, TagInput } from '../../components/ui/fo
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton } from '../../components/portal/kit'
 import { money } from '../../lib/format'
+import { useTabDraft } from '../../lib/useTabDraft'
+import { beginProduct, finishProduct, ensureProductPersisted, pendingProducts, PRODUCT_OPERATIONS_CHANGED, type ProductOperation } from '../../lib/productOperations'
+import { ApiError, getPrincipalId, isRealApi } from '../../lib/http'
 import { PRODUCT_STATUS as STATUS, BILLING_CYCLE_LABEL as CYCLE } from '../../lib/data'
 
 interface Product {
@@ -17,6 +20,21 @@ export function BrandProducts() {
   const toast = useToast()
   const { data, state, reload } = usePortalResource<Product[]>(() => portalApi.brandProducts())
   const [newOpen, setNewOpen] = useState(false)
+  const [recoveries, setRecoveries] = useState(pendingProducts)
+  const [recovering, setRecovering] = useState(false)
+  const recoveryGate = useRef(false)
+  useEffect(() => { const changed = () => setRecoveries(pendingProducts()); window.addEventListener(PRODUCT_OPERATIONS_CHANGED, changed); return () => window.removeEventListener(PRODUCT_OPERATIONS_CHANGED, changed) }, [])
+  const recover = async (operation: ProductOperation) => {
+    if (recoveryGate.current) return
+    if (isRealApi && operation.owner !== getPrincipalId()) return
+    recoveryGate.current = true; setRecovering(true)
+    try { ensureProductPersisted(operation); const result = await portalApi.addBrandProduct(operation.body, operation.key); if (result.ok) { finishProduct(operation); if (mounted.current) { reload(); toast({ tone: 'good', text: '已找回原商品草稿，没有开始新的创建' }) } } }
+    catch (error) {
+      if (error instanceof ApiError && (error.details as { code?: string })?.code === 'PRODUCT_CREATION_REMOVED') finishProduct(operation)
+      if (mounted.current) toast({ tone: 'alert', text: error instanceof Error ? error.message : '原请求暂时无法确认，请重试' })
+    }
+    finally { recoveryGate.current = false; if (mounted.current) setRecovering(false) }
+  }
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
 
@@ -35,6 +53,7 @@ export function BrandProducts() {
         desc="上架你的订阅商品，平台审核通过后进入用户订阅超市，可被自由搭配成组合套餐。"
         actions={<Button variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> 上架商品</Button>}
       />
+      {!!recoveries.length && <Card className="mb-4"><h2 className="text-sm font-medium">待确认的商品创建</h2><p className="my-2 text-xs text-ink-3">关闭弹窗不代表取消服务端创建。刷新后仍可沿用原请求标识找回结果。</p>{recoveries.map(item => <div key={item.key} className="mb-2 flex flex-wrap items-center gap-2 text-sm"><span className="break-words">{item.body.name}</span><Button disabled={recovering} onClick={() => void recover(item)}>找回原商品</Button></div>)}</Card>}
       <PortalState state={state} data={data} reload={reload} skeleton={<TableSkeleton />}>
         {(d) => {
           const live = d.filter((p) => p.status === 'live').length
@@ -75,11 +94,14 @@ export function BrandProducts() {
   )
 }
 
-function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; onDone: (name: string) => void; onError: (m: string) => void }) {
-  const [f, setF] = useState({ name: '', category: '工具', description: '', billingCycle: 'continuous', firstPrice: 19.9, renewPrice: 29.9, defaultSharePct: 30 })
-  const [bundleEligible, setBundleEligible] = useState(true)
-  const [exclusiveGroup, setExclusiveGroup] = useState('')
-  const [tags, setTags] = useState<string[]>([])
+function NewProductModal({ onClose: closeModal, onDone, onError }: { onClose: () => void; onDone: (name: string) => void; onError: (m: string) => void }) {
+  const { draft, setDraft, clearDraft } = useTabDraft('brand-product', { name: '', category: '工具', description: '', billingCycle: 'continuous', firstPrice: 19.9, renewPrice: 29.9, defaultSharePct: 30, bundleEligible: true, exclusiveGroup: '', tags: [] as string[] })
+  const { bundleEligible, exclusiveGroup, tags, ...f } = draft
+  const setF = (value: typeof f) => setDraft(old => ({ ...old, ...value }))
+  const setBundleEligible = (bundleEligible: boolean) => setDraft(old => ({ ...old, bundleEligible }))
+  const setExclusiveGroup = (exclusiveGroup: string) => setDraft(old => ({ ...old, exclusiveGroup }))
+  const setTags = (tags: string[]) => setDraft(old => ({ ...old, tags }))
+  const onClose = () => { clearDraft(); closeModal() }
   const [pending, setPending] = useState(false)
   const submitting = useRef(false)
   const active = useRef(true)
@@ -93,15 +115,23 @@ function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; on
     if (!(f.defaultSharePct >= 0 && f.defaultSharePct <= 100)) { onError('代理分成需在 0–100% 之间'); return }
     submitting.current = true
     setPending(true)
+    let operation: ProductOperation | undefined
     try {
-      const r = await portalApi.addBrandProduct({ ...f, bundleEligible, exclusiveGroup: exclusiveGroup.trim(), tags })
+      const body = { ...f, bundleEligible, exclusiveGroup: exclusiveGroup.trim(), tags }
+      operation = beginProduct(body)
+      ensureProductPersisted(operation)
+      const r = await portalApi.addBrandProduct(body, operation.key)
       if (r.ok) {
+        finishProduct(operation)
         // Closing a dialog does not cancel a request already accepted by the API.
         // Publish its actual result, but only its own mounted dialog may close.
         onDone(f.name.trim())
         if (active.current) onClose()
       } else if (active.current) { onError('创建失败，请重试') }
-    } catch { if (active.current) onError('网络异常，请重试') }
+    } catch (error) {
+      if (operation && error instanceof ApiError && ([400, 422].includes(error.status) || (error.details as { code?: string })?.code === 'PRODUCT_CREATION_REMOVED')) finishProduct(operation)
+      if (active.current) onError(error instanceof Error ? error.message : '结果尚未确认，请找回原商品或保留内容重试')
+    }
     finally { submitting.current = false; if (active.current) setPending(false) }
   }
   return (

@@ -233,3 +233,16 @@ CREATE TABLE IF NOT EXISTS credit_reservations (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (workspace_id, job_id)
 );
+
+-- Durable caller operations. A pending operation is never retried merely due to age.
+CREATE TABLE IF NOT EXISTS factory_requests (
+    workspace_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    operation_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    job_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, user_id, operation_key)
+);

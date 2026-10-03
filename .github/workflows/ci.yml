@@ -100,6 +100,39 @@ jobs:
         env:
           DATABASE_URL: postgresql://u:p@localhost:5432/db
 
+  product-pg-upgrade:
+    name: Product identity PostgreSQL upgrade and concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: audit, POSTGRES_PASSWORD: synthetic-local-audit-password, POSTGRES_DB: audit }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U audit" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://audit:synthetic-local-audit-password@127.0.0.1:5432/audit
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - run: npm ci && npx prisma generate --schema prisma/schema.postgres.prisma
+      - name: Upgrade a populated legacy schema without rewriting products
+        run: |
+          set -euo pipefail
+          for migration in prisma/migrations-pg/[0-6]_*/migration.sql; do npx prisma db execute --schema prisma/schema.postgres.prisma --file "$migration"; done
+          cat <<'SQL' | npx prisma db execute --schema prisma/schema.postgres.prisma --stdin
+          INSERT INTO "Brand" ("id","name","mark","category","feeRate","period","reservePct","joinedAt") VALUES ('synthetic-migration-brand','Synthetic brand','S','tools',0,30,0,'2026-10-04');
+          INSERT INTO "Product" ("id","brandId","name","firstPrice","renewPrice") VALUES ('legacy-1','synthetic-migration-brand','Legacy one',9900,9900),('legacy-2','synthetic-migration-brand','Legacy two',9900,9900);
+          INSERT INTO "Product" ("id","brandId","name","deletedAt") VALUES ('legacy-3','synthetic-migration-brand','Legacy deleted',CURRENT_TIMESTAMP);
+          SQL
+          npx prisma db execute --schema prisma/schema.postgres.prisma --file prisma/migrations-pg/7_product_creation_identity/migration.sql
+          node scripts/audit-product-pg.cjs
+
   e2e:
     name: 端到端 (Playwright · 真实浏览器)
     runs-on: ubuntu-latest
@@ -162,12 +195,19 @@ jobs:
         env:
           NODE_OPTIONS: --require=${{ github.workspace }}/scripts/test-offline.cjs
         run: |
+          set -euo pipefail
           (cd services/agent-studio && PORT=48787 FRONTEND_PORT=48787 HOST=127.0.0.1 BFF_HOST=127.0.0.1 SERVE_STATIC=false node server/src/index.js) > /tmp/cps-role-studio.log 2>&1 &
+          studio_pid=$!
           (cd server && node dist/src/main.js) > /tmp/cps-role-server.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3001/ready >/dev/null && curl -fsS http://127.0.0.1:48787/api/health >/dev/null; then break; fi
             sleep 1
           done
+          node scripts/audit-round2-integration.mjs
+          kill "$studio_pid"; wait "$studio_pid" || true
+          (cd services/agent-studio && PORT=48787 FRONTEND_PORT=48787 HOST=127.0.0.1 BFF_HOST=127.0.0.1 SERVE_STATIC=false node server/src/index.js) >> /tmp/cps-role-studio.log 2>&1 &
+          for i in $(seq 1 30); do if curl -fsS http://127.0.0.1:48787/api/health >/dev/null; then break; fi; sleep 1; done
+          node scripts/audit-round2-integration.mjs --read-after-restart
           npx playwright test --config playwright.roles.config.ts
       - uses: actions/upload-artifact@v4
         if: always()

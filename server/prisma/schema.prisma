@@ -439,6 +439,10 @@ model Product {
   tags            String    @default("[]") // JSON string[]
   createdAt       DateTime  @default(now())
   deletedAt       DateTime?
+  // Persistent create identity survives ordinary idempotency-cache cleanup.
+  creationKey         String? @unique
+  creationFingerprint String?
+
 }
 
 // 用户在超市自由搭配多个上架 Product 组合成的套餐（含组合优惠算价快照）。

@@ -10,6 +10,7 @@ let sessionVersion = 0
 let accessToken: string | null = null
 let principalId: string | null = null
 export const getSessionVersion = () => sessionVersion
+export const getPrincipalId = () => principalId
 export const setAccessToken = (t: string | null, userId?: string) => {
   accessToken = t
   principalId = t ? userId ?? null : null
@@ -20,6 +21,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public details?: unknown,
   ) {
     super(message)
   }
@@ -131,14 +133,16 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}, res
   }
   if (!res.ok) {
     let msg = `请求失败 (${res.status})`
+    let details: unknown
     try {
       const e = await res.json()
       msg = e.message || msg
+      details = e
     } catch {
       /* ignore */
     }
     assertCurrentSession()
-    throw new ApiError(res.status, msg)
+    throw new ApiError(res.status, msg, details)
   }
   if (res.status === 204) return undefined as T
   const data = (responseType === 'blob' ? await res.blob() : await res.json()) as T

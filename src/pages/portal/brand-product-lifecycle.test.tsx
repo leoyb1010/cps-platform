@@ -1,6 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { setAccessToken } from '../../lib/http'
 import { BrandProducts } from './BrandProducts'
 
 const calls = vi.hoisted(() => ({ brandProducts: vi.fn(), addBrandProduct: vi.fn(), submitProduct: vi.fn(), toast: vi.fn() }))
@@ -9,6 +10,7 @@ vi.mock('../../components/ui/overlays', async original => ({ ...await original<t
 let root: Root
 let host: HTMLDivElement
 beforeEach(async () => {
+  sessionStorage.clear(); setAccessToken('synthetic-access', `synthetic-product-${crypto.randomUUID()}`)
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
   calls.brandProducts.mockReset().mockResolvedValue([])
@@ -97,4 +99,18 @@ it('separate deliberate drafts each complete once without cross-closing', async 
   expect(document.body.querySelector('[role=dialog]')).toBeNull()
   expect(calls.brandProducts).toHaveBeenCalledTimes(3)
   expect(calls.toast).toHaveBeenCalledTimes(2)
+})
+
+it('keeps a creation operation over an unknown response retry but rotates it for an edited intent',async()=>{
+ calls.addBrandProduct.mockRejectedValue(new TypeError('Synthetic acknowledgment lost'))
+ await open('First logical draft');await click('创建草稿');await click('创建草稿')
+ expect(calls.addBrandProduct).toHaveBeenCalledTimes(2)
+ const first=calls.addBrandProduct.mock.calls[0][1];expect(typeof first).toBe('string');expect(first.length).toBeGreaterThan(12);expect(calls.addBrandProduct.mock.calls[1][1]).toBe(first)
+ await name('Edited logical draft');await click('创建草稿');expect(calls.addBrandProduct.mock.calls[2][1]).not.toBe(first)
+})
+it('unknown create survives route reload with the same payload/key and restored fields',async()=>{
+ calls.addBrandProduct.mockRejectedValue(new Error('Synthetic lost response'));await open('Restore original product');await click('创建草稿');const key=calls.addBrandProduct.mock.calls[0][1];await act(async()=>root.render(<p>Other route</p>));await act(async()=>root.render(<BrandProducts/>));expect(host.textContent).toContain('待确认的商品创建');await click('上架商品');expect(document.querySelector<HTMLInputElement>('input[placeholder="如：会员 VIP 连续包月"]')?.value).toBe('Restore original product');await click('创建草稿');expect(calls.addBrandProduct.mock.calls[1][1]).toBe(key)
+})
+it('closed unknown request stays recoverable while a distinct new draft is edited',async()=>{
+ calls.addBrandProduct.mockRejectedValueOnce(new Error('Synthetic lost response')).mockResolvedValue({ok:true,id:'original'});await open('Original A');await click('创建草稿');const key=calls.addBrandProduct.mock.calls[0][1];await click('取消');await open('Unrelated B');await click('找回原商品');expect(calls.addBrandProduct.mock.calls[1][1]).toBe(key);expect(document.querySelector<HTMLInputElement>('input[placeholder="如：会员 VIP 连续包月"]')?.value).toBe('Unrelated B');expect(host.textContent).not.toContain('待确认的商品创建')
 })

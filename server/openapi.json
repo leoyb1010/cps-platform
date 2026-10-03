@@ -1833,7 +1833,16 @@
       },
       "post": {
         "operationId": "PortalController_addBrandProduct",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {

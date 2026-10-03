@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { Wand2, Loader2 } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button } from '../../components/ui/primitives'
 import { Field, Select, Textarea } from '../../components/ui/forms'
-import { aigcApi, type FactoryConfig, type GeneratePayload } from '../../lib/aigcApi'
+import { aigcApi, generationErrorMessage, type FactoryConfig, type GeneratePayload } from '../../lib/aigcApi'
 import { isRealApi } from '../../lib/http'
 import { DemoNotice } from '../../components/portal/kit'
 import { int } from '../../lib/format'
 import { GeneratedMaterials, type GeneratedMaterial } from '../../components/aigc/GeneratedMaterials'
+import { useTabDraft } from '../../lib/useTabDraft'
+import { GENERATION_RECOVERED } from '../../components/aigc/GenerationRecovery'
 import { useAigcEstimate } from '../../lib/useAigcEstimate'
 
 // 客户门户 AIGC 素材生成（轻量版）：复用 cps 的 /aigc 代理（→ agent-studio 微服务），
@@ -18,11 +20,26 @@ export function PortalAigc() {
   const [credits, setCredits] = useState<number | null>(null)
   const creditRevision = useRef(0)
   const [gens, setGens] = useState<GeneratedMaterial[]>([])
+  useEffect(() => {
+    const refreshed = () => {
+      const revision = ++creditRevision.current
+      setCredits(null)
+      void aigcApi.credits().then(result => {
+        const balance = result.credits?.availableCredits ?? result.credits?.balance
+        if (creditRevision.current === revision) setCredits(typeof balance === 'number' ? balance : null)
+      }).catch(() => {})
+    }
+    window.addEventListener(GENERATION_RECOVERED, refreshed)
+    return () => { window.removeEventListener(GENERATION_RECOVERED, refreshed); creditRevision.current += 1 }
+  }, [])
 
-  const [assetType, setAssetType] = useState('carousel')
-  const [intent, setIntent] = useState('educate')
-  const [prompt, setPrompt] = useState('')
-  const [preset, setPreset] = useState('balanced')
+
+  const { draft, setDraft, clearDraft } = useTabDraft('aigc', { assetType: 'carousel', intent: 'educate', prompt: '', preset: 'balanced' })
+  const { assetType, intent, prompt, preset } = draft
+  const setAssetType = (assetType: string) => setDraft(old => ({ ...old, assetType }))
+  const setIntent = (intent: string) => setDraft(old => ({ ...old, intent }))
+  const setPrompt = (prompt: string) => setDraft(old => ({ ...old, prompt }))
+  const setPreset = (preset: string) => setDraft(old => ({ ...old, preset }))
   const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
   const submitting = useRef(false)
@@ -37,7 +54,7 @@ export function PortalAigc() {
     aigcApi.config().then((c) => {
       if (creditRevision.current !== revision) return
       setCfg(c)
-      if (c.assetTypes?.[0]) setAssetType(c.assetTypes[0].id)
+      if (c.assetTypes?.[0]) setDraft(previous => c.assetTypes.some(item => item.id === previous.assetType) ? previous : { ...previous, assetType: c.assetTypes[0].id })
       const bal = c.credits?.availableCredits ?? c.credits?.balance
       if (typeof bal === 'number') setCredits(bal)
     }).catch(() => { if (creditRevision.current === revision) setLoadErr(true) })
@@ -46,7 +63,7 @@ export function PortalAigc() {
       if (creditRevision.current === revision && typeof c === 'number') setCredits(c)
     }).catch(() => {})
     return () => { creditRevision.current += 1 }
-  }, [configAttempt])
+  }, [configAttempt, setDraft])
 
   const assetTypes = cfg?.assetTypes ?? []
   const current = assetTypes.find((a) => a.id === assetType)
@@ -70,6 +87,7 @@ export function PortalAigc() {
     setBusy(true); setMsg('')
     try {
       const r = await aigcApi.generate(payload())
+      if (r.pending || (r.job && r.job.status !== 'completed')) { if (active.current) setMsg('原任务仍在处理中，请在待确认请求中查询。'); return }
       if (!r.ok || !r.job) throw new Error('no job')
       if (!active.current) return
       setGens((p) => [{ jobId: r.job!.id, assetType, assetLabel: current?.label ?? assetType, prompt: prompt.trim(), output: r.result, credits: r.job!.credits_charged }, ...p])
@@ -79,8 +97,8 @@ export function PortalAigc() {
         const balance = result.credits?.availableCredits ?? result.credits?.balance
         if (active.current && creditRevision.current === revision) setCredits(typeof balance === 'number' ? balance : null)
       }).catch(() => {})
-      setPrompt(''); invalidateEstimate(); setMsg('')
-    } catch { if (active.current) setMsg('生成失败：素材服务未连接') } finally { submitting.current = false; if (active.current) setBusy(false) }
+      setPrompt(''); clearDraft(); invalidateEstimate(); setMsg('')
+    } catch (error) { if (active.current) setMsg(generationErrorMessage(error)) } finally { submitting.current = false; if (active.current) setBusy(false) }
   }
 
   return (

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { FactoryGenerateRequestSchema } from "./schema.js";
 import { FACTORY_INTENTS } from "./factoryIntents.js";
 import { buildPack } from "../../src/lib/contentEngine.js";
 import { buildVisualPlan, renderMotionHtml, renderXhsCarouselHtml, visualSize } from "../../src/lib/visualEngine.js";
@@ -7,6 +9,11 @@ import { CREDIT_PLANS, creditSummary, estimateCredits } from "./credits.js";
 import { modelGatewayStatus, runModel } from "./modelGateway.js";
 import {
   consumeCredits,
+  factoryTransaction,
+  getFactoryUsage,
+  getFactoryRequest,
+  createFactoryRequest,
+  finishFactoryRequest,
   createFactoryJob,
   getCreditAccount,
   getFactoryJob as readFactoryJob,
@@ -79,64 +86,92 @@ export function estimateFactoryJob(input = {}) {
   };
 }
 
-export async function generateFactoryJob(ctx, input = {}) {
-  const estimate = estimateFactoryJob(input);
-  const assetType = FACTORY_ASSET_TYPES.find((item) => item.id === input.assetType) || FACTORY_ASSET_TYPES[0];
-  const job = createFactoryJob(ctx.workspaceId, {
-    userId: ctx.userId,
-    assetType: assetType.id,
-    platform: input.platform || assetType.defaultPlatform || "xhs",
-    intent: input.intent || "educate",
-    prompt: input.prompt,
-    style: input.style || "premium",
-    modelPreset: input.modelPreset || "balanced",
-    input,
-    creditsEstimated: estimate.creditsEstimated,
-    status: "running"
-  });
+function requestFingerprint(input) {
+  const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+  const { operationKey: _key, workspaceId: _workspace, userId: _user, ...payload } = input;
+  return createHash("sha256").update(JSON.stringify(canonical(payload))).digest("hex");
+}
+function factoryResponse(ctx, job, replayed = false) {
+  const usage = getFactoryUsage(ctx.workspaceId, job.id);
+  const credits = creditSummary(getCreditAccount(ctx.workspaceId), listCreditLedger(ctx.workspaceId, 8));
+  if (job.status === "completed") return { ok: true, replayed, job, result: job.output_json, usage, credits };
+  if (job.status === "failed") return { ok: false, replayed, job, usage, message: job.failure_reason || "Generation failed", credits };
+  return { ok: true, pending: true, replayed, job, credits, message: "The original task is still pending; no new generation was started" };
+}
 
+export async function generateFactoryJob(ctx, rawInput = {}) {
+  const input = FactoryGenerateRequestSchema.parse(rawInput);
+  const operationKey = input.operationKey || "";
+  const fingerprint = requestFingerprint(input);
+  const estimate = estimateFactoryJob(input);
+  const assetType = FACTORY_ASSET_TYPES.find(item => item.id === input.assetType) || FACTORY_ASSET_TYPES[0];
+  let job;
   try {
-    reserveCredits({ workspaceId: ctx.workspaceId, amount: estimate.creditsEstimated, jobId: job.id });
+    const started = factoryTransaction(() => {
+      if (operationKey) {
+        const original = getFactoryRequest(ctx, operationKey);
+        if (original) {
+          if (original.request_hash !== fingerprint) return { conflict: "The operation key belongs to a different generation request" };
+          const originalJob = readFactoryJob(ctx.workspaceId, original.job_id);
+          if (!originalJob) return { conflict: "The original operation needs review; it will not be generated again" };
+          return { job: originalJob, replayed: true };
+        }
+      }
+      const created = createFactoryJob(ctx.workspaceId, {
+        userId: ctx.userId, assetType: assetType.id, platform: input.platform || assetType.defaultPlatform || "xhs",
+        intent: input.intent, prompt: input.prompt, style: input.style, modelPreset: input.modelPreset,
+        input, creditsEstimated: estimate.creditsEstimated, status: "running"
+      });
+      reserveCredits({ workspaceId: ctx.workspaceId, amount: estimate.creditsEstimated, jobId: created.id });
+      if (operationKey) createFactoryRequest(ctx, operationKey, fingerprint, created.id);
+      return { job: created, replayed: false };
+    });
+    if (started.conflict) return { ok: false, status: 409, message: started.conflict, credits: creditSummary(getCreditAccount(ctx.workspaceId)) };
+    job = started.job;
+    if (started.replayed) return factoryResponse(ctx, job, true);
+
     const result = await executeFactoryJob(ctx, job, input, assetType, estimate);
-    const usage = recordUsageEvent(ctx.workspaceId, {
-      userId: ctx.userId,
-      jobId: job.id,
-      provider: result.model?.provider || result.gateway?.provider || "local-fallback",
-      model: result.model?.model || result.gateway?.model || input.modelPreset || "balanced",
-      modality: assetType.modality,
-      task: assetType.id,
-      usage: result.gateway?.usage,
-      creditsEstimated: estimate.creditsEstimated,
-      creditsCharged: estimate.creditsEstimated,
-      status: "completed",
-      metadata: result
+    const updated = factoryTransaction(() => {
+      const current = readFactoryJob(ctx.workspaceId, job.id);
+      if (!current || current.user_id !== ctx.userId || !["pending", "running"].includes(current.status)) throw new Error("Factory job ownership changed");
+      const usage = recordUsageEvent(ctx.workspaceId, {
+        id: `factory-usage-${job.id}`, userId: ctx.userId, jobId: job.id,
+        provider: result.model?.provider || result.gateway?.provider || "local-fallback",
+        model: result.model?.model || result.gateway?.model || input.modelPreset,
+        modality: assetType.modality, task: assetType.id, usage: result.gateway?.usage,
+        creditsEstimated: estimate.creditsEstimated, creditsCharged: estimate.creditsEstimated, status: "completed", metadata: result
+      });
+      consumeCredits({ workspaceId: ctx.workspaceId, userId: ctx.userId, amount: estimate.creditsEstimated, jobId: job.id, usageEventId: usage.id, reason: `factory:${assetType.id}` });
+      const completed = updateFactoryJob(ctx.workspaceId, job.id, { status: "completed", output: result, creditsCharged: estimate.creditsEstimated });
+      finishFactoryRequest(ctx, operationKey, job.id, "completed");
+      return completed;
     });
-    consumeCredits({ workspaceId: ctx.workspaceId, userId: ctx.userId, amount: estimate.creditsEstimated, jobId: job.id, usageEventId: usage.id, reason: `factory:${assetType.id}` });
-    const updated = updateFactoryJob(ctx.workspaceId, job.id, { status: "completed", output: result, creditsCharged: estimate.creditsEstimated });
-    return {
-      ok: true,
-      job: updated,
-      result,
-      usage,
-      credits: creditSummary(getCreditAccount(ctx.workspaceId), listCreditLedger(ctx.workspaceId, 8))
-    };
+    return factoryResponse(ctx, updated);
   } catch (error) {
-    refundCredits({ workspaceId: ctx.workspaceId, userId: ctx.userId, amount: estimate.creditsEstimated, jobId: job.id, reason: "factory_failed" });
-    const usage = recordUsageEvent(ctx.workspaceId, {
-      userId: ctx.userId,
-      jobId: job.id,
-      provider: "factory",
-      model: input.modelPreset || "balanced",
-      modality: assetType.modality,
-      task: assetType.id,
-      creditsEstimated: estimate.creditsEstimated,
-      creditsCharged: 0,
-      status: "failed",
-      error: error?.message || String(error)
+    if (!job) return { ok: false, message: error?.message || "Generation admission failed", credits: creditSummary(getCreditAccount(ctx.workspaceId), listCreditLedger(ctx.workspaceId, 8)) };
+    const failed = factoryTransaction(() => {
+      const current = readFactoryJob(ctx.workspaceId, job.id);
+      // Never refund an already committed completion because delivery failed later.
+      if (current?.status === "completed" || current?.status === "failed") return current;
+      if (!current || current.user_id !== ctx.userId) throw new Error("Factory job ownership changed");
+      refundCredits({ workspaceId: ctx.workspaceId, userId: ctx.userId, amount: estimate.creditsEstimated, jobId: job.id, reason: "factory_failed" });
+      recordUsageEvent(ctx.workspaceId, { id: `factory-usage-${job.id}`, userId: ctx.userId, jobId: job.id, provider: "factory", model: input.modelPreset,
+        modality: assetType.modality, task: assetType.id, creditsEstimated: estimate.creditsEstimated, creditsCharged: 0, status: "failed", error: error?.message || String(error) });
+      const updated = updateFactoryJob(ctx.workspaceId, job.id, { status: "failed", output: { error: error?.message || String(error) }, failureReason: error?.message || String(error), creditsCharged: 0 });
+      finishFactoryRequest(ctx, operationKey, job.id, "failed");
+      return updated;
     });
-    const updated = updateFactoryJob(ctx.workspaceId, job.id, { status: "failed", output: { error: error?.message || String(error) }, failureReason: error?.message || String(error), creditsCharged: 0 });
-    return { ok: false, job: updated, usage, message: error?.message || String(error), credits: creditSummary(getCreditAccount(ctx.workspaceId), listCreditLedger(ctx.workspaceId, 8)) };
+    return factoryResponse(ctx, failed);
   }
+}
+
+export function getFactoryOperation(ctx, key) {
+  if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(key)) return { ok: false, status: 400, message: "Invalid operation key" };
+  const request = getFactoryRequest(ctx, key);
+  const job = request && readFactoryJob(ctx.workspaceId, request.job_id);
+  if (!job || job.user_id !== ctx.userId) return { ok: false, status: 404, message: "Factory operation not found" };
+  return factoryResponse(ctx, job, true);
 }
 
 export function getFactoryJobs(ctx, limit = 30) {
@@ -171,7 +206,7 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
 
   if (!gateway.ok) throw new Error("Model generation failed; credits were released");
 
-  const pack = buildPack(input.prompt, direction, tone, generation, [input.audience, input.extraContext].filter(Boolean).join("；"), { businessGoal });
+  const pack = buildPack(input.prompt, direction, tone, generation, [input.audience, input.extraContext].filter(Boolean).join("；"), { businessGoal, businessBrief: input.prompt, businessIntent: intent });
   // Artifact directories belong to the globally unique job, not a reusable
   // content-derived client identifier shared by simultaneous tenants.
   pack.id = job.id;
@@ -203,7 +238,7 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
     } catch (error) {
       throw new Error("Media rendering failed; credits were released");
     }
-    return { type: "video", pack, plan, motionPreview, storyboard: gateway.output?.storyboard || pack.videoFrames, warning, gateway, estimate };
+    return { type: "video", pack, plan, motionPreview, storyboard: gateway.provider === "local-fallback" ? pack.videoFrames : gateway.output?.storyboard || pack.videoFrames, warning, gateway, estimate };
   }
 
   if (["image", "poster", "ad"].includes(assetType.id)) {

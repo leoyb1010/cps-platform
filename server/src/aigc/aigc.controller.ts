@@ -1,7 +1,7 @@
 import { All, Controller, Req, Res, ForbiddenException } from '@nestjs/common'
 import { ApiExcludeController } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
-import { randomUUID, createHmac } from 'crypto'
+import { createHash, createHmac } from 'crypto'
 import type { Request, Response } from 'express'
 import { PrismaService } from '../prisma.service'
 import { RequirePerms, type AuthUser } from '../rbac/rbac'
@@ -41,22 +41,22 @@ export class AigcController {
 
   // 生成成功后在 CPS 侧建 Asset 归属记录（债5）：素材挂到发起方品牌/代理。
   // 弱引用 agent-studio 的 job.id，不复制素材内容；微服务侧仍是素材真身。
-  private async recordAsset(user: AuthUser, body: Record<string, unknown>, resultText: string) {
+  private async recordAsset(user: AuthUser, job: Record<string, unknown>, body: Record<string, unknown> = {}): Promise<boolean> {
+    if (!job.id || job.status !== 'completed') return false
     try {
-      const r = JSON.parse(resultText)
-      if (!r.ok || !r.job?.id) return
-      await this.prisma.asset.create({
-        data: {
-          id: 'AST-' + randomUUID().slice(0, 6),
-          brandId: user.scopeType === 'brand' ? user.scopeId : null,
-          agentId: user.scopeType === 'agent' ? user.scopeId : null,
-          assetType: String(body.assetType ?? ''),
-          jobId: String(r.job.id),
-          prompt: String(body.prompt ?? '').slice(0, 120),
-          status: 'generated',
+      const ownership = { brandId: user.scopeType === 'brand' ? user.scopeId : null, agentId: user.scopeType === 'agent' ? user.scopeId : null }
+      const existing = await this.prisma.asset.findFirst({ where: { jobId: String(job.id), ...ownership } })
+      if (existing) return true
+      const id = 'AST-' + createHash('sha256').update(JSON.stringify([user.scopeType, user.scopeId, job.id])).digest('hex').slice(0, 32)
+      await this.prisma.asset.upsert({
+        where: { id }, update: {}, create: {
+          id, ...ownership,
+          assetType: String(job.asset_type ?? job.assetType ?? body.assetType ?? ''),
+          jobId: String(job.id), prompt: String(job.prompt ?? body.prompt ?? '').slice(0, 120), status: 'generated',
         },
       })
-    } catch { /* 归属落库失败不影响素材生成主流程 */ }
+      return true
+    } catch { return false } // The completed engine result remains retrievable; reads retry registration.
   }
 
   @All('factory/*path')
@@ -94,6 +94,13 @@ export class AigcController {
 
     const fwdBody: Record<string, unknown> = { ...((req.body as Record<string, unknown>) ?? {}) }
     delete fwdBody.workspaceId; delete fwdBody.userId
+    if (tail === 'generate' && req.headers['idempotency-key']) {
+      const operationKey = req.headers['idempotency-key']
+      if (typeof operationKey !== 'string' || (fwdBody.operationKey && fwdBody.operationKey !== operationKey)) {
+        res.status(400).json({ message: '生成请求标识冲突' }); return
+      }
+      fwdBody.operationKey = operationKey
+    }
 
     // 可信租户头：按登录 scope 生成 workspaceId + HMAC 签名注入。需两侧配 AIGC_INTERNAL_SECRET；
     // Missing signing configuration must never merge distinct tenants into default.
@@ -133,10 +140,16 @@ export class AigcController {
         res.status(upstream.status).send(bytes)
         return
       }
-      const text = await upstream.text()
+      let text = await upstream.text()
       // 生成成功 → 在 CPS 侧建 Asset 归属（仅 factory/generate，且有客户 scope）
-      if (upstream.ok && tail === 'generate' && user?.scopeId) {
-        await this.recordAsset(user, req.body ?? {}, text)
+      if (upstream.ok && user?.scopeId && (tail === 'generate' || tail === 'jobs' || /^(jobs|operations)\/[^/]+$/.test(tail))) {
+        const result = JSON.parse(text)
+        const jobs = Array.isArray(result.jobs) ? result.jobs : result.job ? [result.job] : []
+        for (const job of jobs) if (job.status === 'completed') {
+          job.assetRegistration = await this.recordAsset(user, job, req.body ?? {}) ? 'registered' : 'pending'
+        }
+        if (result.job) result.assetRegistration = result.job.assetRegistration
+        text = JSON.stringify(result)
       }
       res.status(upstream.status)
       res.setHeader('content-type', upstream.headers.get('content-type') || 'application/json')

@@ -5,12 +5,13 @@ import Aigc from './Aigc'
 import { PortalAigc } from './portal/PortalAigc'
 
 const calls = vi.hoisted(() => ({ real: true, config: vi.fn(), credits: vi.fn(), estimate: vi.fn(), generate: vi.fn(), jobs: vi.fn() }))
-vi.mock('../lib/http', () => ({ get isRealApi() { return calls.real } }))
-vi.mock('../lib/aigcApi', () => ({ aigcApi: calls }))
+vi.mock('../lib/http', async importOriginal => ({ ...await importOriginal<typeof import('../lib/http')>(), getPrincipalId: () => 'synthetic-component-owner', get isRealApi() { return calls.real } }))
+vi.mock('../lib/aigcApi', async importOriginal => ({ ...await importOriginal<typeof import('../lib/aigcApi')>(), aigcApi: calls }))
 let root: Root
 let host: HTMLDivElement
 const config = { ok: true, assetTypes: [{ id: 'copy', label: '投放文案', modality: 'text', defaultPlatform: 'xhs' }] }
 beforeEach(() => {
+  sessionStorage.clear()
   calls.real = true
   calls.jobs.mockReset().mockResolvedValue({jobs:[]})
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
@@ -18,7 +19,7 @@ beforeEach(() => {
   calls.config.mockReset().mockResolvedValue(config)
   calls.credits.mockReset().mockResolvedValue({ ok: true, credits: { availableCredits: 100 } })
   calls.estimate.mockReset().mockResolvedValue({ ok: true, creditsEstimated: 17 })
-  calls.generate.mockReset().mockResolvedValue({ ok: true, job: { id: 'synthetic-job', status: 'completed', credits_charged: 37 }, credits: { availableCredits: 63 } })
+  calls.generate.mockReset().mockResolvedValue({ ok: true, job: { status: 'completed', id: 'synthetic-job', credits_charged: 37 }, credits: { availableCredits: 63 } })
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
@@ -94,7 +95,7 @@ it.each([false, true])('keeps the newest of overlapping estimates (portal=%s)', 
 })
 
 it.each([0, undefined])('uses only a confirmed charge, preserving zero and unknown distinctly (%s)', async charge => {
-  calls.generate.mockResolvedValue({ ok: true, job: { id: 'synthetic-charge', credits_charged: charge } })
+  calls.generate.mockResolvedValue({ ok: true, job: { status: 'completed', id: 'synthetic-charge', credits_charged: charge } })
   await mount()
   await click('先估算积分 →')
   await click('生成 · 17 积分')
@@ -133,7 +134,7 @@ it.each([false, true])('freezes the submitted form while generation is in flight
   await click('生成')
   expect(document.body.querySelector('textarea')!.disabled).toBe(true)
   for (const select of document.body.querySelectorAll('select')) expect(select.disabled).toBe(true)
-  await act(async () => resolve({ ok: true, job: { id: 'synthetic-busy', credits_charged: 37 }, credits: { availableCredits: 63 } }))
+  await act(async () => resolve({ ok: true, job: { status: 'completed', id: 'synthetic-busy', credits_charged: 37 }, credits: { availableCredits: 63 } }))
   if (portal) expect(document.body.querySelector('textarea')!.disabled).toBe(false)
 })
 
@@ -141,21 +142,21 @@ it.each([false,true])('one pending generation owns repeated same-tick clicks (po
  let resolve!:(v:unknown)=>void;calls.generate.mockImplementation(()=>new Promise(r=>{resolve=r}));await mount(portal)
  const button=[...document.body.querySelectorAll('button')].find(b=>b.textContent?.trim()==='生成')!
  await act(async()=>{button.click();button.click()});expect(calls.generate).toHaveBeenCalledOnce()
- await act(async()=>resolve({ok:true,job:{id:'single-generation',credits_charged:4},credits:{availableCredits:96}}))
+ await act(async()=>resolve({ok:true,job:{status:'completed',id:'single-generation',credits_charged:4},credits:{availableCredits:96}}))
 })
 it('an accepted old generation keeps its result without closing a newer modal draft',async()=>{
  let resolve!:(v:unknown)=>void;calls.generate.mockImplementation(()=>new Promise(r=>{resolve=r}));await mount();await click('生成');await click('取消');await click('生成素材');await input('New draft must survive')
- await act(async()=>resolve({ok:true,job:{id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
+ await act(async()=>resolve({ok:true,job:{status:'completed',id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
  expect(document.body.querySelector('textarea')?.value).toBe('New draft must survive');expect(document.body.textContent).toContain('old-accepted')
 })
 
 it('late accepted response cannot restore an older balance after a newer generation',async()=>{
  let releaseOld!:(v:unknown)=>void
- calls.generate.mockImplementationOnce(()=>new Promise(r=>{releaseOld=r})).mockResolvedValueOnce({ok:true,job:{id:'new-accepted',credits_charged:4},credits:{availableCredits:92}})
+ calls.generate.mockImplementationOnce(()=>new Promise(r=>{releaseOld=r})).mockResolvedValueOnce({ok:true,job:{status:'completed',id:'new-accepted',credits_charged:4},credits:{availableCredits:92}})
  await mount();await click('生成');await click('取消');await click('生成素材');await input('New independent request')
  calls.credits.mockResolvedValue({ok:true,credits:{availableCredits:92}})
  await click('生成');expect(document.body.textContent).toContain('92')
- await act(async()=>releaseOld({ok:true,job:{id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
+ await act(async()=>releaseOld({ok:true,job:{status:'completed',id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
  expect(document.body.textContent).toContain('92');expect(document.body.textContent).not.toContain('积分余额96');expect(document.body.textContent).toContain('new-accepted');expect(document.body.textContent).toContain('old-accepted')
 })
 it('old failure leaves a newer draft and its controls usable',async()=>{
@@ -163,11 +164,23 @@ it('old failure leaves a newer draft and its controls usable',async()=>{
  await act(async()=>reject(new Error('synthetic old failure')));expect(document.body.querySelector('textarea')?.value).toBe('Unrelated newer draft');expect(document.body.querySelector('textarea')?.disabled).toBe(false)
 })
 it.each([false,true])('route unmount prevents late generation UI and balance reads (portal=%s)',async portal=>{
- let resolve!:(v:unknown)=>void;calls.generate.mockImplementationOnce(()=>new Promise(r=>{resolve=r}));await mount(portal);await click('生成');const reads=calls.credits.mock.calls.length;await act(async()=>root.render(<p>Another route</p>));await act(async()=>resolve({ok:true,job:{id:'old-route-job',credits_charged:4},credits:{availableCredits:96}}));expect(calls.credits).toHaveBeenCalledTimes(reads);expect(host.textContent).toBe('Another route')
+ let resolve!:(v:unknown)=>void;calls.generate.mockImplementationOnce(()=>new Promise(r=>{resolve=r}));await mount(portal);await click('生成');const reads=calls.credits.mock.calls.length;await act(async()=>root.render(<p>Another route</p>));await act(async()=>resolve({ok:true,job:{status:'completed',id:'old-route-job',credits_charged:4},credits:{availableCredits:96}}));expect(calls.credits).toHaveBeenCalledTimes(reads);expect(host.textContent).toBe('Another route')
 })
 it('a late authoritative balance read cannot replace a newer post-generation read',async()=>{
  let release!:(v:unknown)=>void
  calls.credits.mockResolvedValueOnce({ok:true,credits:{availableCredits:100}}).mockImplementationOnce(()=>new Promise(r=>{release=r})).mockResolvedValue({ok:true,credits:{availableCredits:92}})
  await mount();await click('生成');await click('生成素材');await input('Second accepted generation');await click('生成');expect(host.textContent).toContain('92')
  await act(async()=>release({ok:true,credits:{availableCredits:96}}));expect(host.textContent).toContain('92');expect(host.textContent).not.toContain('积分余额96')
+})
+it.each([false,true])('pending generation is retained without success material or balance mutation (portal=%s)',async portal=>{
+ calls.generate.mockResolvedValue({ok:true,pending:true,job:{id:'pending-job',status:'running'}})
+ if(portal)await act(async()=>root.render(<PortalAigc/>));else{await act(async()=>root.render(<Aigc/>));await click('生成素材')}
+ await input('Pending original intent');await click('生成')
+ expect(document.body.querySelector('textarea')?.value).toBe('Pending original intent');expect(document.body.textContent).not.toContain('消耗 0 积分');expect(document.body.querySelector('article')).toBeNull();expect(calls.credits.mock.calls.length).toBe(1)
+})
+it.each([false,true])('route interruption retains the owned form fields (portal=%s)',async portal=>{
+ if(portal)await act(async()=>root.render(<PortalAigc/>));else{await act(async()=>root.render(<Aigc/>));await click('生成素材')}
+ await input('Resume this unfinished brief');await act(async()=>root.render(<p>Other route</p>))
+ if(portal)await act(async()=>root.render(<PortalAigc/>));else{await act(async()=>root.render(<Aigc/>));await click('生成素材')}
+ expect(document.body.querySelector('textarea')?.value).toBe('Resume this unfinished brief')
 })

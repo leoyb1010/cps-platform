@@ -128,7 +128,8 @@ import {
   getBillingCredits,
   getFactoryConfig,
   getFactoryJob,
-  getFactoryJobs
+  getFactoryJobs,
+  getFactoryOperation
 } from "./factory.js";
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -351,7 +352,12 @@ app.post("/api/factory/generate", async (c) => {
   if (!parsed.success) return jsonError(c, 400, "Invalid factory generate request", parsed.error.flatten());
   const ctx = resolveRequestContext(c, parsed.data);
   const result = await generateFactoryJob(ctx, parsed.data);
-  return c.json(result, result.ok ? 200 : 500);
+  return c.json(result, result.ok ? (result.pending ? 202 : 200) : (result.status || 500));
+});
+
+app.get("/api/factory/operations/:key", async (c) => {
+  const result = getFactoryOperation(resolveRequestContext(c), c.req.param("key"));
+  return c.json(result, result.status || (result.pending ? 202 : 200));
 });
 
 app.get("/api/factory/jobs", async (c) => {

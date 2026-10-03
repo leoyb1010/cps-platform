@@ -339,5 +339,6 @@ export const FactoryEstimateRequestSchema = z.object({
 });
 
 export const FactoryGenerateRequestSchema = FactoryEstimateRequestSchema.extend({
+  operationKey: z.string().min(1).max(128).regex(/^[a-zA-Z0-9._:-]+$/).optional(),
   confirmCredits: z.boolean().optional().default(true)
 });

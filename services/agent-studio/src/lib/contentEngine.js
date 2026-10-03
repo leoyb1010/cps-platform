@@ -637,9 +637,41 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
     }
   }
 
+  // A factory brief describes an actual product. Do not route ordinary
+  // membership/product facts into unrelated AI-tool/advice templates.
+  let businessCopy = "";
+  if (options.businessBrief && options.businessGoal) {
+    const brief = sanitizePublicCopy(options.businessBrief).trim();
+    const facts = brief.split(/[。！？\n]+/).map(part => part.trim()).filter(Boolean);
+    const product = (facts[0] || brief).split(/[，,；;]/)[0].slice(0, 40);
+    const retention = options.businessIntent === "retain";
+    const purchase = ["convert", "sell"].includes(options.businessIntent);
+    title = `${product}｜${retention ? "续费前，先回顾使用情况" : purchase ? "选择前，先核对需求" : "产品信息与适用说明"}`;
+    const supplied = facts.join("。\n") + "。";
+    const goal = sanitizePublicCopy(options.businessGoal.goal);
+    const action = sanitizePublicCopy(options.businessGoal.action);
+    claims = [facts[0] || brief, goal, action];
+    playbook = retention
+      ? ["回顾已经使用过的权益与实际使用频次。", "确认接下来是否仍有相同需求。", "核对当前续费价格、服务期限和取消条款，再自主决定。"]
+      : purchase ? ["把产品说明与自己的具体需求逐项对照。", "核对提供的权益、价格和服务期限。", "确认限制与取消条款，再决定是否购买。"]
+      : ["先阅读提供的产品信息。", "对照自己的使用场景，确认哪些内容适用。", "未说明的条件请向服务方核实，不作额外承诺。"];
+    antiPattern = "不要把未说明的优惠、服务或收益当成已经承诺的权益。";
+    contextLine = safeExtraContext;
+    cards = [
+      { ...cards[0], eyebrow: "产品说明", headline: product, body: facts[0] || brief },
+      { ...cards[1], eyebrow: "需求与边界", headline: retention ? "给既有客户的提醒" : "先确认是否适合", body: facts.slice(1).join("。") || goal },
+      { ...cards[2], eyebrow: "第一步", headline: retention ? "回顾实际使用" : "对照你的需求", body: playbook[0] },
+      { ...cards[3], eyebrow: "第二步", headline: retention ? "确认后续需要" : "核对服务信息", body: playbook[1] },
+      { ...cards[4], eyebrow: "第三步", headline: "核对条件与边界", body: `${playbook[2]}\n${antiPattern}` },
+      { ...cards[5], eyebrow: "下一步", headline: retention ? "自主决定是否续费" : "了解后再决定", body: action }
+    ];
+    specificVideoFrames = cards.map((card, index) => ({ time: `00:${String(index * 6).padStart(2, "0")}`, shot: card.eyebrow, overlay: card.headline, voice: card.body, visual: `展示${product}的已提供信息：${card.headline}。不补造数据或权益。` }));
+    businessCopy = `${title}\n\n${supplied}\n\n${goal}\n\n${playbook.map((step, index) => `${index + 1}. ${step}`).join("\n")}\n\n${action}${safeExtraContext ? `\n\n补充说明：${safeExtraContext}` : ""}`;
+  }
+
   // Factory business goals must affect the usable output, not only job metadata.
   // This runs before the existing humanization and policy checks below.
-  if (options.businessGoal) {
+  if (options.businessGoal && !businessCopy) {
     const goal = sanitizePublicCopy(options.businessGoal.goal);
     const action = sanitizePublicCopy(options.businessGoal.action);
     contextLine = `${contextLine}\n${goal}`;
@@ -739,6 +771,9 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
       tags: tagBase
     }
   };
+  if (businessCopy) {
+    for (const copy of Object.values(rawPlatformCopy)) { copy.title = title; copy.body = businessCopy; copy.tags = [cards[0].headline, options.businessIntent === "retain" ? "续费提醒" : "产品说明"]; }
+  }
   if (options.businessGoal) {
     const goal = sanitizePublicCopy(options.businessGoal.goal);
     const action = sanitizePublicCopy(options.businessGoal.action);
@@ -754,7 +789,7 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
     score: 78 + ((seed + i * 13) % 18)
   }));
 
-  const titleCandidates = creative?.titleCandidates?.length
+  const titleCandidates = businessCopy ? [title] : creative?.titleCandidates?.length
     ? [...creative.titleCandidates.map((item) => sanitizePublicCopy(item)).filter(Boolean), title, ...angleVariants].slice(0, 3)
     : angleVariants.slice(0, 3);
   const policyFlags = [

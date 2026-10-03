@@ -623,3 +623,32 @@ export async function updateSeriesEpisode(seriesId, episodeId, patch) {
   await putSeriesProfile(profile);
   return episode;
 }
+
+/** All callers must be synchronous: rendering/provider work belongs outside this transaction. */
+export function factoryTransaction(action) {
+  return db.transaction(() => {
+    const result = action();
+    if (result && typeof result.then === 'function') throw new TypeError('Factory transaction must be synchronous');
+    return result;
+  }).immediate();
+}
+export function getFactoryRequest(ctx, operationKey) {
+  return db.prepare('SELECT * FROM factory_requests WHERE workspace_id = ? AND user_id = ? AND operation_key = ?')
+    .get(ctx.workspaceId, ctx.userId, operationKey) || null;
+}
+export function createFactoryRequest(ctx, operationKey, requestHash, jobId) {
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO factory_requests (workspace_id,user_id,operation_key,request_hash,job_id,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,'pending',?,?)`).run(ctx.workspaceId,ctx.userId,operationKey,requestHash,jobId,now,now);
+}
+export function finishFactoryRequest(ctx, operationKey, jobId, status) {
+  if (!operationKey) return;
+  const updated = db.prepare(`UPDATE factory_requests SET status = ?, updated_at = ?
+    WHERE workspace_id = ? AND user_id = ? AND operation_key = ? AND job_id = ? AND status = 'pending'`)
+    .run(status,new Date().toISOString(),ctx.workspaceId,ctx.userId,operationKey,jobId);
+  if (updated.changes !== 1) throw new Error('Factory operation ownership changed');
+}
+export function getFactoryUsage(workspaceId, jobId) {
+  const row = db.prepare('SELECT * FROM usage_events WHERE workspace_id = ? AND job_id = ? ORDER BY created_at DESC LIMIT 1').get(workspaceId, jobId);
+  return row ? { ...row, provider_cost_json: parseJson(row.provider_cost_json), metadata_json: parseJson(row.metadata_json) } : null;
+}

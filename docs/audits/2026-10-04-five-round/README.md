@@ -1,6 +1,6 @@
 # Five new comprehensive audit rounds (2026-10-04 ledger)
 
-Status: Round 1 in progress. Rounds 2–5 not started. No round is accepted yet.
+Status: Round 1 accepted at 9f3866c3432c78252978df0890573c2a26747134 within its documented isolated scope. Round 2 in progress; rounds 3–5 not started.
 
 Each round repeats a complete surface/role matrix with a fresh data set and newly inspected seams. Existing tests are regression protection, not five independent audits. Every round must include positive business outcomes with persisted readback, role denial, validation/failure/retry, repeated submission, interruption/close/back, draft and identity lifecycle, responsive/light-dark/keyboard/normal-reduced-motion review, complete applicable tests/build, exact code identity, screenshot pixel inspection and independent review. A blocked cell cannot be silently converted to pass.
 

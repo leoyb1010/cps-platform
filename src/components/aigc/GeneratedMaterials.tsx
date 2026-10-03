@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { aigcApi, type FactoryJob, type FactoryOutput } from '../../lib/aigcApi'
 import { Badge, Button, Card, CardTitle } from '../ui/primitives'
+import { GenerationRecovery } from './GenerationRecovery'
 export interface GeneratedMaterial {
   jobId: string
   assetType?: string
@@ -8,8 +9,10 @@ export interface GeneratedMaterial {
   prompt: string
   credits?: number | null
   output?: FactoryOutput
+  assetRegistration?: string
 }
-const fromJob = (job: FactoryJob): GeneratedMaterial => ({ jobId: job.id, assetType: job.asset_type, assetLabel: job.asset_type, prompt: job.prompt, credits: job.credits_charged, output: job.output_json })
+const ASSET_LABEL: Record<string, string> = { carousel: '小红书图文', social_pack: '社媒文案包', image: 'AI 生图', poster: '商品/活动海报', ad: '广告素材', video: '短视频素材' }
+const fromJob = (job: FactoryJob): GeneratedMaterial => ({ jobId: job.id, assetType: job.asset_type, assetLabel: ASSET_LABEL[job.asset_type] ?? job.asset_type, prompt: job.prompt, credits: job.credits_charged, output: job.output_json, assetRegistration: job.assetRegistration })
 export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) {
   const [saved, setSaved] = useState<GeneratedMaterial[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,6 +32,7 @@ export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) 
   const items = new Map(saved.slice().reverse().map(item => [item.jobId, item]))
   for (const item of recent) items.set(item.jobId, { ...items.get(item.jobId), ...item, output: item.output ?? items.get(item.jobId)?.output })
   return <Card className="mt-4" aria-busy={loading}>
+    <GenerationRecovery onRecovered={() => void load()} />
     <CardTitle title="已生成素材" desc="保存的最近 30 条任务，可查看文案；刷新后仍可找回" right={<Badge tone="info">{items.size} 条</Badge>} />
     {error && <div role="alert" className="mb-3 text-sm text-warn-ink">历史素材暂时无法读取，已显示的结果仍保留。<Button disabled={loading} onClick={() => void load()}>重试</Button></div>}
     {!items.size && <p className="text-sm text-ink-3">{loading ? '正在读取素材…' : error ? '请重试读取历史素材。' : '还没有生成素材，在表单中描述你的需求即可开始。'}</p>}
@@ -40,6 +44,7 @@ export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) 
       return <article key={item.jobId} className="min-w-0 rounded-lg border border-line bg-surface-muted p-3">
         <div className="break-words text-sm font-medium">{item.assetLabel} · {item.prompt}</div>
         <div className="break-all text-xs text-ink-4">{item.jobId} · {item.credits == null ? '消耗积分待确认' : `消耗 ${item.credits} 积分`}</div>
+        {item.assetRegistration === 'pending' && <p className="mt-1 text-xs text-warn-ink">素材已生成，归属登记暂未完成；重试读取历史素材会补登记。</p>}
         {item.output?.gateway?.provider === 'local-fallback' && <p className="mt-1 text-xs text-warn-ink">本地模板结果，未调用付费模型；使用前请审核主题、事实与行动建议。</p>}
         <details className="mt-2"><summary className="cursor-pointer text-sm font-medium text-brand focus-visible:outline">查看素材</summary>
           {promptOnly ? <>

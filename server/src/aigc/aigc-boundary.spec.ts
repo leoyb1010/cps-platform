@@ -38,3 +38,18 @@ describe('AIGC tenant gateway',()=>{
     expect(call).not.toHaveBeenCalled()
   })
 })
+
+it('a completed result survives Asset failure and an owned history read repairs registration once', async () => {
+ const user={id:'owner',scopeType:'brand',scopeId:'synthetic-brand'}
+ const job={id:'synthetic-job',status:'completed',asset_type:'social_pack',prompt:'Synthetic registered material'}
+ let persisted=false
+ const upsert=vi.fn(async()=>{if(upsert.mock.calls.length===1)throw new Error('Synthetic DB outage');persisted=true;return {id:'stable'}})
+ const prisma={asset:{findFirst:vi.fn(async()=>persisted?{id:'stable'}:null),upsert}}
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(url.endsWith('/jobs')?{ok:true,jobs:[job]}:{ok:true,job,result:{},credits:{balance:996}}),{status:200,headers:{'content-type':'application/json'}})))
+ const controller=new AigcController({get:(key:string)=>key==='AIGC_INTERNAL_SECRET'?'synthetic-secret':undefined} as any,prisma as any)
+ const first=response();await controller.factory({path:'/aigc/factory/generate',originalUrl:'/aigc/factory/generate',method:'POST',headers:{'idempotency-key':'synthetic-operation'},body:{assetType:'social_pack',prompt:job.prompt},user} as any,first as any)
+ expect(first.statusCode).toBe(200);expect(JSON.parse(first.body)).toMatchObject({ok:true,job:{id:job.id},assetRegistration:'pending',credits:{balance:996}})
+ for(let i=0;i<2;i++){const res=response();await controller.factory({path:'/aigc/factory/jobs',originalUrl:'/aigc/factory/jobs',method:'GET',headers:{},user} as any,res as any);expect(JSON.parse(res.body).jobs[0].assetRegistration).toBe('registered')}
+ expect(upsert).toHaveBeenCalledTimes(2);expect(upsert.mock.calls[0]).toEqual(upsert.mock.calls[1])
+ const sent=(fetch as any).mock.calls[0][1];expect(JSON.parse(sent.body).operationKey).toBe('synthetic-operation')
+})

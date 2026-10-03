@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiTags, ApiOperation } from '@nestjs/swagger'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { fromYuan, toYuan } from '../common/money' // P1-B7 元/分边界转换
@@ -407,10 +407,34 @@ export class PortalController {
   }
 
   @Post('brand/products') @RequirePerms('portal.brand.products') @ApiOperation({ summary: '品牌上架商品（草稿）' })
-  async addBrandProduct(@Body() dto: PortalProductDto, @CurrentUser() user: AuthUser) {
+  async addBrandProduct(@Body() dto: PortalProductDto, @CurrentUser() user: AuthUser, @Headers('idempotency-key') operationKey?: string) {
     const brandId = this.scopeId(user, 'brand')
+    if (operationKey && (!/^[a-zA-Z0-9._:-]{1,128}$/.test(operationKey))) throw new BadRequestException('创建请求标识无效')
+    const fields = { brandId, name: dto.name, category: dto.category ?? '', description: dto.description ?? '', billingCycle: dto.billingCycle ?? 'continuous', firstPrice: fromYuan(dto.firstPrice), renewPrice: fromYuan(dto.renewPrice), defaultSharePct: dto.defaultSharePct ?? 30, status: 'draft', bundleEligible: dto.bundleEligible ?? true, exclusiveGroup: (dto.exclusiveGroup ?? '').slice(0, 40), tags: JSON.stringify(dto.tags ?? []) }
+    const creationKey = operationKey ? createHash('sha256').update(JSON.stringify(['product.create', brandId, user.id, operationKey])).digest('hex') : null
+    const creationFingerprint = creationKey ? createHash('sha256').update(JSON.stringify(fields)).digest('hex') : null
+    const replay = async () => {
+      if (!creationKey) return null
+      const original = await this.prisma.product.findUnique({ where: { creationKey } })
+      if (!original) return null
+      if (original.creationFingerprint !== creationFingerprint) throw new ConflictException('同一创建请求对应不同商品内容，请确认后发起新操作')
+      if (original.deletedAt) throw new ConflictException({ code: 'PRODUCT_CREATION_REMOVED', message: '此创建请求对应的商品已删除，请确认后重新上架' })
+      return { ok: true, id: original.id }
+    }
+    const existing = await replay()
+    if (existing) return existing
     const id = 'PRD-' + randomUUID().slice(0, 6)
-    await this.prisma.product.create({ data: { id, brandId, name: dto.name, category: dto.category ?? '', description: dto.description ?? '', billingCycle: dto.billingCycle ?? 'continuous', firstPrice: fromYuan(dto.firstPrice), renewPrice: fromYuan(dto.renewPrice), defaultSharePct: dto.defaultSharePct ?? 30, status: 'draft', bundleEligible: dto.bundleEligible ?? true, exclusiveGroup: (dto.exclusiveGroup ?? '').slice(0, 40), tags: JSON.stringify(dto.tags ?? []) } })
+    try {
+      // Product + durable operation identity + returned id are one atomic INSERT.
+      // Nullable identity keeps legacy clients and existing rows compatible.
+      await this.prisma.product.create({ data: { id, ...fields, creationKey, creationFingerprint } })
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'P2002') throw error
+      const original = await replay()
+      if (!original) throw error // A random Product.id collision is not a replay.
+      return original
+    }
+    // Preserve the existing best-effort audit contract, only for the first create.
     await this.audit.record({ user, action: 'product.create', resource: 'Product', resourceId: id, detail: `品牌 ${brandId} 上架商品 ${dto.name}（草稿）` })
     return { ok: true, id }
   }

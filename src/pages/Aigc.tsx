@@ -28,11 +28,13 @@ import {
   type AigcAsset,
   type CreativeType,
 } from '../lib/data'
-import { aigcApi, type FactoryConfig, type GeneratePayload } from '../lib/aigcApi'
+import { aigcApi, generationErrorMessage, type FactoryConfig, type GeneratePayload } from '../lib/aigcApi'
 import { isRealApi } from '../lib/http'
 import { int, cx } from '../lib/format'
 import { GeneratedMaterials } from '../components/aigc/GeneratedMaterials'
 import type { FactoryOutput } from '../lib/aigcApi'
+import { useTabDraft } from '../lib/useTabDraft'
+import { GENERATION_RECOVERED } from '../components/aigc/GenerationRecovery'
 import { useAigcEstimate } from '../lib/useAigcEstimate'
 
 // 本次会话内真实生成的素材（来自 agent-studio 微服务），展示在实验台之上
@@ -72,6 +74,19 @@ export default function Aigc() {
   const creditRevision = useRef(0)
   const mounted = useRef(true)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
+  useEffect(() => {
+    const refreshed = () => {
+      const revision = ++creditRevision.current
+      setCredits(null)
+      void aigcApi.credits().then(result => {
+        const balance = result.credits?.availableCredits ?? result.credits?.balance
+        if (creditRevision.current === revision) setCredits(typeof balance === 'number' ? balance : null)
+      }).catch(() => {})
+    }
+    window.addEventListener(GENERATION_RECOVERED, refreshed)
+    return () => { window.removeEventListener(GENERATION_RECOVERED, refreshed); creditRevision.current += 1 }
+  }, [])
+
   const list = seed.filter((a) => (f === 'all' ? true : a.type === f))
   const active = seed.find((a) => a.id === openId) ?? null
 
@@ -218,14 +233,17 @@ export default function Aigc() {
   )
 }
 
-function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGenerated: (item: GenItem, balance?: number) => boolean }) {
+function NewMaterialModal({ onClose: closeModal, onGenerated }: { onClose: () => void; onGenerated: (item: GenItem, balance?: number) => boolean }) {
   const toast = useToast()
   const [cfg, setCfg] = useState<FactoryConfig | null>(null)
   const [loadErr, setLoadErr] = useState(false)
-  const [assetType, setAssetType] = useState('carousel')
-  const [intent, setIntent] = useState('educate')
-  const [prompt, setPrompt] = useState('')
-  const [preset, setPreset] = useState('balanced')
+  const { draft, setDraft, clearDraft } = useTabDraft('aigc', { assetType: 'carousel', intent: 'educate', prompt: '', preset: 'balanced' })
+  const onClose = () => { clearDraft(); closeModal() }
+  const { assetType, intent, prompt, preset } = draft
+  const setAssetType = (assetType: string) => setDraft(old => ({ ...old, assetType }))
+  const setIntent = (intent: string) => setDraft(old => ({ ...old, intent }))
+  const setPrompt = (prompt: string) => setDraft(old => ({ ...old, prompt }))
+  const setPreset = (preset: string) => setDraft(old => ({ ...old, preset }))
   const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
   const submitting = useRef(false)
@@ -235,12 +253,12 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
   // 演示态：用内置素材类型让"生成素材"可完整体验（模拟生成，不调真实 agent-studio）。
   // 真实模式：拉素材引擎配置；微服务未连才显示占位。
   useEffect(() => {
-    if (!isRealApi) { setCfg(DEMO_CFG); setAssetType(DEMO_CFG.assetTypes[0].id); return }
+    if (!isRealApi) { setCfg(DEMO_CFG); return }
     aigcApi.config().then((c) => {
       setCfg(c)
-      if (c.assetTypes?.[0]) setAssetType(c.assetTypes[0].id)
+      if (c.assetTypes?.[0]) setDraft(previous => c.assetTypes.some(item => item.id === previous.assetType) ? previous : { ...previous, assetType: c.assetTypes[0].id })
     }).catch(() => setLoadErr(true))
-  }, [])
+  }, [setDraft])
 
   const assetTypes = cfg?.assetTypes ?? []
   const current = assetTypes.find((a) => a.id === assetType)
@@ -286,6 +304,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
     setBusy(true)
     try {
       const r = await aigcApi.generate(payload())
+      if (r.pending || (r.job && r.job.status !== 'completed')) { if (active.current) toast({ tone: 'info', text: '原任务仍在处理中，请在待确认请求中查询。' }); return }
       if (!r.ok || !r.job) throw new Error('no job')
       const accepted = onGenerated(
         {
@@ -300,8 +319,8 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
       )
       if (accepted) toast({ tone: 'good', text: `已生成 · ${current?.label ?? assetType}` })
       if (active.current) onClose()
-    } catch {
-      if (active.current) toast({ tone: 'alert', text: '生成失败：素材服务未连接（agent-studio 微服务未启动）' })
+    } catch (error) {
+      if (active.current) toast({ tone: 'alert', text: generationErrorMessage(error) })
     } finally {
       submitting.current = false
       if (active.current) setBusy(false)

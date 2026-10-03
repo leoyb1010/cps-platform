@@ -102,8 +102,8 @@ export const portalApi = {
   claimContract: (id: string) => def(() => http.post<{ ok: boolean; detail: string }>(`/portal/contracts/${id}/claim`), (d) => d.claimContract(id)),
   // 债3 客户主动操作
   brandProducts: <T = unknown[]>() => def<T>(() => http.get<T>('/portal/brand/products'), (d) => d.brandProducts()),
-  addBrandProduct: (body: { name: string; category?: string; description?: string; billingCycle?: string; firstPrice: number; renewPrice: number; defaultSharePct?: number; bundleEligible?: boolean; exclusiveGroup?: string; tags?: string[] }) =>
-    def(() => http.post<{ ok: boolean; id?: string }>('/portal/brand/products', body), (d) => d.addBrandProduct(body)),
+  addBrandProduct: (body: { name: string; category?: string; description?: string; billingCycle?: string; firstPrice: number; renewPrice: number; defaultSharePct?: number; bundleEligible?: boolean; exclusiveGroup?: string; tags?: string[] }, operationKey?: string) =>
+    def(() => http.post<{ ok: boolean; id?: string }>('/portal/brand/products', body, operationKey ? { 'idempotency-key': operationKey } : undefined), (d) => d.addBrandProduct(body)),
   submitProduct: (id: string) => def(() => http.post<{ ok: boolean; detail: string }>(`/portal/brand/products/${id}/submit`), (d) => d.submitProduct(id)),
   proposeContract: (body: { agentId?: string; productId?: string; settleModel: string; targetGmv?: number; settleParams?: Record<string, unknown>; userLimit?: Record<string, unknown>; ltvWindow?: string; complaintLiability?: string; reservePct?: number }) =>
     def(() => http.post<{ ok: boolean; id?: string; detail?: string }>('/portal/contracts', body), (d) => d.proposeContract(body)),
