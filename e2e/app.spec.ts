@@ -221,6 +221,9 @@ test('关键路由无 console、页面异常或 5xx', async ({ page }) => {
   for (const route of ['/#/', '/#/brands', '/#/orders', '/#/settlement', '/#/merchants', '/#/marketplace', '/#/agents', '/#/contracts', '/#/barter', '/#/aigc', '/#/products', '/#/risk', '/#/complaints', '/#/compliance', '/#/analytics', '/#/members', '/#/audit', '/#/settings', '/#/profile']) {
     await page.goto(route)
     await page.waitForLoadState('networkidle')
+    await expect(page.locator('main .skeleton')).toHaveCount(0)
+    await expect(page.locator('main h1, main h2').first()).toBeVisible()
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     await page.screenshot({ path: `/tmp/cps-ui-audit/route-${route.replace(/[^a-z]+/g, '') || 'dashboard'}.png`, fullPage: true, animations: 'disabled' })
   }
   expect(errors).toEqual([])
