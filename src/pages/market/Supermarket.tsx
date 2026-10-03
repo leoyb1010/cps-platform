@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ShoppingBag, Check, Sparkles, ArrowRight, CheckCircle2, Tag, ShieldCheck, Zap, Plus, ExternalLink, Wallet, Loader2 } from 'lucide-react'
 import { marketApi, type MarketProduct, type Quote, type BundleTier } from '../../lib/marketApi'
 import { isRealApi } from '../../lib/http'
-import { money, cx } from '../../lib/format'
+import { yuan, cx } from '../../lib/format'
 import { resolveBrandLogo } from '../../lib/brandLogos'
 import { useApi, bizApi } from '../../lib/adminApi'
 import { demoBundles, demoAgentsLite } from '../../lib/adminDemo'
 import { BILLING_CYCLE_LABEL as CYCLE } from '../../lib/data'
-import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row, useCountUpValue } from '../../components/ui/primitives'
+import { Badge, BrandMark, Button, CardTitle, TableShell, Th, Td, Row } from '../../components/ui/primitives'
 import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Select } from '../../components/ui/forms'
 import { useAnchoredPopover, DetailPopover } from '../../components/ui/popover'
@@ -30,14 +30,20 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
   const [loadErr, setLoadErr] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [quote, setQuote] = useState<Quote | null>(null)
+  const [quoteError, setQuoteError] = useState('')
+  const [quoteAttempt, setQuoteAttempt] = useState(0)
   const [cat, setCat] = useState<'全部' | string>('全部')
   const [done, setDone] = useState<{ bundleId: string; finalPrice: number } | null>(null)
   const [busy, setBusy] = useState(false)
   const [genErr, setGenErr] = useState('')
   const [paid, setPaid] = useState(false)
   const [paying, setPaying] = useState(false)
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
   const quoteSeq = useRef(0)
+  const selectionRevision = useRef(0)
+  const submitting = useRef(false)
+  const paymentPending = useRef(false)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false; selectionRevision.current += 1 } }, [])
 
   useEffect(() => {
     // 演示/真实两种模式都能逛：marketApi 在演示模式回落到本地合成货架 + 同口径算价
@@ -57,13 +63,21 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
 
   // 选择变化 → debounce 调服务端算价（价格服务端权威）。序号守卫防竞态（A1）。
   useEffect(() => {
-    if (selected.length === 0) { setQuote(null); return }
-    if (debounce.current) clearTimeout(debounce.current)
-    debounce.current = setTimeout(() => {
-      const seq = ++quoteSeq.current
-      marketApi.quote(selected).then((q) => { if (seq === quoteSeq.current) setQuote(q) }).catch(() => {})
+    // Retire an old quote immediately, including while the next request is debounced.
+    const seq = ++quoteSeq.current
+    setQuote(null); setQuoteError('')
+    if (selected.length === 0) return
+    const timer = setTimeout(() => {
+      marketApi.quote(selected).then((q) => {
+        if (seq !== quoteSeq.current) return
+        setQuote(q)
+        if (!q.ok && !q.conflicts?.length) setQuoteError(q.detail || '当前选择暂时无法报价，请调整后重试')
+      }).catch(() => {
+        if (seq === quoteSeq.current) setQuoteError('报价暂时无法读取，请重新计算；尚未生成套餐。')
+      })
     }, 220)
-  }, [selected])
+    return () => { clearTimeout(timer); quoteSeq.current += 1 }
+  }, [selected, quoteAttempt])
 
   const cats = useMemo(() => ['全部', ...Array.from(new Set(products.map((p) => p.category).filter(Boolean)))], [products])
   const visible = products.filter((p) => cat === '全部' || p.category === cat)
@@ -76,35 +90,46 @@ export default function Supermarket({ embedded = false }: { embedded?: boolean }
     return [...tiers].sort((a, b) => a.minItems - b.minItems).find((t) => t.minItems > n) ?? null
   }, [tiers, selected.length])
 
-  const animatedFinal = useCountUpValue(quote?.ok ? quote.finalPrice : 0)
+  // Transaction prices show the authoritative amount immediately, never animated intermediate money.
+  const finalPrice = quote?.ok ? quote.finalPrice : 0
   const saved = quote?.ok ? quote.listPrice - quote.finalPrice : 0
 
-  const toggle = (p: MarketProduct) => { setDone(null); setPaid(false); setSelected((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]) }
+  const toggle = (p: MarketProduct) => { selectionRevision.current += 1; quoteSeq.current += 1; setQuote(null); setQuoteError(''); setGenErr(''); setDone(null); setPaid(false); setSelected((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]) }
   const generate = async () => {
+    if (submitting.current || !quote?.ok || selected.length === 0) return
+    submitting.current = true
+    const revision = selectionRevision.current
     setBusy(true); setGenErr(''); setPaid(false)
     try {
       const r = await marketApi.createBundle(selected)
+      if (!active.current || revision !== selectionRevision.current) return
       if (r.ok && r.bundleId) setDone({ bundleId: r.bundleId, finalPrice: r.finalPrice })
       else setGenErr(r.detail ?? '生成失败，请调整后重试')
-    } catch { setGenErr('网络异常，请稍后重试') } finally { setBusy(false) }
+    } catch { if (active.current && revision === selectionRevision.current) setGenErr('网络异常，请稍后重试') }
+    finally { submitting.current = false; if (active.current) setBusy(false) }
   }
   // 模拟支付：调 pay 端点（quoted→paid，不传金额）
   const pay = async (channel: string) => {
-    if (!done) return
+    if (isRealApi || !done || paymentPending.current) return
+    paymentPending.current = true
+    const revision = selectionRevision.current
+    const bundleId = done.bundleId
     setPaying(true); setGenErr('')
     try {
-      const r = await marketApi.pay(done.bundleId, channel)
+      const r = await marketApi.pay(bundleId, channel)
+      if (!active.current || revision !== selectionRevision.current) return
       if (r.ok && r.paid) setPaid(true)
       else setGenErr(r.detail ?? '支付失败，请重试')
-    } catch { setGenErr('支付网络异常，请重试') } finally { setPaying(false) }
+    } catch { if (active.current && revision === selectionRevision.current) setGenErr('支付网络异常，请重试') }
+    finally { paymentPending.current = false; if (active.current) setPaying(false) }
   }
 
   // 货架与算价侧栏的全部状态/动作打成一包，两种上下文复用同一 ShelfBody。
   const shelfProps: ShelfProps = {
     products, visible, cats, cat, setCat, tiers, loading, selected, selectedGroups,
-    chosen, nextTier, quote, animatedFinal, saved, done, busy, genErr, toggle, generate,
+    chosen, nextTier, quote, finalPrice, quoteError, retryQuote: () => setQuoteAttempt(value => value + 1), saved, done, busy, genErr, toggle, generate,
     paid, paying, pay,
-    reset: () => { setSelected([]); setDone(null); setQuote(null); setPaid(false) },
+    reset: () => { selectionRevision.current += 1; quoteSeq.current += 1; setQuoteError(''); setGenErr(''); setSelected([]); setDone(null); setQuote(null); setPaid(false) },
   }
 
   // ── 系统内平级 tab（embedded）：去掉独立外壳，套进 AppLayout 内容区 ──
@@ -206,13 +231,13 @@ function HeroSampleCard({ products }: { products: MarketProduct[] }) {
             <div key={p.id} className="flex items-center gap-2.5">
               <BrandMark brand={p.brandKey ?? p.brandName} mark={p.name.slice(0, 1)} size={30} />
               <div className="min-w-0 flex-1"><div className="truncate text-[12.5px] font-medium text-ink">{p.name}</div><div className="text-[10.5px] text-ink-4">{p.brandName}</div></div>
-              <span className="tnum shrink-0 text-[12px] text-ink-3">{money(p.firstPrice)}</span>
+              <span className="tnum shrink-0 text-[12px] text-ink-3">{yuan(p.firstPrice)}</span>
             </div>
           ))}
         </div>
         <div className="mt-3 flex items-end justify-between border-t border-line pt-3">
           <div><div className="text-[11px] text-ink-4">前 3 件合计 · 满件再省</div><div className="text-[11.5px] font-medium text-ink">示意套餐</div></div>
-          <span className="tnum text-[24px] font-semibold leading-none text-brand">{money(list)}</span>
+          <span className="tnum text-[24px] font-semibold leading-none text-brand">{yuan(list)}</span>
         </div>
       </div>
       <p className="mt-2.5 text-center text-[11px] text-ink-4">↓ 下方自由搭配你的专属套餐</p>
@@ -235,7 +260,9 @@ interface ShelfProps {
   chosen: MarketProduct[]
   nextTier: BundleTier | null
   quote: Quote | null
-  animatedFinal: number
+  finalPrice: number
+  quoteError: string
+  retryQuote: () => void
   saved: number
   done: { bundleId: string; finalPrice: number } | null
   busy: boolean
@@ -310,9 +337,9 @@ function ShelfBody(s: ShelfProps) {
                   </div>
                   <div className="mt-3 flex items-end justify-between gap-2">
                     <div className="flex items-baseline gap-1.5">
-                      <span className="tnum text-[19px] font-semibold text-brand">{money(p.firstPrice)}</span>
+                      <span className="tnum text-[19px] font-semibold text-brand">{yuan(p.firstPrice)}</span>
                       <span className="text-[11px] text-ink-4">首单</span>
-                      <span className="text-[11px] text-ink-4">· 续费 {money(p.renewPrice)}</span>
+                      <span className="text-[11px] text-ink-4">· 续费 {yuan(p.renewPrice)}</span>
                     </div>
                     {/* 详情按钮：stopPropagation 不触发选中 */}
                     <button onClick={(e) => { e.stopPropagation(); setDetailP(p); detail.openAt(e) }}
@@ -348,7 +375,7 @@ function ShelfBody(s: ShelfProps) {
                     <div key={p.id} className="animate-row flex items-center gap-2.5">
                       <ProductLogo p={p} size={26} />
                       <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{p.name}</span>
-                      <span className="tnum shrink-0 text-[12.5px] text-ink-3">{money(p.firstPrice)}</span>
+                      <span className="tnum shrink-0 text-[12.5px] text-ink-3">{yuan(p.firstPrice)}</span>
                       <button onClick={() => s.toggle(p)} className="shrink-0 text-ink-4 transition-colors hover:text-alert-ink" aria-label="移除"><span className="text-[15px] leading-none">×</span></button>
                     </div>
                   ))}
@@ -366,20 +393,20 @@ function ShelfBody(s: ShelfProps) {
                     <div className="rounded-lg bg-alert-soft/50 px-2.5 py-2 text-[12px] text-alert-ink">存在互斥商品，请调整选择后再生成套餐</div>
                   ) : s.quote?.ok ? (
                     <>
-                      <div className="flex items-center justify-between text-[12.5px] text-ink-3"><span>原价合计</span><span className={cx('tnum', s.quote.discountPct > 0 && 'text-ink-4 line-through')}>{money(s.quote.listPrice)}</span></div>
+                      <div className="flex items-center justify-between text-[12.5px] text-ink-3"><span>原价合计</span><span className={cx('tnum', s.quote.discountPct > 0 && 'text-ink-4 line-through')}>{yuan(s.quote.listPrice)}</span></div>
                       {s.quote.discountPct > 0 && (
                         <div className="animate-row mt-1.5 flex items-center justify-between text-[12.5px] text-good-ink">
                           <span className="inline-flex items-center gap-1"><Tag size={11} /> 组合优惠 {s.quote.discountPct}% off</span>
-                          <span className="tnum font-medium">− {money(s.saved)}</span>
+                          <span className="tnum font-medium">− {yuan(s.saved)}</span>
                         </div>
                       )}
                       <div className="mt-3 flex items-end justify-between">
                         <span className="text-[12.5px] font-medium text-ink">套餐首单价</span>
-                        <span className="tnum text-[26px] font-semibold leading-none text-brand">{money(s.animatedFinal)}</span>
+                        <span className="tnum text-[26px] font-semibold leading-none text-brand">{yuan(s.finalPrice)}</span>
                       </div>
-                      {s.saved > 0 && <div className="mt-1.5 text-right text-[11px] text-good-ink">已为你省下 {money(s.saved)}</div>}
+                      {s.saved > 0 && <div className="mt-1.5 text-right text-[11px] text-good-ink">已为你省下 {yuan(s.saved)}</div>}
                     </>
-                  ) : <div className="py-1 text-[12px] text-ink-4">计算中…</div>}
+                  ) : s.quoteError ? <div role="alert" className="text-[12px] text-alert-ink"><p>{s.quoteError}</p><button className="mt-2 rounded-lg border border-line px-3 py-2 text-ink" onClick={s.retryQuote}>重新计算</button></div> : <div role="status" className="py-1 text-[12px] text-ink-4">计算中…</div>}
                 </div>
 
                 {!s.done ? (
@@ -393,7 +420,7 @@ function ShelfBody(s: ShelfProps) {
                     <CheckCircle2 size={28} className="mx-auto text-good-ink" />
                     <div className="mt-2 text-[14px] font-semibold text-ink">支付成功</div>
                     <div className="mt-0.5 text-[11.5px] text-ink-4">订阅套餐 {s.done.bundleId} 已开通</div>
-                    <div className="mt-2 tnum text-[15px] font-semibold text-good-ink">已付 {money(s.done.finalPrice)}</div>
+                    <div className="mt-2 tnum text-[15px] font-semibold text-good-ink">已付 {yuan(s.done.finalPrice)}</div>
                     <div className="mt-2 rounded-lg bg-surface/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-3">凭套餐号将由平台为你拆单开通各项订阅，可在「我的订阅」查看进度。</div>
                     <button onClick={s.reset} className="mt-3 text-[12px] font-medium text-brand hover:underline">再搭一个 →</button>
                   </div>
@@ -404,7 +431,7 @@ function ShelfBody(s: ShelfProps) {
                       <CheckCircle2 size={24} className="mx-auto text-good-ink" />
                       <div className="mt-1.5 text-[13px] font-semibold text-ink">套餐已生成 · 待支付</div>
                       <div className="mt-0.5 text-[11px] text-ink-4">{s.done.bundleId}</div>
-                      <div className="mt-1.5 tnum text-[22px] font-semibold leading-none text-brand">{money(s.done.finalPrice)}</div>
+                      <div className="mt-1.5 tnum text-[22px] font-semibold leading-none text-brand">{yuan(s.done.finalPrice)}</div>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <button disabled={s.paying} onClick={() => setChannel('alipay')}
@@ -426,7 +453,7 @@ function ShelfBody(s: ShelfProps) {
                     {/* 真实模式：尚未接入真实支付渠道，禁用支付避免走"沙箱假支付"，只诚实提示即将开放 */}
                     <button disabled={s.paying || isRealApi || !agreed} onClick={() => s.pay(channel)}
                       className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-[background-color,box-shadow,transform,opacity] hover:bg-brand-hover active:scale-[0.99] disabled:opacity-60">
-                      {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : !agreed ? <><Wallet size={14} /> 请先勾选同意协议</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {money(s.done.finalPrice)}</>}
+                      {isRealApi ? <>在线支付即将开放</> : s.paying ? <><Loader2 size={14} className="animate-spin" /> 支付处理中…</> : !agreed ? <><Wallet size={14} /> 请先勾选同意协议</> : <><Wallet size={14} /> 用{channel === 'alipay' ? '支付宝' : '微信'}支付 {yuan(s.done.finalPrice)}</>}
                     </button>
                     <div className="mt-2 text-center text-[10.5px] text-ink-4">{isRealApi ? '在线支付渠道接入中，敬请期待' : '演示模式 · 模拟支付不会真实扣款'}</div>
                     <button onClick={s.reset} className="mt-1.5 block w-full text-center text-[12px] font-medium text-brand hover:underline">重新搭配 →</button>
@@ -450,11 +477,11 @@ function ShelfBody(s: ShelfProps) {
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg bg-surface-muted px-3 py-2">
                 <div className="text-[10.5px] text-ink-4">首单价</div>
-                <div className="tnum mt-0.5 text-[15px] font-semibold text-brand">{money(detailP.firstPrice)}</div>
+                <div className="tnum mt-0.5 text-[15px] font-semibold text-brand">{yuan(detailP.firstPrice)}</div>
               </div>
               <div className="rounded-lg bg-surface-muted px-3 py-2">
                 <div className="text-[10.5px] text-ink-4">续费价</div>
-                <div className="tnum mt-0.5 text-[15px] font-semibold text-ink">{money(detailP.renewPrice)}</div>
+                <div className="tnum mt-0.5 text-[15px] font-semibold text-ink">{yuan(detailP.renewPrice)}</div>
               </div>
             </div>
             <div className="flex items-center justify-between text-[11.5px]">
@@ -581,7 +608,7 @@ export function BundlesPanel() {
                 </Td>
                 <Td right mono>{b.items.length}{b.brandCount > 1 && <span className="ml-1 text-[10px] text-ink-4">· {b.brandCount}牌</span>}</Td>
                 <Td right mono>
-                  <span className="font-semibold text-brand">{money(b.finalPrice)}</span>
+                  <span className="font-semibold text-brand">{yuan(b.finalPrice)}</span>
                   {b.discountPct > 0 && <span className="ml-1 text-[10px] text-good-ink">{b.discountPct}%off</span>}
                 </Td>
                 <Td right>{paid ? <Badge tone="good" dot>已付{b.payChannel ? `·${PAY_LABEL[b.payChannel] ?? ''}` : ''}</Badge> : <span className="text-[11.5px] text-ink-4">未支付</span>}</Td>
@@ -605,7 +632,7 @@ export function BundlesPanel() {
           <>
             <div className="rounded-lg border border-line bg-surface-muted p-3 text-[12px]">
               <div className="flex items-center justify-between"><span className="text-ink-3">套餐号</span><span className="tnum font-medium text-ink">{active.id}</span></div>
-              <div className="mt-1.5 flex items-center justify-between"><span className="text-ink-3">套餐价（权威）</span><span className="tnum font-semibold text-brand">{money(active.finalPrice)}</span></div>
+              <div className="mt-1.5 flex items-center justify-between"><span className="text-ink-3">套餐价（权威）</span><span className="tnum font-semibold text-brand">{yuan(active.finalPrice)}</span></div>
               <div className="mt-1.5 text-[11px] leading-relaxed text-ink-4">受理后按各商品首单价比例拆 {active.items.length} 笔订单（金额合计 = 套餐价），跨 {active.brandCount} 个品牌分别经履约引擎入账。价格服务端权威，不可改。</div>
             </div>
             <div className="mt-3">

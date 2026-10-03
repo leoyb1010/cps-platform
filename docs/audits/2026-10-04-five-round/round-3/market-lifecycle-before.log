@@ -1,0 +1,79 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+ ❯ src/pages/market/market-product-journey.test.tsx (4 tests | 4 failed) 278ms
+   × keeps exact cents in item, renewal and authoritative quote displays 147ms
+   × invalidates the previous quote immediately when selection changes, before debounce sends the next request 53ms
+   × prevents same-tick repeated bundle creation and keeps a changed selection when an old result arrives 51ms
+   × exposes an explicit quote error with a retry that preserves the selected products 25ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/market/market-product-journey.test.tsx > keeps exact cents in item, renewal and authoritative quote displays
+AssertionError: expected '订阅超市品牌上架商品的组合货架。用户自由多选搭配，服务端实时权威算价（满件…' to contain '¥19.91'
+
+Expected: "¥19.91"
+Received: "订阅超市品牌上架商品的组合货架。用户自由多选搭配，服务端实时权威算价（满件折扣 + 互斥校验）生成套餐。 预览公开页全部工具SSynthetic ASynthetic brandSynthetic only连续包月¥20首单· 续费 ¥30详情SSynthetic BSynthetic brandSynthetic only连续包月¥0首单· 续费 ¥10详情我的订阅套餐1 件SSynthetic A¥20×原价合计¥20套餐首单价¥20生成我的订阅套餐 价格由平台实时计算，组合优惠以最终套餐价为准。生成套餐后可凭套餐号下单。套餐台账用户在超市生成的套餐。已支付套餐运营受理后按商品拆单，经履约引擎落订单 → 合约 → 结算。2 待受理刷新待受理2已支付1已受理0全部2套餐号 / 商品件数套餐价支付状态操作B-DEMO01词典 VIP 连续包月喜马拉雅 VIP 连续包月2· 2牌¥4310%off已付·支付宝已报价受理 → 生成订单B-DEMO02词典 VIP 连续包月芒果 TV 移动会员连续包月+13· 3牌¥4715%off未支付已报价待支付"
+
+ ❯ src/pages/market/market-product-journey.test.tsx:29:28
+     27| it('keeps exact cents in item, renewal and authoritative quote display…
+     28|   api.quote.mockResolvedValue(quote(['A'], 19.91)); await toggle('A');…
+     29|   expect(host.textContent).toContain('¥19.91'); expect(host.textConten…
+       |                            ^
+     30| })
+     31| it('invalidates the previous quote immediately when selection changes,…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/pages/market/market-product-journey.test.tsx > invalidates the previous quote immediately when selection changes, before debounce sends the next request
+Error: expect(element).toBeDisabled()
+
+Received element is not disabled:
+  <button
+  class="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand px-4 py-3 text-[13.5px] font-semibold text-white shadow-[0_4px_14px_-4px_rgba(245,51,59,.45)] transition-[background-color,box-shadow,transform,opacity] hover:bg-brand-hover active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
+/>
+ ❯ src/pages/market/market-product-journey.test.tsx:35:22
+     33|   await toggle('A'); await tick(); await toggle('B')
+     34|   await act(async () => pending.resolve(quote(['A'], 19.91)))
+     35|   expect(generate()).toBeDisabled()
+       |                      ^
+     36|   await tick(); expect(generate()).not.toBeDisabled()
+     37| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/pages/market/market-product-journey.test.tsx > prevents same-tick repeated bundle creation and keeps a changed selection when an old result arrives
+AssertionError: expected "vi.fn()" to be called once, but got 2 times
+ ❯ src/pages/market/market-product-journey.test.tsx:43:28
+     41|   await toggle('A'); await tick()
+     42|   const button = generate(); await act(async () => { button.click(); b…
+     43|   expect(api.createBundle).toHaveBeenCalledOnce()
+       |                            ^
+     44|   await toggle('B'); await tick(); await act(async () => pending.resol…
+     45|   expect(host.textContent).not.toContain('old-synthetic-bundle')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/pages/market/market-product-journey.test.tsx > exposes an explicit quote error with a retry that preserves the selected products
+AssertionError: expected '订阅超市品牌上架商品的组合货架。用户自由多选搭配，服务端实时权威算价（满件…' to contain '报价暂时无法读取'
+
+Expected: "报价暂时无法读取"
+Received: "订阅超市品牌上架商品的组合货架。用户自由多选搭配，服务端实时权威算价（满件折扣 + 互斥校验）生成套餐。 预览公开页全部工具SSynthetic ASynthetic brandSynthetic only连续包月¥20首单· 续费 ¥30详情SSynthetic BSynthetic brandSynthetic only连续包月¥0首单· 续费 ¥10详情我的订阅套餐1 件SSynthetic A¥20×计算中…生成我的订阅套餐 价格由平台实时计算，组合优惠以最终套餐价为准。生成套餐后可凭套餐号下单。套餐台账用户在超市生成的套餐。已支付套餐运营受理后按商品拆单，经履约引擎落订单 → 合约 → 结算。2 待受理刷新待受理2已支付1已受理0全部2套餐号 / 商品件数套餐价支付状态操作B-DEMO01词典 VIP 连续包月喜马拉雅 VIP 连续包月2· 2牌¥4310%off已付·支付宝已报价受理 → 生成订单B-DEMO02词典 VIP 连续包月芒果 TV 移动会员连续包月+13· 3牌¥4715%off未支付已报价待支付"
+
+ ❯ src/pages/market/market-product-journey.test.tsx:51:28
+     49|   api.quote.mockRejectedValueOnce(new Error('Synthetic unavailable quo…
+     50|   await toggle('A'); await tick()
+     51|   expect(host.textContent).toContain('报价暂时无法读取')
+       |                            ^
+     52|   const retry = [...host.querySelectorAll<HTMLButtonElement>('button')…
+     53|   expect(retry).toBeTruthy(); await act(async () => retry.click()); aw…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  06:01:04
+   Duration  1.53s (transform 297ms, setup 80ms, import 405ms, tests 278ms, environment 601ms)
+

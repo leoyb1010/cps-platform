@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Download, Search, ArrowRight, TrendingUp, Store } from 'lucide-react'
 import { Card, CardTitle, Stat, SummaryStrip, PageHeader, Badge, Button, Segmented, BrandMark, TableShell, Th, Td, Row } from '../../components/ui/primitives'
@@ -10,7 +10,7 @@ import { type PeriodValue } from '../../lib/period'
 import { portalApi, type AgentSummary } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, DemoNotice, TopBars, PortalBanner } from '../../components/portal/kit'
 import { brandById, TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE, SETTLE_MODEL_LABEL as SETTLE_MODEL } from '../../lib/data'
-import { money, pct, cx, copyText } from '../../lib/format'
+import { money, yuan, pct, cx, copyText } from '../../lib/format'
 
 export function AgentHome() {
   const nav = useNavigate()
@@ -170,7 +170,7 @@ export function AgentPlans() {
                   <Td className="text-[12px] text-ink-3">{o.brandId}</Td>
                   <Td>{o.plan}</Td>
                   <Td><Badge tone={o.type === 'refund' || o.type === 'chargeback' ? 'alert' : o.type === 'renew' ? 'good' : 'info'}>{o.type}</Badge></Td>
-                  <Td right mono>{money(o.amount)}</Td>
+                  <Td right mono>{yuan(o.amount)}</Td>
                   <Td right className="text-[12px] text-ink-4">{o.time}</Td>
                 </Row>
               ))}
@@ -192,23 +192,41 @@ export function AgentPayouts() {
   const [amount, setAmount] = useState(0)
   const [busy, setBusy] = useState(false)
   const [amountErr, setAmountErr] = useState('')
+  const submitting = useRef(false)
+  const editor = useRef(0)
+  const submittedEditor = useRef<number | null>(null)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false; editor.current += 1 } }, [])
+  // The backend also reserves approved-but-unpaid applications. Show the same requestable amount.
+  const requestsKnown = state === 'ready' && reqApi.state === 'ready' && !!data && Number.isFinite(data.payoutPending) && Array.isArray(reqApi.data) && reqApi.data.every(row => Number.isFinite(row.amount))
+  const reservedFen = (reqApi.data ?? []).filter(row => row.status === 'pending' || row.status === 'approved').reduce((sum, row) => sum + Math.round(row.amount * 100), 0)
+  const available = requestsKnown ? Math.max(0, Math.round(data!.payoutPending * 100) - reservedFen) / 100 : null
+  const close = () => { editor.current += 1; setReqOpen(false) }
   const submit = async () => {
     // 先本地校验：金额必须 >0 且不超过可提现余额；busy 期间禁提交防重复申请
-    const max = data?.payoutPending ?? 0
-    if (!(amount > 0)) { setAmountErr('提现金额需大于 0'); return }
-    if (amount > max) { setAmountErr(`不可超过可提现余额 ${money(max)}`); return }
+    if (submitting.current) return
+    if (available === null) { setAmountErr('请先重试读取提现申请记录，再提交申请'); return }
+    const max = available
+    if (!Number.isFinite(amount) || !(amount > 0)) { setAmountErr('提现金额需大于 0'); return }
+    if (amount > max) { setAmountErr(`不可超过可提现余额 ${yuan(max)}`); return }
     setAmountErr('')
+    submitting.current = true
+    const owner = editor.current
+    submittedEditor.current = owner
     setBusy(true)
     try {
       const r = await portalApi.requestPayout(amount)
-      if (r.ok) { toast({ tone: 'good', text: r.detail }); setReqOpen(false); reqApi.reload() }
-      else toast({ tone: 'alert', text: r.detail })
-    } catch { toast({ tone: 'alert', text: '网络异常，请重试' }) } finally { setBusy(false) }
+      if (!active.current) return
+      if (r.ok) { toast({ tone: 'good', text: r.detail }); if (editor.current === owner) close(); reqApi.reload() }
+      else if (editor.current === owner) toast({ tone: 'alert', text: r.detail })
+    } catch { if (active.current && editor.current === owner) toast({ tone: 'alert', text: '网络异常，请重试' }) }
+    finally { submitting.current = false; submittedEditor.current = null; if (active.current) setBusy(false) }
   }
   const reqStatus: Record<string, { label: string; tone: 'good' | 'warn' | 'neutral' | 'alert' }> = { pending: { label: '审批中', tone: 'warn' }, approved: { label: '已批准', tone: 'good' }, paid: { label: '已打款', tone: 'good' }, rejected: { label: '已驳回', tone: 'alert' } }
   return (
     <>
-      <PageHeader title="我的分润" desc="你的分润结算与提现状态。" actions={data && <Button variant="primary" onClick={() => { setAmount(data.payoutPending); setAmountErr(''); setReqOpen(true) }} disabled={!data || data.payoutPending <= 0}>申请提现</Button>} />
+      <PageHeader title="我的分润" desc="你的分润结算与提现状态。" actions={data && <Button variant="primary" onClick={() => { editor.current += 1; setAmount(available ?? 0); setAmountErr(''); setReqOpen(true) }} disabled={available === null || available <= 0}>申请提现</Button>} />
+      {reqApi.state === 'error' && <Card className="mb-4"><p role="alert">提现申请记录暂时无法读取，可申请余额尚未确认。</p><Button onClick={reqApi.reload}>重试申请记录</Button></Card>}
       <PortalState state={state} data={data} reload={reload} emptyWhen={(d) => d == null} emptyTitle="暂无分润">
         {(d) => !d ? null : (
           <>
@@ -223,7 +241,7 @@ export function AgentPayouts() {
                 <div className="p-5 pb-3"><CardTitle title="提现申请" desc="平台审批后打款到结算账户" /></div>
                 <TableShell className="px-2 pb-2" head={<><Th className="pl-3">单号</Th><Th right>金额</Th><Th right>状态</Th></>}>
                   {(reqApi.data ?? []).map((r) => (
-                    <Row key={r.id}><Td className="pl-3 text-[12.5px] font-medium text-ink">{r.id}</Td><Td right mono>{money(r.amount)}</Td><Td right><Badge tone={(reqStatus[r.status] ?? reqStatus.pending).tone}>{(reqStatus[r.status] ?? reqStatus.pending).label}</Badge></Td></Row>
+                    <Row key={r.id}><Td className="pl-3 text-[12.5px] font-medium text-ink">{r.id}</Td><Td right mono>{yuan(r.amount)}</Td><Td right><Badge tone={(reqStatus[r.status] ?? reqStatus.pending).tone}>{(reqStatus[r.status] ?? reqStatus.pending).label}</Badge></Td></Row>
                   ))}
                 </TableShell>
               </Card>
@@ -238,9 +256,9 @@ export function AgentPayouts() {
         )}
       </PortalState>
       {reqOpen && (
-        <Modal open onClose={() => setReqOpen(false)} width={420} title="申请提现" footer={<><Button variant="ghost" onClick={() => setReqOpen(false)} disabled={busy}>取消</Button><Button variant="primary" onClick={submit} loading={busy}>提交申请</Button></>}>
-          <div className="mb-3 text-[12px] text-ink-3">可提现余额 {money(data?.payoutPending ?? 0)}，申请后等待平台审批。</div>
-          <Field label="提现金额 ¥"><Input type="number" min={0} value={amount} onChange={(e) => { setAmount(+e.target.value); setAmountErr('') }} /></Field>
+        <Modal open onClose={close} width={420} title="申请提现" footer={<><Button variant="ghost" onClick={close}>取消</Button><Button variant="primary" onClick={submit} loading={busy}>提交申请</Button></>}>
+          <div className="mb-3 text-[12px] text-ink-3">可申请余额 {available === null ? '待确认' : yuan(available)}，已扣除审批中及已批准待放款申请。提交后等待平台审批。</div>
+          <Field label="提现金额 ¥"><Input type="number" min={0} step="0.01" disabled={busy && submittedEditor.current === editor.current} value={amount} onChange={(e) => { setAmount(+e.target.value); setAmountErr('') }} /></Field>
           {amountErr && <div className="mt-1.5 text-[11.5px] text-alert-ink">{amountErr}</div>}
         </Modal>
       )}

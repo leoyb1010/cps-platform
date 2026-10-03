@@ -1,0 +1,68 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> agent-studio@0.8.0 test
+> vitest run --maxWorkers=1
+
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform/services/agent-studio
+
+ ❯ server/src/renderer.test.js (1 test | 1 failed) 47ms
+     × exports distinct scene frames instead of freezing on one frame 42ms
+ ❯ server/src/render-egress.test.js (1 test | 1 failed) 25ms
+     × blocks popup first navigation and all localhost canary requests 23ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  server/src/render-egress.test.js > real Chromium generated-document boundary > blocks popup first navigation and all localhost canary requests
+Error: browserType.launch: Executable doesn't exist at /home/agent/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     npx playwright install                                 ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+ ❯ server/src/render-egress.test.js:16:30
+     14|     let browser;
+     15|     try{
+     16|       browser=await chromium.launch({headless:true});
+       |                              ^
+     17|       const context=await browser.newContext({serviceWorkers:'block'});
+     18|       const page=await context.newPage();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  server/src/renderer.test.js > exportMotionVideo > exports distinct scene frames instead of freezing on one frame
+Error: browserType.launch: Executable doesn't exist at /home/agent/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell
+╔════════════════════════════════════════════════════════════╗
+║ Looks like Playwright was just installed or updated.       ║
+║ Please run the following command to download new browsers: ║
+║                                                            ║
+║     npx playwright install                                 ║
+║                                                            ║
+║ <3 Playwright Team                                         ║
+╚════════════════════════════════════════════════════════════╝
+ ❯ getBrowser server/src/renderer.js:18:34
+     16| async function getBrowser() {
+     17|   if (sharedBrowser && sharedBrowser.isConnected()) return sharedBrows…
+     18|   sharedBrowser = await chromium.launch({ headless: true });
+       |                                  ^
+     19|   sharedBrowser.on("disconnected", () => { sharedBrowser = null; });
+     20|   return sharedBrowser;
+ ❯ exportLocalMotionVideo server/src/renderer.js:199:25
+ ❯ server/src/renderer.test.js:27:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 20 passed (22)
+      Tests  2 failed | 127 passed (129)
+   Start at  06:09:13
+   Duration  10.94s (transform 756ms, setup 0ms, import 2.77s, tests 3.60s, environment 3ms)
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

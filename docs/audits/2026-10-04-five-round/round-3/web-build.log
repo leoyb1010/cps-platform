@@ -1,0 +1,84 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> cps-union-platform@1.0.0 build
+> tsc -b && vite build
+
+vite v6.4.3 building for production...
+transforming...
+✓ 1708 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               1.54 kB │ gzip:   0.81 kB
+dist/assets/index-BDwuUDX2.css               78.59 kB │ gzip:  14.05 kB
+dist/assets/check-DzcnRitd.js                 0.29 kB │ gzip:   0.25 kB
+dist/assets/chevron-right-Ds4z5a-o.js         0.30 kB │ gzip:   0.25 kB
+dist/assets/plus-CNtOSs5M.js                  0.33 kB │ gzip:   0.25 kB
+dist/assets/arrow-left-CxEUcE7-.js            0.34 kB │ gzip:   0.27 kB
+dist/assets/ban-B29EhPcf.js                   0.34 kB │ gzip:   0.27 kB
+dist/assets/rotate-ccw-eNnVcTl5.js            0.37 kB │ gzip:   0.29 kB
+dist/assets/lock-D7v4zyvy.js                  0.37 kB │ gzip:   0.30 kB
+dist/assets/copy-Cx15HDUf.js                  0.40 kB │ gzip:   0.31 kB
+dist/assets/activity-CEWlcheL.js              0.41 kB │ gzip:   0.31 kB
+dist/assets/shopping-bag-BRc8u5-i.js          0.42 kB │ gzip:   0.31 kB
+dist/assets/wallet-BGEwu3Pj.js                0.46 kB │ gzip:   0.31 kB
+dist/assets/user-plus-DbUwcgz-.js             0.48 kB │ gzip:   0.34 kB
+dist/assets/marketApi-BO_vT2Lz.js             0.52 kB │ gzip:   0.30 kB
+dist/assets/git-compare-arrows-1p-zq8fx.js    0.54 kB │ gzip:   0.36 kB
+dist/assets/layers-BNg6kdsi.js                0.59 kB │ gzip:   0.34 kB
+dist/assets/handshake-CKaE30Yq.js             0.62 kB │ gzip:   0.39 kB
+dist/assets/Wizard-BIchHNxU.js                0.64 kB │ gzip:   0.41 kB
+dist/assets/sliders-vertical-28oq4lza.js      0.76 kB │ gzip:   0.37 kB
+dist/assets/tag-_rHgCFDf.js                   0.87 kB │ gzip:   0.45 kB
+dist/assets/BrandLanding-C4UN8Kiy.js          1.16 kB │ gzip:   0.83 kB
+dist/assets/AgentLanding-_X8FrdOK.js          1.17 kB │ gzip:   0.82 kB
+dist/assets/DocModal-h7izp91S.js              1.25 kB │ gzip:   0.65 kB
+dist/assets/useTabDraft-CcINlKxr.js           1.44 kB │ gzip:   0.63 kB
+dist/assets/filters-D8qhwc5R.js               1.96 kB │ gzip:   0.93 kB
+dist/assets/marketDemo-DezqFbgw.js            2.03 kB │ gzip:   1.19 kB
+dist/assets/Profile-BbCcZQSS.js               2.18 kB │ gzip:   1.06 kB
+dist/assets/LegalShell-CewVeriL.js            2.39 kB │ gzip:   1.00 kB
+dist/assets/Terms-BLKWWH9y.js                 3.15 kB │ gzip:   1.76 kB
+dist/assets/codeGen-CLV6SbI1.js               3.19 kB │ gzip:   1.69 kB
+dist/assets/adminApi-BeOX57Rh.js              3.34 kB │ gzip:   1.23 kB
+dist/assets/Privacy-Dviy4Y2I.js               3.47 kB │ gzip:   1.77 kB
+dist/assets/popover-Cd5dtaAf.js               3.95 kB │ gzip:   1.68 kB
+dist/assets/Audit---oinAYg.js                 4.25 kB │ gzip:   2.16 kB
+dist/assets/BrandInsights-D2wjye9E.js         4.61 kB │ gzip:   1.88 kB
+dist/assets/PortalAigc-Du3YOrNH.js            4.67 kB │ gzip:   2.24 kB
+dist/assets/useAigcEstimate-D93AEkZB.js       4.80 kB │ gzip:   2.23 kB
+dist/assets/kit-4oRZ2SxQ.js                   5.18 kB │ gzip:   2.12 kB
+dist/assets/BrandPlaza-L_kWfzIM.js            5.52 kB │ gzip:   2.01 kB
+dist/assets/MemberModals-iFU1kFWO.js          5.76 kB │ gzip:   2.47 kB
+dist/assets/Members-CnehpYc-.js               7.11 kB │ gzip:   2.89 kB
+dist/assets/MySubscriptions-dKEuyChJ.js       8.03 kB │ gzip:   2.77 kB
+dist/assets/Settings-Cze4NxoZ.js              8.36 kB │ gzip:   3.25 kB
+dist/assets/Marketplace-DYiLZUR2.js           8.49 kB │ gzip:   3.65 kB
+dist/assets/IncidentRoom-DqRR8-yw.js          9.16 kB │ gzip:   3.39 kB
+dist/assets/SettlementRun-BJ8fqTZo.js         9.54 kB │ gzip:   3.54 kB
+dist/assets/Barter-chZM2e-Q.js                9.96 kB │ gzip:   3.46 kB
+dist/assets/Products-D7SEySkl.js             10.57 kB │ gzip:   4.02 kB
+dist/assets/BrandDetail-D8p1Q_HN.js          10.58 kB │ gzip:   3.97 kB
+dist/assets/BrandProducts-ospAhW7I.js        10.79 kB │ gzip:   4.44 kB
+dist/assets/LandingWorkshop-Dk--utGS.js      12.15 kB │ gzip:   4.82 kB
+dist/assets/Aigc-BDvNeANG.js                 12.25 kB │ gzip:   4.85 kB
+dist/assets/Analytics-6OyDFZLi.js            12.60 kB │ gzip:   4.45 kB
+dist/assets/Orders-DZfLtKT_.js               13.26 kB │ gzip:   4.96 kB
+dist/assets/Contracts-f0umhf3a.js            13.52 kB │ gzip:   4.64 kB
+dist/assets/LandingPage-1CS1KXOH.js          13.61 kB │ gzip:   4.85 kB
+dist/assets/BrandDeveloper-Qzcfm2jP.js       14.64 kB │ gzip:   5.40 kB
+dist/assets/Agents-BfwFdoBd.js               15.34 kB │ gzip:   5.24 kB
+dist/assets/Merchants-BlRk1Jtx.js            17.54 kB │ gzip:   5.98 kB
+dist/assets/Settlement-CVre8xsw.js           17.57 kB │ gzip:   6.03 kB
+dist/assets/Brands-CX7ODeZ3.js               17.61 kB │ gzip:   6.32 kB
+dist/assets/portalDemo-CckKxhQl.js           17.83 kB │ gzip:   7.16 kB
+dist/assets/AgentPortal-C1Is2Oxf.js          25.44 kB │ gzip:   8.36 kB
+dist/assets/BrandPortal-BTMBs8HP.js          28.25 kB │ gzip:   8.79 kB
+dist/assets/Supermarket-BF8B2zuZ.js          33.55 kB │ gzip:  10.16 kB
+dist/assets/RiskWorkspace-CBLg5ws1.js        42.10 kB │ gzip:  13.33 kB
+dist/assets/index-CiJXXqPi.js               482.69 kB │ gzip: 150.39 kB
+✓ built in 3.30s
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

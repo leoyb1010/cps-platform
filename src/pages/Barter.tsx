@@ -9,7 +9,7 @@ import { useStore } from '../lib/store'
 import { useApi, bizApi } from '../lib/adminApi'
 import { isRealApi } from '../lib/http'
 import { brandById } from '../lib/data'
-import { money } from '../lib/format'
+import { money, yuan } from '../lib/format'
 
 interface BarterDeal {
   id: string; initiatorBrandId: string; counterpartyBrandId: string; status: string
@@ -85,8 +85,8 @@ export default function Barter() {
                 <Td><div className="flex items-center gap-2">{ib && <BrandMark brand={ib.id} mark={ib.mark} size={20} />}<span className="text-[12px] text-ink-2">{ib?.name ?? e.initiatorBrandId}</span></div></Td>
                 <Td><span className="text-[12px] text-ink-2">{cb?.name ?? e.counterpartyBrandId}</span></Td>
                 <Td><span className="text-[12px]">{e.resourceType}</span></Td>
-                <Td right mono className="text-[12.5px]">{money(e.myQuota)}</Td>
-                <Td right mono className="text-[12.5px]">{money(e.counterpartyQuota)}</Td>
+                <Td right mono className="text-[12.5px]">{yuan(e.myQuota)}</Td>
+                <Td right mono className="text-[12.5px]">{yuan(e.counterpartyQuota)}</Td>
                 <Td><Badge tone={inv.tone}>{inv.label}</Badge></Td>
                 <Td right><Badge tone={st.tone}>{st.label}</Badge></Td>
               </Row>
@@ -169,10 +169,10 @@ function BarterDrawer({ deal, anchor, onClose, onStatus }: { deal: BarterDeal | 
       <div className="mt-5 grid grid-cols-2 gap-3 text-[12.5px]">
         <Info k="发起方" v={ib?.name ?? e.initiatorBrandId} />
         <Info k="对手品牌" v={cb?.name ?? e.counterpartyBrandId} />
-        <Info k="我方额度" v={money(e.myQuota)} />
-        <Info k="对手额度" v={money(e.counterpartyQuota)} />
+        <Info k="我方额度" v={yuan(e.myQuota)} />
+        <Info k="对手额度" v={yuan(e.counterpartyQuota)} />
         <Info k="开票状态" v={(INVOICE[e.invoiceStatus] ?? INVOICE.pending).label} />
-        <Info k="差额" v={e.myQuota === e.counterpartyQuota ? '无差额' : money(Math.abs(e.myQuota - e.counterpartyQuota))} />
+        <Info k="差额" v={e.myQuota === e.counterpartyQuota ? '无差额' : yuan(Math.abs(e.myQuota - e.counterpartyQuota))} />
       </div>
       <div className="mt-4 rounded-lg border border-dashed border-line bg-surface-muted p-3 text-[11.5px] leading-relaxed text-ink-3">
         <span className="font-medium text-ink-2">合规说明：</span>非现金对价按合同开始时公允价值计量；需满足资源真实交付、公允价值可证明、税务发票链路匹配。

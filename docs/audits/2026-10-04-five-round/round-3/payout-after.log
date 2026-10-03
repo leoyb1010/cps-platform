@@ -1,0 +1,15 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+
+ Test Files  2 passed (2)
+      Tests  8 passed (8)
+   Start at  06:16:30
+   Duration  2.89s (transform 428ms, setup 120ms, import 695ms, tests 594ms, environment 1.14s)
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

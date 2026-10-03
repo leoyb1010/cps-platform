@@ -1,0 +1,58 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+ ❯ src/pages/portal/agent-payout-product.test.tsx (3 tests | 3 failed) 146ms
+   × shows exact request cents and remaining requestable balance after pending and approved reservations 55ms
+   × admits one same-tick request and keeps a new dialog when the old receipt arrives 72ms
+   × does not present unknown reserved money as available when request history fails 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/portal/agent-payout-product.test.tsx > shows exact request cents and remaining requestable balance after pending and approved reservations
+AssertionError: expected '我的分润你的分润结算与提现状态。申请提现待结分润¥100T+N 账期累计已…' to contain '¥40.01'
+
+Expected: "¥40.01"
+Received: "我的分润你的分润结算与提现状态。申请提现待结分润¥100T+N 账期累计已结¥20保证金¥0首单 ROI1.50投放效率提现申请平台审批后打款到结算账户单号金额状态held¥40已批准pending¥10审批中released¥500已驳回待结分润将按信用分联动的结算优先级，在账期到达后释放到可提现余额。信用分越高，结算越靠前。"
+
+ ❯ src/pages/portal/agent-payout-product.test.tsx:20:28
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/pages/portal/agent-payout-product.test.tsx > admits one same-tick request and keeps a new dialog when the old receipt arrives
+AssertionError: expected "vi.fn()" to be called once, but got 2 times
+ ❯ src/pages/portal/agent-payout-product.test.tsx:29:29
+     27|   await act(async () => button('申请提现').click()); await input('10.02')
+     28|   const submit = button('提交申请'); await act(async () => { submit.click(…
+     29|   expect(api.requestPayout).toHaveBeenCalledOnce()
+       |                             ^
+     30|   await act(async () => document.querySelector<HTMLButtonElement>('[ar…
+     31|   await act(async () => button('申请提现').click()); await input('12.34')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/pages/portal/agent-payout-product.test.tsx > does not present unknown reserved money as available when request history fails
+Error: expect(element).toBeDisabled()
+
+Received element is not disabled:
+  <button
+  class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-[background-color,color,border-color,box-shadow,transform] cursor-pointer select-none active:scale-[0.98] disabled:cursor-default disabled:opacity-60 bg-brand text-white hover:bg-brand-hover shadow-[var(--shadow-brand)]"
+  type="button"
+/>
+ ❯ src/pages/portal/agent-payout-product.test.tsx:38:26
+     36|   api.agentPayoutRequests.mockRejectedValue(new Error('Synthetic unava…
+     37|   await act(async () => root.render(<p>Reload</p>)); await act(async (…
+     38|   expect(button('申请提现')).toBeDisabled()
+       |                          ^
+     39|   expect(host.textContent).toContain('提现申请记录暂时无法读取')
+     40| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+   Start at  06:14:20
+   Duration  1.34s (transform 284ms, setup 77ms, import 386ms, tests 146ms, environment 560ms)
+

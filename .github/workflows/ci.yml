@@ -167,6 +167,7 @@ jobs:
       DATABASE_URL: file:/tmp/cps-role-ui.db
       JWT_ACCESS_SECRET: role-ui-local-fixture-access-xxxxxxxx
       JWT_REFRESH_SECRET: role-ui-local-fixture-refresh-xxxxxxx
+      AUDIT_ROUND: '3'
       AIGC_INTERNAL_SECRET: synthetic-role-sidecar-signing-fixture-only
       AIGC_SERVICE_URL: http://127.0.0.1:48787
       AGENT_STUDIO_DATA_DIR: /tmp/cps-role-studio-data

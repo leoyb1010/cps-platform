@@ -5,7 +5,7 @@ import { Modal, useToast } from '../../components/ui/overlays'
 import { Field, Input, Select, Textarea, TagInput } from '../../components/ui/forms'
 import { portalApi } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton } from '../../components/portal/kit'
-import { money } from '../../lib/format'
+import { yuan } from '../../lib/format'
 import { useTabDraft } from '../../lib/useTabDraft'
 import { beginProduct, finishProduct, ensureProductPersisted, pendingProducts, PRODUCT_OPERATIONS_CHANGED, type ProductOperation } from '../../lib/productOperations'
 import { ApiError, getPrincipalId, isRealApi } from '../../lib/http'
@@ -75,8 +75,8 @@ export function BrandProducts() {
                         <Td className="pl-3"><div className="text-[12.5px] font-medium text-ink">{p.name}</div>{p.reviewNote && <div className="text-[11px] text-alert-ink">驳回：{p.reviewNote}</div>}</Td>
                         <Td className="text-[12px]">{p.category || '—'}</Td>
                         <Td><Badge tone="neutral">{CYCLE[p.billingCycle] ?? p.billingCycle}</Badge></Td>
-                        <Td right mono>{money(p.firstPrice)}</Td>
-                        <Td right mono>{money(p.renewPrice)}</Td>
+                        <Td right mono>{yuan(p.firstPrice)}</Td>
+                        <Td right mono>{yuan(p.renewPrice)}</Td>
                         <Td right mono>{p.defaultSharePct}%</Td>
                         <Td right><Badge tone={st.tone}>{st.label}</Badge></Td>
                         <Td right>{p.status === 'draft' ? <button onClick={() => submit(p.id)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-brand px-2 py-1 text-[12px] font-medium text-white hover:bg-brand-hover"><Send size={12} /> 提交审核</button> : <span className="text-[12px] text-ink-4">—</span>}</Td>

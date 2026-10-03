@@ -6,7 +6,7 @@ import { EmptyState } from '../../components/ui/forms'
 import { usePortalResource, PortalState, DefaultSkeleton } from '../../components/portal/kit'
 import { portalApi } from '../../lib/portalApi'
 import { marketApi, type Quote, type MarketProduct } from '../../lib/marketApi'
-import { money, cx, copyText } from '../../lib/format'
+import { money, yuan, cx, copyText } from '../../lib/format'
 import { LandingPreview } from '../market/LandingPage'
 import { createLandingPage, deleteLandingPage, useLandingPages, landingUrl, landingIframeSnippet, brandColorOf, type LandingPage } from '../../lib/landing'
 
@@ -129,7 +129,7 @@ export function LandingWorkshop({
                             <div className="mt-0.5 text-[11px] text-ink-4">{p.category || '订阅'}</div>
                           </div>
                         </div>
-                        <div className="mt-2 flex items-baseline gap-1.5"><span className="tnum text-[16px] font-semibold text-brand">{money(p.firstPrice)}</span><span className="text-[11px] text-ink-4">首单 · 续费 {money(p.renewPrice)}</span></div>
+                        <div className="mt-2 flex items-baseline gap-1.5"><span className="tnum text-[16px] font-semibold text-brand">{yuan(p.firstPrice)}</span><span className="text-[11px] text-ink-4">首单 · 续费 {yuan(p.renewPrice)}</span></div>
                       </button>
                     )
                   })}
@@ -186,7 +186,7 @@ export function LandingWorkshop({
                   <>
                     <LandingPreview page={preview} products={chosen as unknown as MarketProduct[]} quote={quote} />
                     {quote?.ok && quote.discountPct > 0 && (
-                      <div className="mt-3 flex items-center justify-center gap-1 text-[11.5px] text-good-ink"><Tag size={11} /> 组合优惠 {quote.discountPct}% off · 省 {money(quote.listPrice - quote.finalPrice)}</div>
+                      <div className="mt-3 flex items-center justify-center gap-1 text-[11.5px] text-good-ink"><Tag size={11} /> 组合优惠 {quote.discountPct}% off · 省 {yuan(quote.listPrice - quote.finalPrice)}</div>
                     )}
                     <button onClick={publish} disabled={!quote?.ok} className="mt-4 w-full rounded-xl bg-brand px-4 py-3 text-[13.5px] font-semibold text-white transition-colors hover:bg-brand-hover disabled:opacity-50">
                       生成落地页

@@ -114,3 +114,12 @@ it('unknown create survives route reload with the same payload/key and restored 
 it('closed unknown request stays recoverable while a distinct new draft is edited',async()=>{
  calls.addBrandProduct.mockRejectedValueOnce(new Error('Synthetic lost response')).mockResolvedValue({ok:true,id:'original'});await open('Original A');await click('创建草稿');const key=calls.addBrandProduct.mock.calls[0][1];await click('取消');await open('Unrelated B');await click('找回原商品');expect(calls.addBrandProduct.mock.calls[1][1]).toBe(key);expect(document.querySelector<HTMLInputElement>('input[placeholder="如：会员 VIP 连续包月"]')?.value).toBe('Unrelated B');expect(host.textContent).not.toContain('待确认的商品创建')
 })
+
+it('renders exact first and renewal prices for the product owner, without compact rounding', async () => {
+  calls.brandProducts.mockResolvedValue([{ id: 'synthetic-cents', name: 'Synthetic cents product', category: '工具', billingCycle: 'continuous', firstPrice: 19.91, renewPrice: 29.92, defaultSharePct: 30, status: 'draft', reviewNote: '' }])
+  await act(async () => root.render(<p>Reload</p>))
+  await act(async () => root.render(<BrandProducts />))
+  const row = [...host.querySelectorAll('tr')].find(item => item.textContent?.includes('Synthetic cents product'))!
+  expect(row.textContent).toContain('¥19.91')
+  expect(row.textContent).toContain('¥29.92')
+})

@@ -85,7 +85,7 @@ export default function Settlement() {
             value={money(totalPlatformFee)}
             hint="各结算单平台服务费合计（含跨周期）"
             sub={diffCount > 0
-              ? <span className="flex items-center gap-1 text-warn-ink"><CircleDollarSign size={12} /> {diffCount} 单待核销 · {money(totalDiff)}</span>
+              ? <span className="flex items-center gap-1 text-warn-ink"><CircleDollarSign size={12} /> {diffCount} 单待核销 · {yuan(totalDiff)}</span>
               : <span className="flex items-center gap-1 text-good-ink"><CircleDollarSign size={12} /> 已对账无差异</span>}
           />
         </Card>
@@ -204,14 +204,14 @@ export default function Settlement() {
                     <div className="text-[12px]">{s.period}</div>
                     <div className="text-[11px] text-ink-4">{SETTLE_PATH_LABEL[b.path]} · T+{b.period}</div>
                   </Td>
-                  <Td right mono className="font-medium text-ink">{money(s.gross)}</Td>
-                  <Td right mono className="text-good-ink">{money(s.platformFee)}</Td>
-                  <Td right mono>{money(s.agentPayout)}</Td>
+                  <Td right mono className="font-medium text-ink">{yuan(s.gross)}</Td>
+                  <Td right mono className="text-good-ink">{yuan(s.platformFee)}</Td>
+                  <Td right mono>{yuan(s.agentPayout)}</Td>
                   <Td right mono>
-                    <span className={s.reversal > 0 ? 'text-alert-ink' : 'text-ink-4'}>−{money(s.reversal)}</span>
+                    <span className={s.reversal > 0 ? 'text-alert-ink' : 'text-ink-4'}>−{yuan(s.reversal)}</span>
                   </Td>
                   <Td right mono>
-                    <span className={s.frozen > 0 ? 'text-violet-ink' : 'text-ink-4'}>{s.frozen > 0 ? money(s.frozen) : '—'}</span>
+                    <span className={s.frozen > 0 ? 'text-violet-ink' : 'text-ink-4'}>{s.frozen > 0 ? yuan(s.frozen) : '—'}</span>
                   </Td>
                   <Td right mono>
                     <span className={s.reconcileDiff > 0 ? 'text-warn-ink' : 'text-ink-4'}>{s.reconcileDiff > 0 ? yuan(s.reconcileDiff, { decimals: 0 }) : '0'}</span>
@@ -270,9 +270,9 @@ export default function Settlement() {
                     <Td right mono>
                       <span className={cx('font-medium', a.creditScore >= 800 ? 'text-good-ink' : a.creditScore >= 700 ? 'text-warn-ink' : 'text-alert-ink')}>{a.creditScore}</span>
                     </Td>
-                    <Td right mono className="font-medium text-ink">{a.payoutPending > 0 ? money(a.payoutPending) : '—'}</Td>
-                    <Td right mono>{money(a.settledTotal)}</Td>
-                    <Td right mono>{money(a.deposit)}</Td>
+                    <Td right mono className="font-medium text-ink">{a.payoutPending > 0 ? yuan(a.payoutPending) : '—'}</Td>
+                    <Td right mono>{yuan(a.settledTotal)}</Td>
+                    <Td right mono>{yuan(a.deposit)}</Td>
                     <Td right><Badge tone={st.tone} dot>{st.label}</Badge></Td>
                     <Td right>
                       <button
@@ -370,7 +370,7 @@ function SettlementDrawer({ s, anchor, onClose, onClear, onReconcile }: { s: Set
         {rows.map((r, i) => (
           <div key={r.k} className={cx('flex items-center justify-between px-3.5 py-2.5 text-[12.5px]', i > 0 && 'border-t border-line/70')}>
             <span className={cx(r.sub ? 'font-medium text-ink' : 'text-ink-2')}>{r.k}</span>
-            <span className={cx('tnum font-medium', r.sub ? 'text-ink' : r.v < 0 ? (r.tone === 'alert' ? 'text-alert-ink' : 'text-ink-3') : r.tone === 'good' ? 'text-good-ink' : 'text-ink-2')}>{r.v < 0 ? '−' : ''}{money(Math.abs(r.v))}</span>
+            <span className={cx('tnum font-medium', r.sub ? 'text-ink' : r.v < 0 ? (r.tone === 'alert' ? 'text-alert-ink' : 'text-ink-3') : r.tone === 'good' ? 'text-good-ink' : 'text-ink-2')}>{r.v < 0 ? '−' : ''}{yuan(Math.abs(r.v))}</span>
           </div>
         ))}
       </div>
@@ -416,13 +416,13 @@ function FundFlowCard({ settlements }: { settlements: SettlementT[] }) {
             {flows.map((f) => (
               <div key={f.label} className="rounded-lg border border-line px-3 py-2.5">
                 <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3"><span className="h-2 w-2 rounded-full" style={{ background: f.alert ? 'var(--color-alert)' : toneVar[f.tone] }} />{f.label}</div>
-                <div className="tnum mt-1 text-[15px] font-semibold text-ink">{money(f.value)}</div>
+                <div className="tnum mt-1 text-[15px] font-semibold text-ink">{yuan(f.value)}</div>
                 <div className="tnum text-[10.5px] text-ink-4">{gross > 0 ? ((Math.abs(f.value) / gross) * 100).toFixed(1) : '0'}%</div>
               </div>
             ))}
             <div className="rounded-lg border border-line bg-surface-muted px-3 py-2.5">
               <div className="text-[11.5px] text-ink-3">流水 GROSS</div>
-              <div className="tnum mt-1 text-[15px] font-semibold text-brand">{money(gross)}</div>
+              <div className="tnum mt-1 text-[15px] font-semibold text-brand">{yuan(gross)}</div>
               <div className="text-[10.5px] text-ink-4">恒等式左端</div>
             </div>
           </div>
@@ -430,7 +430,7 @@ function FundFlowCard({ settlements }: { settlements: SettlementT[] }) {
       ) : (
         <div className="px-3 pb-4">
           {gross > 0 ? <FundSankey gross={gross} flows={flows} /> : <div className="py-10 text-center text-[12.5px] text-ink-4">暂无结算数据 · 点击右上角「开始本期结算」按账期聚合已履约订单，生成分润瀑布与准备金释放计划</div>}
-          {diff > 0 && <div className="mx-4 mt-1 rounded-lg bg-alert-soft/50 px-3 py-2 text-[12px] text-alert-ink">存在对账差异 {money(diff)}（已在「逆向冲账」股标红）· 到「核销差异」处理</div>}
+          {diff > 0 && <div className="mx-4 mt-1 rounded-lg bg-alert-soft/50 px-3 py-2 text-[12px] text-alert-ink">存在对账差异 {yuan(diff)}（已在「逆向冲账」股标红）· 到「核销差异」处理</div>}
         </div>
       )}
     </Card>

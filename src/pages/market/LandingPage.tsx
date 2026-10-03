@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Check, ShieldCheck, Sparkles, Wallet, AlertCircle, Info } from 'lucide-react'
 import { marketApi, type MarketProduct, type Quote } from '../../lib/marketApi'
 import { getLandingPage, recordLandingOrder, recordLandingView, brandColorOf, brandName, isContinuous, type LandingPage as LP } from '../../lib/landing'
-import { money } from '../../lib/format'
+import { yuan } from '../../lib/format'
 import { isRealApi } from '../../lib/http'
 import { BrandMark } from '../../components/ui/primitives'
 
@@ -157,7 +157,7 @@ export default function LandingPage() {
                     <BrandMark brand={p.brandKey} mark={p.name.slice(0, 1)} size={30} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[13px] font-medium text-ink">{p.name}</div>
-                      <div className="text-[10.5px] text-ink-4">首单 {money(p.firstPrice)} · 续费 {money(p.renewPrice)}</div>
+                      <div className="text-[10.5px] text-ink-4">首单 {yuan(p.firstPrice)} · 续费 {yuan(p.renewPrice)}</div>
                     </div>
                   </div>
                 ))}
@@ -178,17 +178,17 @@ export default function LandingPage() {
             <div className="mt-5">
               <div className="flex items-end justify-between">
                 <div>
-                  {savedPct > 0 && <div className="text-[11.5px] text-ink-4 line-through tnum">{money(quote.listPrice)}</div>}
+                  {savedPct > 0 && <div className="text-[11.5px] text-ink-4 line-through tnum">{yuan(quote.listPrice)}</div>}
                   <div className="text-[11.5px] font-medium text-ink-3">套餐首单价{savedPct > 0 && <span className="ml-1 rounded bg-good-soft px-1.5 py-0.5 text-[10px] text-good-ink">立省 {savedPct}%</span>}</div>
                 </div>
-                <span className="tnum text-[30px] font-semibold leading-none" style={{ color: theme }}>{money(quote.finalPrice)}</span>
+                <span className="tnum text-[30px] font-semibold leading-none" style={{ color: theme }}>{yuan(quote.finalPrice)}</span>
               </div>
 
               {phase === 'done' ? (
                 <div className="animate-pop mt-4 rounded-2xl border border-good/40 bg-good-soft/50 p-5 text-center">
                   <img src="./img/illust-success.webp" alt="" className="mx-auto -mb-1 h-24 w-24 object-contain" />
                   <div className="mt-1 text-[15px] font-semibold text-ink">订阅开通中</div>
-                  <div className="mt-0.5 text-[11.5px] text-ink-4">已付 {money(quote.finalPrice)} · 平台正为你拆单开通各项订阅</div>
+                  <div className="mt-0.5 text-[11.5px] text-ink-4">已付 {yuan(quote.finalPrice)} · 平台正为你拆单开通各项订阅</div>
                   <a href="#/market/me" className="mt-3 inline-block text-[12.5px] font-medium hover:underline" style={{ color: theme }}>查看开通进度 →</a>
                 </div>
               ) : (
@@ -206,7 +206,7 @@ export default function LandingPage() {
                     className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-white shadow-lg transition-transform active:scale-[0.99] disabled:opacity-60"
                     style={{ background: theme }}
                   >
-                    {isRealApi ? '在线支付即将开放' : phase === 'paying' ? '支付处理中…' : !agreed ? <><Wallet size={16} /> 请先勾选同意协议</> : <><Wallet size={16} /> 立即订阅 {money(quote.finalPrice)}</>}
+                    {isRealApi ? '在线支付即将开放' : phase === 'paying' ? '支付处理中…' : !agreed ? <><Wallet size={16} /> 请先勾选同意协议</> : <><Wallet size={16} /> 立即订阅 {yuan(quote.finalPrice)}</>}
                   </button>
                 </>
               )}
@@ -257,7 +257,7 @@ export function LandingPreview({ page, products, quote }: { page: Pick<LP, 'titl
         </div>
         <div className="mt-3 flex items-end justify-between border-t border-line pt-2.5">
           <div className="text-[10px] text-ink-4">{products.length} 项 · 套餐价{savedPct > 0 && <span className="ml-1 text-good-ink">省{savedPct}%</span>}</div>
-          <span className="tnum text-[20px] font-semibold" style={{ color: theme }}>{quote?.ok ? money(quote.finalPrice) : '—'}</span>
+          <span className="tnum text-[20px] font-semibold" style={{ color: theme }}>{quote?.ok ? yuan(quote.finalPrice) : '—'}</span>
         </div>
         <div
           aria-hidden="true"

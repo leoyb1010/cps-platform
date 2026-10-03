@@ -1,0 +1,31 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+ ❯ src/pages/portal/brand-product-lifecycle.test.tsx (10 tests | 1 failed) 568ms
+   × renders exact first and renewal prices for the product owner, without compact rounding 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/portal/brand-product-lifecycle.test.tsx > renders exact first and renewal prices for the product owner, without compact rounding
+AssertionError: expected 'Synthetic cents product工具连续包月¥20¥3030…' to contain '¥19.91'
+
+Expected: "¥19.91"
+Received: "Synthetic cents product工具连续包月¥20¥3030%草稿 提交审核"
+
+ ❯ src/pages/portal/brand-product-lifecycle.test.tsx:123:27
+    121|   await act(async () => root.render(<BrandProducts />))
+    122|   const row = [...host.querySelectorAll('tr')].find(item => item.textC…
+    123|   expect(row.textContent).toContain('¥19.91')
+       |                           ^
+    124|   expect(row.textContent).toContain('¥29.92')
+    125| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 9 passed (10)
+   Start at  05:58:44
+   Duration  2.37s (transform 278ms, setup 147ms, import 383ms, tests 568ms, environment 1.07s)
+

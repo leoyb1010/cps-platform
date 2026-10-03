@@ -1,0 +1,27 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+ ❯ src/pages/market/market-product-journey.test.tsx (5 tests | 1 failed) 392ms
+   × keeps a newer selection untouched by a late simulated payment and admits one same-tick payment 65ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/market/market-product-journey.test.tsx > keeps a newer selection untouched by a late simulated payment and admits one same-tick payment
+AssertionError: expected "vi.fn()" to be called once, but got 2 times
+ ❯ src/pages/market/market-product-journey.test.tsx:66:19
+     64|   const pay = [...host.querySelectorAll<HTMLButtonElement>('button')].…
+     65|   await act(async () => { pay.click(); pay.click() })
+     66|   expect(api.pay).toHaveBeenCalledOnce()
+       |                   ^
+     67|   const reset = [...host.querySelectorAll<HTMLButtonElement>('button')…
+     68|   await act(async () => reset.click()); await toggle('B'); await tick()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+   Start at  06:06:43
+   Duration  1.68s (transform 322ms, setup 80ms, import 419ms, tests 392ms, environment 617ms)
+

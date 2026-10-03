@@ -1,0 +1,71 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+Listing tests:
+  [real-chromium] › aigc-sidecar.spec.ts:14:48 › real admin → Nest → Studio text generation, ledger and CPS attribution
+  [real-chromium] › aigc-sidecar.spec.ts:14:48 › real brand → Nest → Studio text generation, ledger and CPS attribution
+  [real-chromium] › aigc-sidecar.spec.ts:14:48 › real agent → Nest → Studio text generation, ledger and CPS attribution
+  [real-chromium] › aigc-sidecar.spec.ts:48:48 › admin retrieves and downloads actual PNG bytes from the owned result
+  [real-chromium] › aigc-sidecar.spec.ts:48:48 › brand retrieves and downloads actual PNG bytes from the owned result
+  [real-chromium] › aigc-sidecar.spec.ts:48:48 › agent retrieves and downloads actual PNG bytes from the owned result
+  [real-chromium] › aigc-sidecar.spec.ts:75:40 › admin repeated generate has one debit; interrupted old acknowledgment preserves a newer draft
+  [real-chromium] › aigc-sidecar.spec.ts:75:40 › brand repeated generate has one debit; interrupted old acknowledgment preserves a newer draft
+  [real-chromium] › business-journeys.spec.ts:14:1 › brand draft → review submission → platform approval → public listing persisted journey
+  [real-chromium] › business-journeys.spec.ts:41:1 › agent obtains one real tracking record, reloads plans, validates and persists a payout request
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin desktop-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand desktop-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent desktop-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin desktop-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand desktop-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent desktop-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin tablet-light-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand tablet-light-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent tablet-light-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin tablet-dark-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand tablet-dark-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent tablet-dark-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin mobile-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand mobile-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent mobile-light-normal
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix admin mobile-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix brand mobile-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:41:3 › R1 loaded route layout matrix agent mobile-dark-reduced
+  [real-chromium] › comprehensive.spec.ts:67:1 › brand draft repeated submit commits once with actual API readback
+  [real-chromium] › comprehensive.spec.ts:94:1 › closing a pending brand draft does not close the next draft
+  [real-chromium] › comprehensive.spec.ts:118:3 › mobile admin business tables keep readable names and keyboard access to rightmost actions
+  [real-chromium] › comprehensive.spec.ts:118:3 › mobile brand business tables keep readable names and keyboard access to rightmost actions
+  [real-chromium] › marketplace-layout.spec.ts:5:1 › marketplace actions stay in-card and operable: 820 no-preference
+  [real-chromium] › marketplace-layout.spec.ts:5:1 › marketplace actions stay in-card and operable: 820 reduce
+  [real-chromium] › marketplace-layout.spec.ts:5:1 › marketplace actions stay in-card and operable: 390 no-preference
+  [real-chromium] › marketplace-layout.spec.ts:5:1 › marketplace actions stay in-card and operable: 390 reduce
+  [real-chromium] › role-journeys.spec.ts:33:3 › AIGC estimate revision and truthful credit UI (platform)
+  [real-chromium] › role-journeys.spec.ts:33:3 › AIGC estimate revision and truthful credit UI (portal)
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: admin
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: finance
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: risk
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: ops
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: audit
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: teamadmin
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: brand
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: agent
+  [real-chromium] › role-journeys.spec.ts:88:3 › real role normal login and cross-zone denial: brandaudit
+  [real-chromium] › role-journeys.spec.ts:107:1 › real team manager sees customer-only management and can cancel with Escape
+  [real-chromium] › role-journeys.spec.ts:122:1 › real admin gets scope-compatible role choices and mobile member controls
+  [real-chromium] › role-journeys.spec.ts:135:1 › mobile member dialog stays above navigation after scrolling with normal motion
+  [real-chromium] › role-journeys.spec.ts:165:1 › cross-tab cookie replacement never replays a brand mutation as the agent
+  [real-chromium] › role-journeys.spec.ts:189:3 › late login Set-Cookie cannot restore a logged-out browser
+  [real-chromium] › role-journeys.spec.ts:189:3 › late refresh Set-Cookie cannot restore a logged-out browser
+  [real-chromium] › role-journeys.spec.ts:228:1 › latest overlapping login owns both UI identity and final refresh cookie
+  [real-chromium] › round2-recovery.spec.ts:11:48 › R2 admin accepted lost acknowledgment reload recovers exact operation without another generation
+  [real-chromium] › round2-recovery.spec.ts:11:48 › R2 brand accepted lost acknowledgment reload recovers exact operation without another generation
+  [real-chromium] › round2-recovery.spec.ts:11:48 › R2 agent accepted lost acknowledgment reload recovers exact operation without another generation
+  [real-chromium] › round2-recovery.spec.ts:20:1 › R2 brand product accepted response loss survives reload and replays one creation
+  [real-chromium] › round2-recovery.spec.ts:25:1 › R2 concrete membership carousel retrieves and downloads all six exact pages with keyboard actions
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle desktop-light-normal
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle desktop-dark-reduced
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle tablet-light-reduced
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle tablet-dark-normal
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle mobile-light-normal
+  [real-chromium] › round3-commerce.spec.ts:31:52 › R3 exact product → review → public quote → saved bundle mobile-dark-reduced
+  [real-chromium] › round3-commerce.spec.ts:70:1 › R3 public quote unavailable → explicit retry; stale quote cannot re-enable another selection
+  [real-chromium] › round3-commerce.spec.ts:95:51 › R3 agent cents, pending balance and interrupted application mobile-light-normal
+  [real-chromium] › round3-commerce.spec.ts:95:51 › R3 agent cents, pending balance and interrupted application mobile-dark-reduced
+Total: 68 tests in 7 files

@@ -6,7 +6,7 @@ import { DetailPopover, Info, useAnchoredPopover, type AnchorRect } from '../com
 import { Field, Input } from '../components/ui/forms'
 import { useApi, bizApi } from '../lib/adminApi'
 import { isRealApi } from '../lib/http'
-import { money, cx } from '../lib/format'
+import { yuan, cx } from '../lib/format'
 import { BundlesPanel } from './market/Supermarket'
 import { demoProducts, demoBundleRules } from '../lib/adminDemo'
 import { PRODUCT_STATUS as STATUS, BILLING_CYCLE_LABEL as CYCLE } from '../lib/data'
@@ -92,8 +92,8 @@ export default function Products() {
                 <Td className="pl-3"><div className="flex items-center gap-2.5">{p.brandMark && <BrandMark brand={p.brandId} mark={p.brandMark} size={26} />}<div><div className="text-[12.5px] font-medium text-ink">{p.name}</div><div className="text-[11px] text-ink-4">{p.brandName}</div></div></div></Td>
                 <Td className="text-[12px]">{p.category || '—'}</Td>
                 <Td><Badge tone="neutral">{CYCLE[p.billingCycle] ?? p.billingCycle}</Badge></Td>
-                <Td right mono>{money(p.firstPrice)}</Td>
-                <Td right mono>{money(p.renewPrice)}</Td>
+                <Td right mono>{yuan(p.firstPrice)}</Td>
+                <Td right mono>{yuan(p.renewPrice)}</Td>
                 <Td right mono>{p.defaultSharePct}%</Td>
                 <Td right><Badge tone={st.tone}>{st.label}</Badge></Td>
                 <Td right>
@@ -163,8 +163,8 @@ function ProductDrawer({ product, anchor, onClose, onReview }: { product: Produc
       </div>
       <p className="mt-3 text-[12.5px] leading-relaxed text-ink-3">{p.description || '无商品描述'}</p>
       <div className="mt-4 grid grid-cols-2 gap-3 text-[12.5px]">
-        <Info k="首单价" v={money(p.firstPrice)} />
-        <Info k="续费价" v={money(p.renewPrice)} />
+        <Info k="首单价" v={yuan(p.firstPrice)} />
+        <Info k="续费价" v={yuan(p.renewPrice)} />
         <Info k="默认代理分成" v={`${p.defaultSharePct}%`} />
         <Info k="计费周期" v={CYCLE[p.billingCycle] ?? p.billingCycle} />
       </div>

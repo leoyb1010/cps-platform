@@ -12,7 +12,7 @@ import { BARTER_RESOURCE_TYPES, INVOICE_STATUS } from '../../lib/dict'
 import { TICKET_LEVEL, TICKET_STATUS, TICKET_SOURCE } from '../../lib/data'
 import { portalApi, type BrandSummary, type CursorResult } from '../../lib/portalApi'
 import { usePortalResource, PortalState, TableSkeleton, exportCsv, PortalBanner } from '../../components/portal/kit'
-import { money, pct } from '../../lib/format'
+import { money, yuan, pct } from '../../lib/format'
 
 export function BrandHome() {
   const nav = useNavigate()
@@ -108,7 +108,7 @@ export function BrandOrders() {
                     <Td>{o.plan}</Td>
                     <Td><Badge tone={o.type === 'refund' || o.type === 'chargeback' ? 'alert' : o.type === 'renew' ? 'good' : 'info'}>{o.type}</Badge></Td>
                     <Td className="text-[12px] text-ink-3">{o.channel}</Td>
-                    <Td right mono>{money(o.amount)}</Td>
+                    <Td right mono>{yuan(o.amount)}</Td>
                     <Td right className="text-[12px] text-ink-4">{o.time}</Td>
                   </Row>
                 ))}
@@ -152,9 +152,9 @@ export function BrandSettlement() {
                 <Row key={s.id}>
                   <Td className="pl-3 text-[12.5px] font-medium text-ink">{s.id}</Td>
                   <Td>{s.period}</Td>
-                  <Td right mono>{money(s.gross)}</Td>
-                  <Td right mono className="font-medium text-ink">{money(s.brandShare)}</Td>
-                  <Td right mono>{money(s.reserve)}</Td>
+                  <Td right mono>{yuan(s.gross)}</Td>
+                  <Td right mono className="font-medium text-ink">{yuan(s.brandShare)}</Td>
+                  <Td right mono>{yuan(s.reserve)}</Td>
                   <Td right><Badge tone={s.status === 'cleared' ? 'good' : 'warn'}>{s.status === 'cleared' ? '已结算' : '待结算'}</Badge></Td>
                 </Row>
               ))}
@@ -390,8 +390,8 @@ export function BrandBarter() {
                     <Td className="text-[12px] text-ink-3">{x.partner}</Td>
                     <Td>{x.resourceType}</Td>
                     <Td><Badge tone={x.iAmInitiator ? 'info' : 'neutral'}>{x.iAmInitiator ? '我发起' : '待我确认'}</Badge></Td>
-                    <Td right mono>{money(x.myQuota)}</Td>
-                    <Td right mono>{money(x.counterpartyQuota)}</Td>
+                    <Td right mono>{yuan(x.myQuota)}</Td>
+                    <Td right mono>{yuan(x.counterpartyQuota)}</Td>
                     <Td right><Badge tone={x.status === 'active' || x.status === 'settled' ? 'good' : x.status === 'rejected' ? 'alert' : 'neutral'}>{x.status}</Badge></Td>
                     <Td right>
                       {canRespond

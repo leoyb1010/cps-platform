@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Search, CheckCircle2, Clock, ShieldCheck, ArrowLeft, ShoppingBag, XCircle, Hammer } from 'lucide-react'
 import { useToast } from '../../components/ui/overlays'
-import { money } from '../../lib/format'
+import { yuan } from '../../lib/format'
 import { isRealApi } from '../../lib/http'
 
 /**
@@ -110,7 +110,7 @@ export default function MySubscriptions() {
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-ink-4">
                       <span className={it.status === 'cancelled' ? 'line-through' : undefined}>下次续费 {it.renewAt}</span>
-                      <span className="tnum">{money(it.price)}/期</span>
+                      <span className="tnum">{yuan(it.price)}/期</span>
                     </div>
                     {it.status === 'active' && (
                       <button onClick={() => setUnsubName(it.name)} className="mt-2 text-[11.5px] font-medium text-ink-4 transition-colors hover:text-alert-ink">退订该订阅</button>

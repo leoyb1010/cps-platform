@@ -1,0 +1,10 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  06:08:00
+   Duration  2.48s (transform 402ms, setup 163ms, import 539ms, tests 568ms, environment 916ms)
+

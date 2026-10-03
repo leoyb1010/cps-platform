@@ -1,0 +1,23 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> cps-platform-server@1.0.0 test
+> vitest run
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v4.1.11 /workspace/scratch/4499d8d7cd65/five-round-audit/token-cps/cps-platform/server
+
+[Nest] 11199  - 10/04/2026, 6:09:46 AM   ERROR [IdempotencyService] 幂等结果落库失败（业务已提交，占位保留为 __committed_unknown__，绝不重跑）key=fund:k-fault：socket timeout
+
+ Test Files  19 passed (19)
+      Tests  283 passed (283)
+   Start at  06:09:11
+   Duration  42.17s (transform 1.11s, setup 0ms, import 3.74s, tests 35.18s, environment 2ms)
+
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
