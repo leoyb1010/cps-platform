@@ -48,7 +48,7 @@ export function BrandProducts() {
               </div>
               <Card className="mt-4" pad={false}>
                 <div className="p-5 pb-3"><CardTitle title="商品列表" desc="草稿可提交审核 · 上架后进入订阅超市" /></div>
-                <TableShell minWidth={760} className="px-2 pb-2" head={<><Th className="pl-3 min-w-[160px]">商品</Th><Th>类目</Th><Th>计费</Th><Th right>首单价</Th><Th right>续费价</Th><Th right>默认分成</Th><Th right>状态</Th><Th right>操作</Th></>}>
+                <TableShell minWidth={760} className="px-2 pb-2" head={<><Th className="pl-3 min-w-[160px]">商品</Th><Th>类目</Th><Th>计费</Th><Th right>首单价</Th><Th right>续费价</Th><Th right>默认分成</Th><Th right>状态</Th><Th right className="min-w-[110px]">操作</Th></>}>
                   {d.map((p) => {
                     const st = STATUS[p.status] ?? STATUS.draft
                     return (
@@ -60,7 +60,7 @@ export function BrandProducts() {
                         <Td right mono>{money(p.renewPrice)}</Td>
                         <Td right mono>{p.defaultSharePct}%</Td>
                         <Td right><Badge tone={st.tone}>{st.label}</Badge></Td>
-                        <Td right>{p.status === 'draft' ? <button onClick={() => submit(p.id)} className="inline-flex items-center gap-1 rounded-md bg-brand px-2 py-1 text-[12px] font-medium text-white hover:bg-brand-hover"><Send size={12} /> 提交审核</button> : <span className="text-[12px] text-ink-4">—</span>}</Td>
+                        <Td right>{p.status === 'draft' ? <button onClick={() => submit(p.id)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-brand px-2 py-1 text-[12px] font-medium text-white hover:bg-brand-hover"><Send size={12} /> 提交审核</button> : <span className="text-[12px] text-ink-4">—</span>}</Td>
                       </Row>
                     )
                   })}

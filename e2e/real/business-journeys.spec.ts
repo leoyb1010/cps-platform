@@ -30,7 +30,10 @@ test('brand draft → review submission → platform approval → public listing
   await expect.poll(async()=>(await read<Array<{name:string,status:string}>>(admin.page,'/products')).find(p=>p.name===name)?.status).toBe('live')
   await capture(admin.page,'platform-product-approved')
   await brand.page.reload();await expect(brand.page.getByRole('row').filter({has:brand.page.getByText(name,{exact:true})})).toContainText('已上架')
-  await visitor.page.goto('/#/market');await expect(visitor.page.getByText(name,{exact:true})).toBeVisible()
+  await visitor.page.goto('/#/market')
+  const listed=visitor.page.getByRole('button').filter({has:visitor.page.getByText(name,{exact:true})})
+  await expect(listed).toHaveCount(1);await expect(listed).toBeVisible()
+  expect((await read<Array<{name:string}>>(visitor.page,'/market/products')).filter(p=>p.name===name)).toHaveLength(1)
   await capture(visitor.page,'public-approved-product')
  }finally{await Promise.all([brand.context.close(),admin.context.close(),visitor.context.close()])}
 })
