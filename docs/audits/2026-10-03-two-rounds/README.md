@@ -41,3 +41,7 @@ Final local checks: frontend 83/83 tests (17 new component cases), backend 276/2
 ## Limits
 
 No full WCAG certification or exhaustive runtime click-through is claimed. Live payment/acquirer/SMS/email/model/KMS services, production load, operator data and real assets were not exercised. Frontend mock/demo tests do not prove backend integration. Hosted engine-boundary fixtures do not prove real model quality or provider billing. Existing local renderer/egress tests were explicitly excluded locally and must pass in final hosted Studio CI. This patch does not add refunds, cancel server-side generations, alter pricing, or migrate balances.
+
+### Hosted boundary regression and correction
+
+The initial hosted run at `8901d74` failed the existing real Chromium canary: an about:blank popup could navigate before asynchronous closure, resulting in one loopback request. The real role UI and ordinary frontend/browser suites passed, but that run is not a complete pass. The self-contained renderer now receives its document through a locally fulfilled reserved `.invalid` URL with a response-header CSP sandbox. Scripts remain enabled for animation; popup creation and same-origin privileges remain disabled by the browser before scripts run. Existing network routes, WebSocket denial and popup cleanup remain in place. No production network or operating-system settings change. Final hosted real rendering and canary checks are required to validate this correction.
