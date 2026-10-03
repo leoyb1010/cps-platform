@@ -113,3 +113,26 @@ test('closing a pending brand draft does not close the next draft', async ({ pag
   await expect(page.getByPlaceholder('如：会员 VIP 连续包月')).toHaveValue('Keep this newer draft')
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog')).toHaveCount(0)
 })
+
+for (const account of ['admin', 'brand'] as const) {
+  test(`mobile ${account} business tables keep readable names and keyboard access to rightmost actions`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await signIn(page, account)
+    await page.goto(account === 'admin' ? '/#/brands' : '/#/portal/brand/products')
+    await page.waitForLoadState('networkidle')
+    const table = page.locator('main table').first()
+    await expect(table.locator('tbody tr')).not.toHaveCount(0)
+    const width = await table.evaluate(t => t.getBoundingClientRect().width)
+    expect(width).toBeGreaterThanOrEqual(account === 'admin' ? 1080 : 760)
+    const scroll = table.locator('..')
+    await expect(scroll).toHaveAttribute('tabindex', '0')
+    await capture(page, `mobile-${account}-readable-table-left`)
+    await scroll.focus()
+    await page.keyboard.press('ArrowRight')
+    await expect.poll(() => scroll.evaluate(e => e.scrollLeft)).toBeGreaterThan(0)
+    await scroll.evaluate(e => { e.scrollLeft = e.scrollWidth })
+    await capture(page, `mobile-${account}-readable-table-right`)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  })
+}

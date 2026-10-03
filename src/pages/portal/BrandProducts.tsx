@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Send } from 'lucide-react'
 import { Card, CardTitle, Stat, PageHeader, Badge, Button, Segmented, TableShell, Th, Td, Row } from '../../components/ui/primitives'
 import { Modal, useToast } from '../../components/ui/overlays'
@@ -17,6 +17,8 @@ export function BrandProducts() {
   const toast = useToast()
   const { data, state, reload } = usePortalResource<Product[]>(() => portalApi.brandProducts())
   const [newOpen, setNewOpen] = useState(false)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
 
   const submit = async (id: string) => {
     try {
@@ -46,7 +48,7 @@ export function BrandProducts() {
               </div>
               <Card className="mt-4" pad={false}>
                 <div className="p-5 pb-3"><CardTitle title="商品列表" desc="草稿可提交审核 · 上架后进入订阅超市" /></div>
-                <TableShell className="px-2 pb-2" head={<><Th className="pl-3">商品</Th><Th>类目</Th><Th>计费</Th><Th right>首单价</Th><Th right>续费价</Th><Th right>默认分成</Th><Th right>状态</Th><Th right>操作</Th></>}>
+                <TableShell minWidth={760} className="px-2 pb-2" head={<><Th className="pl-3 min-w-[160px]">商品</Th><Th>类目</Th><Th>计费</Th><Th right>首单价</Th><Th right>续费价</Th><Th right>默认分成</Th><Th right>状态</Th><Th right>操作</Th></>}>
                   {d.map((p) => {
                     const st = STATUS[p.status] ?? STATUS.draft
                     return (
@@ -68,30 +70,43 @@ export function BrandProducts() {
           )
         }}
       </PortalState>
-      {newOpen && <NewProductModal onClose={() => setNewOpen(false)} onDone={() => { toast({ tone: 'good', text: '商品已创建（草稿），可提交审核' }); reload() }} onError={(m) => toast({ tone: 'alert', text: m })} />}
+      {newOpen && <NewProductModal onClose={() => setNewOpen(false)} onDone={(name) => { if (mounted.current) { toast({ tone: 'good', text: `商品「${name}」已创建（草稿），可提交审核` }); reload() } }} onError={(m) => toast({ tone: 'alert', text: m })} />}
     </>
   )
 }
 
-function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; onDone: () => void; onError: (m: string) => void }) {
+function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; onDone: (name: string) => void; onError: (m: string) => void }) {
   const [f, setF] = useState({ name: '', category: '工具', description: '', billingCycle: 'continuous', firstPrice: 19.9, renewPrice: 29.9, defaultSharePct: 30 })
   const [bundleEligible, setBundleEligible] = useState(true)
   const [exclusiveGroup, setExclusiveGroup] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [pending, setPending] = useState(false)
+  const submitting = useRef(false)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   const submit = async () => {
+    if (submitting.current) return
     if (!f.name.trim()) { onError('请填写商品名称'); return }
     // 价格/分成必须为有效正数：清空数字框会得到 +'' === 0，"1-" 之类得到 NaN，
     // 若不拦截会创建 ¥0 或 NaN% 的草稿商品推进审核。
     if (!(f.firstPrice > 0) || !(f.renewPrice > 0)) { onError('首单价与续费价需大于 0'); return }
     if (!(f.defaultSharePct >= 0 && f.defaultSharePct <= 100)) { onError('代理分成需在 0–100% 之间'); return }
+    submitting.current = true
+    setPending(true)
     try {
       const r = await portalApi.addBrandProduct({ ...f, bundleEligible, exclusiveGroup: exclusiveGroup.trim(), tags })
-      if (r.ok) { onClose(); onDone() } else { onError('创建失败，请重试') }
-    } catch { onError('网络异常，请重试') }
+      if (r.ok) {
+        // Closing a dialog does not cancel a request already accepted by the API.
+        // Publish its actual result, but only its own mounted dialog may close.
+        onDone(f.name.trim())
+        if (active.current) onClose()
+      } else if (active.current) { onError('创建失败，请重试') }
+    } catch { if (active.current) onError('网络异常，请重试') }
+    finally { submitting.current = false; if (active.current) setPending(false) }
   }
   return (
-    <Modal open onClose={onClose} width={520} title="上架订阅商品" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" onClick={submit}>创建草稿</Button></>}>
-      <div className="space-y-3">
+    <Modal open onClose={onClose} width={520} title="上架订阅商品" footer={<><Button variant="ghost" onClick={onClose}>取消</Button><Button variant="primary" onClick={submit} loading={pending}>创建草稿</Button></>}>
+      <fieldset disabled={pending} className="min-w-0 space-y-3">
         <Field label="商品名称" required><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="如：会员 VIP 连续包月" /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="类目"><Select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}><option>工具</option><option>泛娱乐</option><option>生活服务</option></Select></Field>
@@ -113,7 +128,7 @@ function NewProductModal({ onClose, onDone, onError }: { onClose: () => void; on
           </div>
           <Field label="标签" hint="用户搜索/筛选用，最多 8 个"><TagInput value={tags} onChange={setTags} placeholder="输入标签后回车，如：学生 / 职场" /></Field>
         </div>
-      </div>
+      </fieldset>
     </Modal>
   )
 }

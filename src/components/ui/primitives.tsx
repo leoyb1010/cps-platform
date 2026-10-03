@@ -433,7 +433,7 @@ export function TableShell({
 }) {
   const isEmpty = Children.count(children) === 0
   return (
-    <div className={cx('overflow-x-auto', className)}>
+    <div tabIndex={0} className={cx('overflow-x-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand', className)}>
       <table className="w-full border-collapse text-[13px]" style={minWidth ? { minWidth } : undefined}>
         <thead>
           <tr className="border-b border-line text-left text-[11.5px] font-medium tracking-wide text-ink-3 uppercase">
