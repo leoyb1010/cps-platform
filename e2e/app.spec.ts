@@ -97,6 +97,36 @@ test('退款联动：投诉工单退款后工单流转、活动流记录', async
   await expect(page.getByText('已退款，联动冲账完成').first()).toBeVisible({ timeout: 5000 })
 })
 
+test('正常动效下移动端使用指引抽屉覆盖导航且完整适配视口', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await login(page, 'risk')
+  await page.goto('/#/complaints')
+  await page.getByRole('button', { name: '使用指引', exact: true }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer).toBeVisible()
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => {})))
+  })
+  const panel = await drawer.boundingBox()
+  expect(panel?.x).toBeGreaterThanOrEqual(0)
+  expect(panel?.y).toBe(0)
+  expect(panel?.width).toBeLessThanOrEqual(390)
+  expect(panel?.height).toBe(844)
+  const titleExposed = await drawer.getByRole('heading').evaluate((heading) => {
+    const bounds = heading.getBoundingClientRect()
+    const hit = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    return heading.closest('[role="dialog"]') === hit?.closest('[role="dialog"]')
+  })
+  expect(titleExposed, 'drawer title must stay above the sticky navigation').toBe(true)
+  mkdirSync('/tmp/cps-ui-audit', { recursive: true })
+  await page.screenshot({ path: '/tmp/cps-ui-audit/mobile-drawer-normal-motion.png' })
+  await drawer.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(drawer).toHaveCount(0)
+})
+
 test('退出登录 → 回到登录页', async ({ page }) => {
   await login(page)
   await page.getByRole('button', { name: /李运营/ }).first().click()

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X, CheckCircle2, AlertTriangle, Info, XCircle } from 'lucide-react'
 import { cx } from '../../lib/format'
 import { Button, TONE } from './primitives'
@@ -137,7 +138,7 @@ export function Drawer({
   const { render, closing } = useExitPresence(open, 240)
   useOverlayBehavior(open, onClose, panelRef)
   if (!render) return null
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[90]">
       <div className="absolute inset-0 bg-ink/35" style={{ animation: closing ? 'fadeOut .2s both' : 'fadeIn .2s both' }} onClick={onClose} />
       <div
@@ -147,7 +148,7 @@ export function Drawer({
         aria-labelledby={titleId}
         tabIndex={-1}
         className="absolute top-0 right-0 flex h-full flex-col bg-surface shadow-[var(--shadow-pop)] outline-none"
-        style={{ width, animation: closing ? 'drawerOut .24s var(--ease-out) both' : 'drawerIn .32s var(--ease-out) both' }}
+        style={{ width, maxWidth: '100%', animation: closing ? 'drawerOut .24s var(--ease-out) both' : 'drawerIn .32s var(--ease-out) both' }}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>
@@ -162,7 +163,7 @@ export function Drawer({
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
       </div>
-    </div>
+    </div>, document.body,
   )
 }
 
@@ -187,7 +188,7 @@ export function Modal({
   const { render, closing } = useExitPresence(open, 200)
   useOverlayBehavior(open, onClose, panelRef)
   if (!render) return null
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[95] grid place-items-center p-4">
       <div className="absolute inset-0 bg-ink/35" style={{ animation: closing ? 'fadeOut .18s both' : 'fadeIn .2s both' }} onClick={onClose} />
       <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="relative w-full rounded-xl border border-line bg-surface shadow-[var(--shadow-pop)] outline-none" style={{ maxWidth: width, animation: closing ? 'modalOut .18s var(--ease-out) both' : 'revUpSm .26s var(--ease-out) both' }}>
@@ -198,7 +199,7 @@ export function Modal({
         <div className="px-5 py-4 text-[13px] leading-relaxed text-ink-2">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
       </div>
-    </div>
+    </div>, document.body,
   )
 }
 

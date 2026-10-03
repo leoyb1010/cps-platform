@@ -21,13 +21,13 @@ beforeEach(() => {
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
-async function click(text: string, within: ParentNode = host) {
+async function click(text: string, within: ParentNode = document.body) {
   const button = [...within.querySelectorAll('button')].find(b => b.textContent?.trim() === text)
   expect(button, text).toBeTruthy()
   await act(async () => { button!.click() })
 }
 async function input(value: string) {
-  const area = host.querySelector('textarea')!
+  const area = document.body.querySelector('textarea')!
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(area, value)
     area.dispatchEvent(new Event('input', { bubbles: true }))
@@ -42,15 +42,15 @@ async function mount(portal = false) {
 it('does not present the demo balance as a real balance on a failed credits read', async () => {
   calls.credits.mockRejectedValue(new Error('synthetic unavailable service'))
   await act(async () => root.render(<Aigc />))
-  expect(host.textContent).not.toContain('84,200')
-  expect(host.textContent).toContain('余额暂不可用')
+  expect(document.body.textContent).not.toContain('84,200')
+  expect(document.body.textContent).toContain('余额暂不可用')
 })
 it('shows the server-confirmed charge even when the user did not estimate first', async () => {
   await mount()
-  await click('生成', host.querySelector('[role=dialog]')!)
+  await click('生成', document.body.querySelector('[role=dialog]')!)
   expect(calls.generate).toHaveBeenCalledOnce()
-  expect(host.textContent).toContain('消耗 37 积分')
-  expect(host.textContent).not.toContain('消耗 0 积分')
+  expect(document.body.textContent).toContain('消耗 37 积分')
+  expect(document.body.textContent).not.toContain('消耗 0 积分')
 })
 it.each([false, true])('ignores a delayed estimate after form edits (portal=%s)', async portal => {
   let resolve!: (value: unknown) => void
@@ -60,21 +60,21 @@ it.each([false, true])('ignores a delayed estimate after form edits (portal=%s)'
   expect(calls.estimate).toHaveBeenCalledOnce()
   await input('Changed synthetic description')
   await act(async () => resolve({ ok: true, creditsEstimated: 17 }))
-  expect(host.textContent).not.toContain('生成 · 17 积分')
+  expect(document.body.textContent).not.toContain('生成 · 17 积分')
 })
 it.each([false, true])('invalidates a settled estimate when the intent changes (portal=%s)', async portal => {
   await mount(portal)
   await click('先估算积分 →')
-  expect(host.textContent).toContain('生成 · 17 积分')
-  const intent = host.querySelectorAll('select')[1]
+  expect(document.body.textContent).toContain('生成 · 17 积分')
+  const intent = document.body.querySelectorAll('select')[1]
   await act(async () => { intent.value = 'convert'; intent.dispatchEvent(new Event('change', { bubbles: true })) })
-  expect(host.textContent).not.toContain('生成 · 17 积分')
+  expect(document.body.textContent).not.toContain('生成 · 17 积分')
 })
 
 it.each([false, true])('does not enable a generation before engine configuration arrives (portal=%s)', async portal => {
   calls.config.mockImplementation(() => new Promise(() => {}))
   await mount(portal)
-  const generate = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === '生成')!
+  const generate = [...document.body.querySelectorAll('button')].find(b => b.textContent?.trim() === '生成')!
   expect(generate.disabled).toBe(true)
   await act(async () => generate.click())
   expect(calls.generate).not.toHaveBeenCalled()
@@ -86,10 +86,10 @@ it.each([false, true])('keeps the newest of overlapping estimates (portal=%s)', 
   await mount(portal)
   await click('先估算积分 →')
   await click('先估算积分 →')
-  expect(host.textContent).toContain('生成 · 29 积分')
+  expect(document.body.textContent).toContain('生成 · 29 积分')
   await act(async () => resolveOld({ ok: true, creditsEstimated: 17 }))
-  expect(host.textContent).toContain('生成 · 29 积分')
-  expect(host.textContent).not.toContain('生成 · 17 积分')
+  expect(document.body.textContent).toContain('生成 · 29 积分')
+  expect(document.body.textContent).not.toContain('生成 · 17 积分')
 })
 
 it.each([0, undefined])('uses only a confirmed charge, preserving zero and unknown distinctly (%s)', async charge => {
@@ -97,17 +97,17 @@ it.each([0, undefined])('uses only a confirmed charge, preserving zero and unkno
   await mount()
   await click('先估算积分 →')
   await click('生成 · 17 积分')
-  expect(host.textContent).toContain(charge === 0 ? '消耗 0 积分' : '消耗积分待确认')
-  expect(host.textContent).not.toContain('消耗 17 积分')
+  expect(document.body.textContent).toContain(charge === 0 ? '消耗 0 积分' : '消耗积分待确认')
+  expect(document.body.textContent).not.toContain('消耗 17 积分')
 })
 
 it('preserves demo balance and local demo generation without contacting the engine', async () => {
   calls.real = false
   await mount()
-  expect(host.textContent).toContain('84,200')
+  expect(document.body.textContent).toContain('84,200')
   await click('先估算积分 →')
   await click('生成 · 20 积分')
-  expect(host.textContent).toContain('消耗 20 积分')
+  expect(document.body.textContent).toContain('消耗 20 积分')
   expect(calls.config).not.toHaveBeenCalled()
   expect(calls.credits).not.toHaveBeenCalled()
   expect(calls.estimate).not.toHaveBeenCalled()
@@ -119,10 +119,10 @@ it.each([false, true])('a late initial balance cannot overwrite a completed gene
   calls.credits.mockImplementation(() => new Promise(r => { resolve = r }))
   await mount(portal)
   await click('生成')
-  expect(host.textContent).toContain('63')
+  expect(document.body.textContent).toContain('63')
   await act(async () => resolve({ ok: true, credits: { availableCredits: 100 } }))
-  expect(host.textContent).toContain('63')
-  expect(host.textContent).not.toContain(portal ? '100 积分' : '积分余额100')
+  expect(document.body.textContent).toContain('63')
+  expect(document.body.textContent).not.toContain(portal ? '100 积分' : '积分余额100')
 })
 
 it.each([false, true])('freezes the submitted form while generation is in flight (portal=%s)', async portal => {
@@ -130,8 +130,8 @@ it.each([false, true])('freezes the submitted form while generation is in flight
   calls.generate.mockImplementation(() => new Promise(r => { resolve = r }))
   await mount(portal)
   await click('生成')
-  expect(host.querySelector('textarea')!.disabled).toBe(true)
-  for (const select of host.querySelectorAll('select')) expect(select.disabled).toBe(true)
+  expect(document.body.querySelector('textarea')!.disabled).toBe(true)
+  for (const select of document.body.querySelectorAll('select')) expect(select.disabled).toBe(true)
   await act(async () => resolve({ ok: true, job: { id: 'synthetic-busy', credits_charged: 37 }, credits: { availableCredits: 63 } }))
-  if (portal) expect(host.querySelector('textarea')!.disabled).toBe(false)
+  if (portal) expect(document.body.querySelector('textarea')!.disabled).toBe(false)
 })

@@ -132,6 +132,36 @@ test('real admin gets scope-compatible role choices and mobile member controls',
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
+test('mobile member dialog stays above navigation after scrolling with normal motion', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await signIn(page, 'admin')
+  await page.goto('/#/members')
+  const brand = page.getByRole('row').filter({ has: page.getByText('brand', { exact: true }) })
+  await brand.getByRole('button', { name: '管理', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await page.evaluate(async () => {
+    await Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => {})))
+  })
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  const visibleTitle = await dialog.getByRole('heading').evaluate((heading) => {
+    const bounds = heading.getBoundingClientRect()
+    const topElement = document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    return heading.closest('[role="dialog"]') === topElement?.closest('[role="dialog"]')
+  })
+  expect(visibleTitle, 'dialog title must not be covered by the sticky navigation').toBe(true)
+  const overlay = await dialog.locator('..').boundingBox()
+  expect(overlay?.y).toBe(0)
+  expect(overlay?.height).toBe(844)
+  mkdirSync(evidence, { recursive: true })
+  await page.screenshot({ path: `${evidence}/mobile-dialog-normal-motion.png` })
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+})
+
 test('cross-tab cookie replacement never replays a brand mutation as the agent', async ({ page, context }) => {
   await signIn(page, 'brand', true)
   const agentPage = await context.newPage()
