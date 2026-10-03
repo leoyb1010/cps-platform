@@ -25,6 +25,9 @@ export function PortalAigc() {
   const [preset, setPreset] = useState('balanced')
   const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
+  const submitting = useRef(false)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   const [msg, setMsg] = useState('')
 
   useEffect(() => {
@@ -62,21 +65,27 @@ export function PortalAigc() {
   }
   const doGenerate = async () => {
     if (!prompt.trim()) { setMsg('先填一句话描述要生成什么'); return }
+    if (submitting.current) return
+    submitting.current = true
     setBusy(true); setMsg('')
     try {
       const r = await aigcApi.generate(payload())
       if (!r.ok || !r.job) throw new Error('no job')
+      if (!active.current) return
       setGens((p) => [{ jobId: r.job!.id, assetType, assetLabel: current?.label ?? assetType, prompt: prompt.trim(), output: r.result, credits: r.job!.credits_charged }, ...p])
-      const bal = r.credits?.availableCredits ?? r.credits?.balance
-      creditRevision.current += 1
-      setCredits(typeof bal === 'number' ? bal : null)
+      const revision = ++creditRevision.current
+      setCredits(null)
+      void aigcApi.credits().then(result => {
+        const balance = result.credits?.availableCredits ?? result.credits?.balance
+        if (active.current && creditRevision.current === revision) setCredits(typeof balance === 'number' ? balance : null)
+      }).catch(() => {})
       setPrompt(''); invalidateEstimate(); setMsg('')
-    } catch { setMsg('生成失败：素材服务未连接') } finally { setBusy(false) }
+    } catch { if (active.current) setMsg('生成失败：素材服务未连接') } finally { submitting.current = false; if (active.current) setBusy(false) }
   }
 
   return (
     <>
-      <PageHeader title="AIGC 素材" desc="一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。素材可直接用于你的推广投放。" />
+      <PageHeader title="AIGC 素材" desc="一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。查看并审核结果后，再用于你的推广投放。" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
           {loadErr ? isRealApi ? <Card><p role="alert" className="text-sm text-warn-ink">素材配置暂时无法读取，已保存素材仍可查看。</p><Button onClick={() => setConfigAttempt(value => value + 1)}>重试连接</Button></Card> : <DemoNotice /> : <Card>
             <CardTitle title="生成素材" desc="选类型 → 一句话描述 → 生成" right={<Badge tone="info" dot>{credits != null ? `${int(credits)} 积分` : '积分'}</Badge>} />

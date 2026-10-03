@@ -70,6 +70,8 @@ export default function Aigc() {
   const [gens, setGens] = useState<GenItem[]>([])
   const [credits, setCredits] = useState<number | null>(null)
   const creditRevision = useRef(0)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const list = seed.filter((a) => (f === 'all' ? true : a.type === f))
   const active = seed.find((a) => a.id === openId) ?? null
 
@@ -195,10 +197,20 @@ export default function Aigc() {
       {genOpen && (
         <NewMaterialModal
           onClose={() => setGenOpen(false)}
-          onGenerated={(item, balance) => {
+          onGenerated={(item) => {
+            if (!mounted.current) return false
             setGens((prev) => [item, ...prev])
-            creditRevision.current += 1
-            if (isRealApi) setCredits(typeof balance === 'number' ? balance : null)
+            const revision = ++creditRevision.current
+            if (isRealApi) {
+              // A completed job response may have been delayed behind another
+              // accepted job. Read the current balance instead of its old snapshot.
+              setCredits(null)
+              void aigcApi.credits().then(result => {
+                const balance = result.credits?.availableCredits ?? result.credits?.balance
+                if (mounted.current && revision === creditRevision.current) setCredits(typeof balance === 'number' ? balance : null)
+              }).catch(() => {})
+            }
+            return true
           }}
         />
       )}
@@ -206,7 +218,7 @@ export default function Aigc() {
   )
 }
 
-function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGenerated: (item: GenItem, balance?: number) => void }) {
+function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGenerated: (item: GenItem, balance?: number) => boolean }) {
   const toast = useToast()
   const [cfg, setCfg] = useState<FactoryConfig | null>(null)
   const [loadErr, setLoadErr] = useState(false)
@@ -216,6 +228,9 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
   const [preset, setPreset] = useState('balanced')
   const { estimate, invalidateEstimate, estimateWith } = useAigcEstimate()
   const [busy, setBusy] = useState(false)
+  const submitting = useRef(false)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
 
   // 演示态：用内置素材类型让"生成素材"可完整体验（模拟生成，不调真实 agent-studio）。
   // 真实模式：拉素材引擎配置；微服务未连才显示占位。
@@ -255,6 +270,8 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
 
   const doGenerate = async () => {
     if (!prompt.trim()) { toast({ tone: 'info', text: '先填一句话描述要生成什么' }); return }
+    if (submitting.current) return
+    submitting.current = true
     // 演示态：模拟生成（不调真实 agent-studio），落一条"本次生成"记录，走通完整体验
     if (!isRealApi) {
       const cost = estimate ?? demoEstimate()
@@ -270,7 +287,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
     try {
       const r = await aigcApi.generate(payload())
       if (!r.ok || !r.job) throw new Error('no job')
-      onGenerated(
+      const accepted = onGenerated(
         {
           jobId: r.job.id,
           output: r.result,
@@ -281,12 +298,13 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
         },
         r.credits?.availableCredits ?? r.credits?.balance,
       )
-      toast({ tone: 'good', text: `已生成 · ${current?.label ?? assetType}` })
-      onClose()
+      if (accepted) toast({ tone: 'good', text: `已生成 · ${current?.label ?? assetType}` })
+      if (active.current) onClose()
     } catch {
-      toast({ tone: 'alert', text: '生成失败：素材服务未连接（agent-studio 微服务未启动）' })
+      if (active.current) toast({ tone: 'alert', text: '生成失败：素材服务未连接（agent-studio 微服务未启动）' })
     } finally {
-      setBusy(false)
+      submitting.current = false
+      if (active.current) setBusy(false)
     }
   }
 

@@ -32,6 +32,7 @@ export interface EstimateResult {
 }
 export interface FactoryOutput {
   type?: string
+  gateway?: { provider?: string }
   imagePrompt?: string
   images?: unknown[]
   storyboard?: Array<{ time?: string; shot?: string; visual?: string; voice?: string }>

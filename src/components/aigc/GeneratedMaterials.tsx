@@ -40,6 +40,7 @@ export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) 
       return <article key={item.jobId} className="min-w-0 rounded-lg border border-line bg-surface-muted p-3">
         <div className="break-words text-sm font-medium">{item.assetLabel} · {item.prompt}</div>
         <div className="break-all text-xs text-ink-4">{item.jobId} · {item.credits == null ? '消耗积分待确认' : `消耗 ${item.credits} 积分`}</div>
+        {item.output?.gateway?.provider === 'local-fallback' && <p className="mt-1 text-xs text-warn-ink">本地模板结果，未调用付费模型；使用前请审核主题、事实与行动建议。</p>}
         <details className="mt-2"><summary className="cursor-pointer text-sm font-medium text-brand focus-visible:outline">查看素材</summary>
           {promptOnly ? <>
             <p className="mt-2 text-sm text-warn-ink">当前仅生成图片提示词，尚未生成可用图片。</p>

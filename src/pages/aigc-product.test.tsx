@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import Aigc from './Aigc'
 import { PortalAigc } from './portal/PortalAigc'
 
-const calls = vi.hoisted(() => ({ real: true, config: vi.fn(), credits: vi.fn(), estimate: vi.fn(), generate: vi.fn() }))
+const calls = vi.hoisted(() => ({ real: true, config: vi.fn(), credits: vi.fn(), estimate: vi.fn(), generate: vi.fn(), jobs: vi.fn() }))
 vi.mock('../lib/http', () => ({ get isRealApi() { return calls.real } }))
 vi.mock('../lib/aigcApi', () => ({ aigcApi: calls }))
 let root: Root
@@ -12,6 +12,7 @@ let host: HTMLDivElement
 const config = { ok: true, assetTypes: [{ id: 'copy', label: '投放文案', modality: 'text', defaultPlatform: 'xhs' }] }
 beforeEach(() => {
   calls.real = true
+  calls.jobs.mockReset().mockResolvedValue({jobs:[]})
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('matchMedia', () => ({ matches: true }))
   calls.config.mockReset().mockResolvedValue(config)
@@ -116,7 +117,7 @@ it('preserves demo balance and local demo generation without contacting the engi
 
 it.each([false, true])('a late initial balance cannot overwrite a completed generation balance (portal=%s)', async portal => {
   let resolve!: (value: unknown) => void
-  calls.credits.mockImplementation(() => new Promise(r => { resolve = r }))
+  calls.credits.mockImplementationOnce(() => new Promise(r => { resolve = r })).mockResolvedValue({ ok: true, credits: { availableCredits: 63 } })
   await mount(portal)
   await click('生成')
   expect(document.body.textContent).toContain('63')
@@ -134,4 +135,39 @@ it.each([false, true])('freezes the submitted form while generation is in flight
   for (const select of document.body.querySelectorAll('select')) expect(select.disabled).toBe(true)
   await act(async () => resolve({ ok: true, job: { id: 'synthetic-busy', credits_charged: 37 }, credits: { availableCredits: 63 } }))
   if (portal) expect(document.body.querySelector('textarea')!.disabled).toBe(false)
+})
+
+it.each([false,true])('one pending generation owns repeated same-tick clicks (portal=%s)',async portal=>{
+ let resolve!:(v:unknown)=>void;calls.generate.mockImplementation(()=>new Promise(r=>{resolve=r}));await mount(portal)
+ const button=[...document.body.querySelectorAll('button')].find(b=>b.textContent?.trim()==='生成')!
+ await act(async()=>{button.click();button.click()});expect(calls.generate).toHaveBeenCalledOnce()
+ await act(async()=>resolve({ok:true,job:{id:'single-generation',credits_charged:4},credits:{availableCredits:96}}))
+})
+it('an accepted old generation keeps its result without closing a newer modal draft',async()=>{
+ let resolve!:(v:unknown)=>void;calls.generate.mockImplementation(()=>new Promise(r=>{resolve=r}));await mount();await click('生成');await click('取消');await click('生成素材');await input('New draft must survive')
+ await act(async()=>resolve({ok:true,job:{id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
+ expect(document.body.querySelector('textarea')?.value).toBe('New draft must survive');expect(document.body.textContent).toContain('old-accepted')
+})
+
+it('late accepted response cannot restore an older balance after a newer generation',async()=>{
+ let releaseOld!:(v:unknown)=>void
+ calls.generate.mockImplementationOnce(()=>new Promise(r=>{releaseOld=r})).mockResolvedValueOnce({ok:true,job:{id:'new-accepted',credits_charged:4},credits:{availableCredits:92}})
+ await mount();await click('生成');await click('取消');await click('生成素材');await input('New independent request')
+ calls.credits.mockResolvedValue({ok:true,credits:{availableCredits:92}})
+ await click('生成');expect(document.body.textContent).toContain('92')
+ await act(async()=>releaseOld({ok:true,job:{id:'old-accepted',credits_charged:4},credits:{availableCredits:96}}))
+ expect(document.body.textContent).toContain('92');expect(document.body.textContent).not.toContain('积分余额96');expect(document.body.textContent).toContain('new-accepted');expect(document.body.textContent).toContain('old-accepted')
+})
+it('old failure leaves a newer draft and its controls usable',async()=>{
+ let reject!:(v:unknown)=>void;calls.generate.mockImplementationOnce(()=>new Promise((_,r)=>{reject=r}));await mount();await click('生成');await click('取消');await click('生成素材');await input('Unrelated newer draft')
+ await act(async()=>reject(new Error('synthetic old failure')));expect(document.body.querySelector('textarea')?.value).toBe('Unrelated newer draft');expect(document.body.querySelector('textarea')?.disabled).toBe(false)
+})
+it.each([false,true])('route unmount prevents late generation UI and balance reads (portal=%s)',async portal=>{
+ let resolve!:(v:unknown)=>void;calls.generate.mockImplementationOnce(()=>new Promise(r=>{resolve=r}));await mount(portal);await click('生成');const reads=calls.credits.mock.calls.length;await act(async()=>root.render(<p>Another route</p>));await act(async()=>resolve({ok:true,job:{id:'old-route-job',credits_charged:4},credits:{availableCredits:96}}));expect(calls.credits).toHaveBeenCalledTimes(reads);expect(host.textContent).toBe('Another route')
+})
+it('a late authoritative balance read cannot replace a newer post-generation read',async()=>{
+ let release!:(v:unknown)=>void
+ calls.credits.mockResolvedValueOnce({ok:true,credits:{availableCredits:100}}).mockImplementationOnce(()=>new Promise(r=>{release=r})).mockResolvedValue({ok:true,credits:{availableCredits:92}})
+ await mount();await click('生成');await click('生成素材');await input('Second accepted generation');await click('生成');expect(host.textContent).toContain('92')
+ await act(async()=>release({ok:true,credits:{availableCredits:96}}));expect(host.textContent).toContain('92');expect(host.textContent).not.toContain('积分余额96')
 })

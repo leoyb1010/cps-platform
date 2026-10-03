@@ -5,7 +5,7 @@ import { GeneratedMaterials, type GeneratedMaterial } from './GeneratedMaterials
 const calls=vi.hoisted(()=>({jobs:vi.fn(),image:vi.fn()}))
 vi.mock('../../lib/aigcApi',()=>({aigcApi:calls}))
 let root:Root,host:HTMLDivElement
-const job={id:'persisted-job',asset_type:'social_pack',prompt:'Synthetic saved copy',status:'completed',credits_charged:4,output_json:{copy:{body:'既有客户续费提示'}}}
+const job={id:'persisted-job',asset_type:'social_pack',prompt:'Synthetic saved copy',status:'completed',credits_charged:4,output_json:{gateway:{provider:'local-fallback'},copy:{body:'既有客户续费提示'}}}
 beforeEach(()=>{vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);calls.jobs.mockReset().mockResolvedValue({jobs:[job]});calls.image.mockReset();host=document.createElement('div');document.body.append(host);root=createRoot(host)})
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals()})
 const render=async(recent:GeneratedMaterial[]=[])=>act(async()=>root.render(<GeneratedMaterials recent={recent}/>))
@@ -19,7 +19,7 @@ it('failed history read retains current output and Retry recovers without anothe
  await render([{jobId:'fresh',assetLabel:'文案',prompt:'Fresh output',output:{copy:{body:'Fresh usable text'}}}])
  expect(host.querySelector('[role=alert]')).toBeTruthy();expect(host.textContent).toContain('Fresh usable text')
  await act(async()=>host.querySelector('button')!.click())
- expect(host.querySelector('[role=alert]')).toBeNull();expect(host.textContent).toContain('Fresh usable text');expect(host.textContent).toContain('既有客户续费提示')
+ expect(host.querySelector('[role=alert]')).toBeNull();expect(host.textContent).toContain('Fresh usable text');expect(host.textContent).toContain('既有客户续费提示');expect(host.textContent).toContain('未调用付费模型')
 })
 it('retired history response cannot overwrite a newer authoritative read',async()=>{
  let resolve!:(v:unknown)=>void;calls.jobs.mockImplementationOnce(()=>new Promise(r=>{resolve=r}))

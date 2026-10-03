@@ -9,7 +9,7 @@ interface Job { id:string; workspace_id:string; intent:string; status:string; in
 interface Credits { credits:{balance:number;availableCredits:number;reservedCredits:number;recentLedger:Array<{job_id:string;amount:number}>};usage:Array<{job_id:string}> }
 async function read<T>(page:Page,path:string):Promise<T>{return page.evaluate(async p=>{const modulePath='/src/lib/http.ts';const {http}=await import(/* @vite-ignore */modulePath);return http.get(p)},path)}
 async function login(page:Page,account:string){await page.goto(account==='admin'?'/#/login':'/#/portal/login');await page.locator('input').first().fill(account);await page.locator('input[type=password]').fill('demo');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page).not.toHaveURL(/\/login$/)}
-test.beforeEach(async({context})=>{await context.route('**/*',route=>{const u=new URL(route.request().url());return ['localhost','127.0.0.1'].includes(u.hostname)||['data:','blob:'].includes(u.protocol)?route.continue():route.abort()})})
+test.beforeEach(async({context})=>{mkdirSync(output,{recursive:true});await context.route('**/*',route=>{const u=new URL(route.request().url());return ['localhost','127.0.0.1'].includes(u.hostname)||['data:','blob:'].includes(u.protocol)?route.continue():route.abort()})})
 test.afterAll(async()=>{await db.$disconnect()})
 for(const account of ['admin','brand','agent'])test(`real ${account} → Nest → Studio text generation, ledger and CPS attribution`,async({page})=>{
  await login(page,account)
@@ -59,11 +59,32 @@ for(const account of ['admin','brand','agent'])test(`${account} retrieves and do
  await article.getByRole('button',{name:'查看图片 1',exact:true}).click();await expect(article.getByRole('alert')).toContainText('图片暂时无法读取')
  await page.unroute(imageUrl)
  const bytesResponse=page.waitForResponse(r=>r.url().includes(`/jobs/${result.generated.job.id}/assets/0`));await article.getByRole('button',{name:'查看图片 1',exact:true}).click();const png=await bytesResponse
- expect(png.status()).toBe(200);expect(png.headers()['content-type']).toContain('image/png');expect(png.headers()['content-security-policy']).toContain("default-src 'none'");expect((await png.body()).equals(readFileSync(files[0]))).toBe(true)
+ expect(png.status()).toBe(200);expect(png.headers()['content-type']).toContain('image/png');expect(png.headers()['content-security-policy']).toContain("default-src 'none'");expect(Number(png.headers()['content-length'])).toBe(readFileSync(files[0]).length)
  await expect(article.getByRole('img',{name:'生成图片 1',exact:true})).toBeVisible();await expect.poll(()=>article.getByRole('img',{name:'生成图片 1',exact:true}).evaluate((n:HTMLImageElement)=>n.naturalWidth)).toBeGreaterThan(0)
+ const image=article.getByRole('img',{name:'生成图片 1',exact:true})
+ const browserBytes=await image.evaluate(async(n:HTMLImageElement)=>Array.from(new Uint8Array(await (await fetch(n.src)).arrayBuffer())))
+ expect(Buffer.from(browserBytes).equals(readFileSync(files[0]))).toBe(true)
+ writeFileSync(`${output}/${account}-png-transport.json`,JSON.stringify({job:result.generated.job.id,sourceBytes:readFileSync(files[0]).length,browserBlobBytes:browserBytes.length,cdpRetainedBytes:await png.body().then(bytes=>bytes.length).catch(()=>null),exactBrowserBytes:true},null,2))
  const downloadEvent=page.waitForEvent('download');await article.getByRole('link',{name:'下载图片 1',exact:true}).click();const downloaded=await downloadEvent;const downloadPath=await downloaded.path();expect(downloadPath).toBeTruthy();expect(readFileSync(downloadPath!).equals(readFileSync(files[0]))).toBe(true)
  await page.screenshot({path:`${output}/${account}-real-carousel-preview.png`,fullPage:true})
  
  const after=await read<Credits>(page,'/aigc/billing/credits');expect(after.credits.balance).toBe(before.credits.balance-result.estimate.creditsEstimated);expect(after.credits.reservedCredits).toBe(0)
  mkdirSync(output,{recursive:true});writeFileSync(`${output}/${account}-carousel-readback.json`,JSON.stringify({jobId:result.generated.job.id,files,charge:result.estimate.creditsEstimated},null,2))
+})
+
+for(const account of ['admin','brand'])test(`${account} repeated generate has one debit; interrupted old acknowledgment preserves a newer draft`,async({page})=>{
+ await login(page,account);const before=await read<Credits>(page,'/aigc/billing/credits')
+ await page.goto(account==='admin'?'/#/aigc':'/#/portal/brand/aigc');if(account==='admin')await page.getByRole('button',{name:'生成素材',exact:true}).click()
+ const form=account==='admin'?page.getByRole('dialog'):page.locator('main');await expect(form.locator('select').first().locator('option[value=social_pack]')).toHaveCount(1);await form.locator('select').first().selectOption('social_pack');await form.locator('select').nth(2).selectOption('cheap');await form.locator('textarea').fill('Synthetic accepted request A')
+ let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>{release=r}),arrived=new Promise<void>(r=>{entered=r});let posts=0;let accepted:{job:Job}|undefined
+ await page.route('**/aigc/factory/generate',async route=>{posts+=1;const response=await route.fetch();accepted=await response.json();entered();await gate;await route.fulfill({response})})
+ try{
+  await form.getByRole('button',{name:'生成',exact:true}).evaluate((button:HTMLButtonElement)=>{button.click();button.click()});await arrived;expect(posts).toBe(1)
+  await expect(form.locator('textarea')).toBeDisabled()
+  if(account==='admin'){await form.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'生成素材',exact:true}).click();await page.getByRole('dialog').locator('textarea').fill('New draft B must survive')}
+  release();await expect(page.locator('article').filter({hasText:accepted!.job.id})).toBeVisible()
+  if(account==='admin')await expect(page.getByRole('dialog').locator('textarea')).toHaveValue('New draft B must survive')
+  const billing=await read<Credits>(page,'/aigc/billing/credits');expect(billing.credits.balance).toBe(before.credits.balance-accepted!.job.credits_charged);expect(billing.credits.recentLedger.filter(e=>e.job_id===accepted!.job.id&&e.amount<0)).toHaveLength(1);expect(posts).toBe(1)
+  await page.screenshot({path:`${output}/${account}-accepted-request-draft-ownership.png`,fullPage:true})
+ }finally{release()}
 })
