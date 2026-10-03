@@ -1,3 +1,4 @@
+import { factoryPreview } from "../lib/factoryPresentation.js";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -403,6 +404,7 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
   const styles = config?.styles || [];
   const presets = config?.modelPresets || [];
   const available = credits?.availableCredits ?? credits?.balance ?? 0;
+  const preview = factoryPreview(result, form.platform, assetTypes);
   const previewFiles = collectPreviewImageUrls(
     result?.result?.assets?.files,
     result?.result?.assets?.files?.map?.((item) => item),
@@ -492,7 +494,7 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
             <div className="factoryEmptyState">
               <div className="factoryEmptyState__orb"><Sparkles size={22} /></div>
               <strong>还没有生成结果</strong>
-              <p>左侧填一句话后，系统会先预估积分，再生成素材包。失败会退回预扣积分。</p>
+              <p>填写一句话后，系统会先预估积分，再生成素材包。失败会退回预扣积分。</p>
               <div className="factoryEmptyState__steps">
                 <span>预估积分</span><span>生成素材</span><span>写入账单</span>
               </div>
@@ -505,9 +507,9 @@ export function FactoryView({ setTopic, setGeneratedPack, setPlatform, navigateV
           )}
           {result?.result?.pack && (
             <div className="copyBlock">
-              <div className="copyMeta"><span>{result.result.type}</span><small>{result.job?.id}</small></div>
-              <h2>{result.result.pack.title}</h2>
-              <pre>{result.result.pack.platformCopy?.[form.platform]?.body || result.result.pack.platformCopy?.xhs?.body || result.result.gateway?.output}</pre>
+              <div className="copyMeta"><span title={preview.type}>{preview.label}</span><small>{result.job?.id}</small></div>
+              <h2>{preview.title}</h2>
+              <pre>{preview.body || "当前结果没有可用正文，请检查素材或重试读取。"}</pre>
             </div>
           )}
           {previewFiles.length > 0 && <div className="visualPreview__imgRow">{previewFiles.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt="" /></a>)}</div>}

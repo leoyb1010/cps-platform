@@ -56,6 +56,12 @@ try {
       await page.locator('.factoryResult .copyBlock').waitFor();
       await page.getByRole('status').filter({hasText:'素材已生成并扣减积分'}).waitFor();
       assert.equal(attempts,2,'loading state must not submit duplicate generation');
+      assert.equal(await page.locator('.factoryResult .copyMeta span').innerText(),'社媒文案包');
+      assert.equal(await page.locator('.factoryResult .copyMeta span').getAttribute('title'),'social_pack');
+      const copyTitle=await page.locator('.factoryResult .copyBlock h2').innerText();
+      const copyBody=await page.locator('.factoryResult .copyBlock pre').innerText();
+      assert.notEqual(copyBody.split(/\r?\n/,1)[0].trim(),copyTitle.trim(),'the result preview must not repeat its exact heading as the first body line');
+      assert(copyBody.includes('fictional stationery product'),'deduplication must preserve the actual brief');
       await page.locator('.factoryResult').scrollIntoViewIfNeeded();
       await page.screenshot({path:`${output}/factory-retry-success-${width}.png`});
       flows.push('controlled 503 error and local fallback retry','busy actions disabled without duplicate submission');
