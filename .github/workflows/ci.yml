@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, codex/audit-cps-platform-20261001]
+    branches: [main, codex/audit-cps-platform-20261001, audit/five-round-product-20261004]
   pull_request:
     branches: [main]
 
