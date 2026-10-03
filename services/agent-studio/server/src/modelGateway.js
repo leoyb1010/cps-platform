@@ -159,7 +159,9 @@ async function runTextModel({ task, preset, input }) {
       "2. 中间用 3 个具体场景/步骤证明价值。",
       "3. 结尾给出可评论的问题或行动指令。",
       "",
-      `模型预设：${preset}`
+      `模型预设：${preset}`,
+      input.businessGoal || "",
+      input.callToAction || ""
     ].join("\n")
   };
 }
@@ -182,6 +184,6 @@ function buildVideoStoryboard(input = {}) {
   return [
     { time: "0-3s", shot: "Hook", visual: `用强视觉提出 ${topic} 的痛点`, voice: "别先解释，先给结果。" },
     { time: "3-7s", shot: "Proof", visual: "展示 2-3 个生成前后/步骤/证据画面", voice: "让用户看到它真的能落地。" },
-    { time: `7-${duration}s`, shot: "CTA", visual: "收束到可保存的清单或行动按钮", voice: "收藏这套流程，下次直接复用。" }
+    { time: `7-${duration}s`, shot: "CTA", visual: "收束到可保存的清单或行动按钮", voice: input.businessGoal || input.callToAction ? [input.businessGoal, input.callToAction].filter(Boolean).join(" ") : "收藏这套流程，下次直接复用。" }
   ];
 }

@@ -134,12 +134,23 @@ jobs:
       DATABASE_URL: file:/tmp/cps-role-ui.db
       JWT_ACCESS_SECRET: role-ui-local-fixture-access-xxxxxxxx
       JWT_REFRESH_SECRET: role-ui-local-fixture-refresh-xxxxxxx
+      AIGC_INTERNAL_SECRET: synthetic-role-sidecar-signing-fixture-only
+      AIGC_SERVICE_URL: http://127.0.0.1:48787
+      AGENT_STUDIO_DATA_DIR: /tmp/cps-role-studio-data
+      AGENT_STUDIO_EXPORTS_DIR: /tmp/cps-role-studio-exports
+      CREATIVE_TEXT_API_KEY: ''
+      DEEPSEEK_API_KEY: ''
+      OPENAI_API_KEY: ''
+      IMAGE_GENERATION_API: ''
+      VIDEO_RENDER_API: ''
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with: { node-version: 22 }
-      - run: npm ci && npm ci --prefix server
+      - run: npm ci && npm ci --prefix server && npm ci --prefix services/agent-studio
       - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
       - name: Prepare disposable synthetic backend
         working-directory: server
         run: |
@@ -151,9 +162,10 @@ jobs:
         env:
           NODE_OPTIONS: --require=${{ github.workspace }}/scripts/test-offline.cjs
         run: |
+          (cd services/agent-studio && PORT=48787 FRONTEND_PORT=48787 HOST=127.0.0.1 BFF_HOST=127.0.0.1 SERVE_STATIC=false node server/src/index.js) > /tmp/cps-role-studio.log 2>&1 &
           (cd server && node dist/src/main.js) > /tmp/cps-role-server.log 2>&1 &
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:3001/ready >/dev/null; then break; fi
+            if curl -fsS http://localhost:3001/ready >/dev/null && curl -fsS http://127.0.0.1:48787/api/health >/dev/null; then break; fi
             sleep 1
           done
           npx playwright test --config playwright.roles.config.ts
@@ -164,6 +176,8 @@ jobs:
           path: |
             /tmp/cps-role-ui-audit/
             /tmp/cps-role-server.log
+            /tmp/cps-role-studio.log
+            /tmp/cps-role-studio-exports/
             test-results/
           retention-days: 14
 

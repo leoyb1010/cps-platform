@@ -1,3 +1,4 @@
+import { FACTORY_INTENTS } from "./factoryIntents.js";
 import { buildPack } from "../../src/lib/contentEngine.js";
 import { buildVisualPlan, renderMotionHtml, renderXhsCarouselHtml, visualSize } from "../../src/lib/visualEngine.js";
 import { pickRecipe, resolveVisualStyleFromRecipe } from "../../src/lib/templateRegistry.js";
@@ -155,7 +156,9 @@ export function getBillingCredits(ctx) {
 async function executeFactoryJob(ctx, job, input, assetType, estimate) {
   const platform = input.platform || assetType.defaultPlatform || "xhs";
   const generation = Number(input.generation || Date.now() % 10000 || 1);
-  const direction = mapIntentToDirection(input.intent);
+  const intent = input.intent || "educate";
+  const businessGoal = FACTORY_INTENTS[intent] || FACTORY_INTENTS.educate;
+  const direction = businessGoal.direction;
   const tone = input.tone || "balanced";
   const gateway = await runModel({
     workspaceId: ctx.workspaceId,
@@ -163,12 +166,12 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
     modality: assetType.modality,
     task: assetType.id,
     preset: input.modelPreset || "balanced",
-    input: { ...input, topic: input.prompt, platform, direction, tone }
+    input: { ...input, intent, businessGoal: businessGoal.goal, callToAction: businessGoal.action, topic: input.prompt, platform, direction, tone }
   });
 
   if (!gateway.ok) throw new Error("Model generation failed; credits were released");
 
-  const pack = buildPack(input.prompt, direction, tone, generation, input.extraContext || input.audience || "", gateway.ok && assetType.modality === "text" ? { creative: null } : {});
+  const pack = buildPack(input.prompt, direction, tone, generation, [input.audience, input.extraContext].filter(Boolean).join("；"), { businessGoal });
   // Artifact directories belong to the globally unique job, not a reusable
   // content-derived client identifier shared by simultaneous tenants.
   pack.id = job.id;
@@ -208,11 +211,6 @@ async function executeFactoryJob(ctx, job, input, assetType, estimate) {
   }
 
   return { type: "social_pack", pack, copy: pack.platformCopy?.[platform] || pack.platformCopy?.xhs, gateway, estimate };
-}
-
-function mapIntentToDirection(intent = "educate") {
-  const map = { educate: "insight", sell: "launch", promote: "launch", explain: "tutorial", announce: "launch", summarize: "insight", grow: "opinion" };
-  return map[intent] || "insight";
 }
 
 function stepsForAssetType(assetType) {

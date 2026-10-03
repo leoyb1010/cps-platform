@@ -31,6 +31,8 @@ import {
 import { aigcApi, type FactoryConfig, type GeneratePayload } from '../lib/aigcApi'
 import { isRealApi } from '../lib/http'
 import { int, cx } from '../lib/format'
+import { GeneratedMaterials } from '../components/aigc/GeneratedMaterials'
+import type { FactoryOutput } from '../lib/aigcApi'
 import { useAigcEstimate } from '../lib/useAigcEstimate'
 
 // 本次会话内真实生成的素材（来自 agent-studio 微服务），展示在实验台之上
@@ -40,6 +42,7 @@ interface GenItem {
   assetLabel: string
   prompt: string
   credits: number | null
+  output?: FactoryOutput
 }
 
 // 演示态素材类型配置：无需连 agent-studio 也能完整体验「生成素材」流程（模拟生成）
@@ -115,7 +118,7 @@ export default function Aigc() {
         <Card mark><Stat label="最高素材 LTV" value={isRealApi ? '—' : `¥${bestLtv}`} hint="按净 LTV 排名，不只看点击率" sub={<span>{isRealApi ? '待 LTV 回流接入' : '转化闭环排名'}</span>} /></Card>
       </div>
 
-      {gens.length > 0 && (
+      {isRealApi ? <GeneratedMaterials recent={gens} /> : gens.length > 0 && (
         <Card className="mt-4">
           <CardTitle title="本次生成" desc={`经素材引擎实时生成 · 可继续接入投放回收 LTV`} right={<Badge tone="good" dot>{gens.length} 条</Badge>} />
           <div className="space-y-2">
@@ -270,6 +273,7 @@ function NewMaterialModal({ onClose, onGenerated }: { onClose: () => void; onGen
       onGenerated(
         {
           jobId: r.job.id,
+          output: r.result,
           assetType,
           assetLabel: current?.label ?? assetType,
           prompt: prompt.trim(),

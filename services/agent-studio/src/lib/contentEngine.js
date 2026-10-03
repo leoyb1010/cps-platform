@@ -637,6 +637,19 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
     }
   }
 
+  // Factory business goals must affect the usable output, not only job metadata.
+  // This runs before the existing humanization and policy checks below.
+  if (options.businessGoal) {
+    const goal = sanitizePublicCopy(options.businessGoal.goal);
+    const action = sanitizePublicCopy(options.businessGoal.action);
+    contextLine = `${contextLine}\n${goal}`;
+    claims[2] = `${goal} ${action}`;
+    cards[cards.length - 1] = { ...cards[cards.length - 1], headline: "下一步", body: `${goal}\n${action}` };
+    if (specificVideoFrames?.length) {
+      specificVideoFrames[specificVideoFrames.length - 1] = { ...specificVideoFrames[specificVideoFrames.length - 1], voice: action };
+    }
+  }
+
   const specificXhsBody = specific
     ? `${title}\n\n${claims[0]}\n\n怎么判断：\n${playbook.slice(0, 4).map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n反例：${antiPattern}\n\n我的结论：${claims[2]}\n\n${contextLine}\n\n${discussionPrompt}`
     : "";
@@ -675,9 +688,16 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
       { time: "00:40", shot: "互动", overlay: "评论 = 下一期", voice: discussionPrompt, visual: "评论区动画浮现" }
     ]);
 
+  if (options.businessGoal && videoFrames.length) {
+    videoFrames[videoFrames.length - 1] = {
+      ...videoFrames[videoFrames.length - 1], overlay: "下一步",
+      voice: sanitizePublicCopy(`${options.businessGoal.goal} ${options.businessGoal.action}`),
+    };
+  }
+
   const tagBase = [core.replace(/\s/g, ""), dir.label, lex.audience.replace(/\s/g, "")].filter(Boolean);
 
-  const platformCopy = humanizePlatformCopy({
+  const rawPlatformCopy = {
     xhs: {
       title: title.length > 20 ? `${title.slice(0, 20)}…` : title,
       body: specificXhsBody || `${title}\n\n做${core}的时候，先别急着找通用答案。真正要看的是：输入是什么、输出要到什么质量、失败后谁兜底。\n\n常见错法：${antiPattern}\n\n更对的路径：\n1. ${playbook[0]}\n2. ${playbook[1]}\n3. ${playbook[2]}\n\n结论：${claims[2]}\n\n${contextLine}\n\n${discussionPrompt}`,
@@ -718,7 +738,16 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
       body: specificLinkedinBody || `${title}\n\nAfter watching ${lex.audience} work on "${core}", one pattern keeps showing up: ${antiPattern}\n\nThe people who actually win do three things differently:\n• ${playbook[0]}\n• ${playbook[1]}\n• ${playbook[2]}\n\nThe underlying point: ${claims[0]}\n\nIf this resonates, what's the part you're stuck on?`,
       tags: tagBase
     }
-  });
+  };
+  if (options.businessGoal) {
+    const goal = sanitizePublicCopy(options.businessGoal.goal);
+    const action = sanitizePublicCopy(options.businessGoal.action);
+    for (const copy of Object.values(rawPlatformCopy)) {
+      if (!copy.body.includes(goal)) copy.body += `\n\n${goal}`;
+      if (!copy.body.includes(action)) copy.body += `\n${action}`;
+    }
+  }
+  const platformCopy = humanizePlatformCopy(rawPlatformCopy);
 
   const scores = rubric.map((item, i) => ({
     ...item,

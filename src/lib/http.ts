@@ -114,7 +114,7 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing.promise
 }
 
-export async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: RequestInit = {}, responseType: 'json' | 'blob' = 'json'): Promise<T> {
   const startedVersion = sessionVersion
   const assertCurrentSession = () => {
     if (sessionVersion !== startedVersion) throw new ApiError(401, '登录账户已变更，请在当前账户重新操作')
@@ -141,7 +141,7 @@ export async function api<T = unknown>(path: string, init: RequestInit = {}): Pr
     throw new ApiError(res.status, msg)
   }
   if (res.status === 204) return undefined as T
-  const data = (await res.json()) as T
+  const data = (responseType === 'blob' ? await res.blob() : await res.json()) as T
   assertCurrentSession()
   return data
 }

@@ -1,3 +1,4 @@
+import { readFactoryPng } from "./factoryAssets.js";
 import fs, { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -362,6 +363,18 @@ app.get("/api/factory/jobs/:id", async (c) => {
   const ctx = resolveRequestContext(c);
   const result = getFactoryJob(ctx, c.req.param("id"));
   return c.json(result, result.ok ? 200 : 404);
+});
+
+app.get("/api/factory/jobs/:id/assets/:index", async (c) => {
+  const ctx = resolveRequestContext(c);
+  const bytes = await readFactoryPng(ctx, c.req.param("id"), c.req.param("index"));
+  if (!bytes) return c.json({ ok: false, message: "Generated image unavailable" }, 404);
+  c.header("Content-Type", "image/png");
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("Content-Security-Policy", "default-src 'none'; sandbox");
+  c.header("Cache-Control", "private, no-store");
+  c.header("Content-Disposition", `inline; filename="generated-${c.req.param("index")}.png"`);
+  return c.body(bytes);
 });
 
 app.get("/api/billing/plans", (c) => {

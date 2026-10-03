@@ -1,27 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { Wand2, Loader2, CheckCircle2, Sparkles } from 'lucide-react'
+import { Wand2, Loader2 } from 'lucide-react'
 import { Card, CardTitle, PageHeader, Badge, Button } from '../../components/ui/primitives'
 import { Field, Select, Textarea } from '../../components/ui/forms'
 import { aigcApi, type FactoryConfig, type GeneratePayload } from '../../lib/aigcApi'
 import { isRealApi } from '../../lib/http'
 import { DemoNotice } from '../../components/portal/kit'
 import { int } from '../../lib/format'
+import { GeneratedMaterials, type GeneratedMaterial } from '../../components/aigc/GeneratedMaterials'
 import { useAigcEstimate } from '../../lib/useAigcEstimate'
 
 // 客户门户 AIGC 素材生成（轻量版）：复用 cps 的 /aigc 代理（→ agent-studio 微服务），
 // 与门户 UI 风格统一，客户不感知背后是独立微服务。品牌方/代理共用同一页。
-interface GenItem {
-  jobId: string
-  assetLabel: string
-  prompt: string
-}
-
 export function PortalAigc() {
   const [cfg, setCfg] = useState<FactoryConfig | null>(null)
   const [loadErr, setLoadErr] = useState(false)
+  const [configAttempt, setConfigAttempt] = useState(0)
   const [credits, setCredits] = useState<number | null>(null)
   const creditRevision = useRef(0)
-  const [gens, setGens] = useState<GenItem[]>([])
+  const [gens, setGens] = useState<GeneratedMaterial[]>([])
 
   const [assetType, setAssetType] = useState('carousel')
   const [intent, setIntent] = useState('educate')
@@ -33,6 +29,7 @@ export function PortalAigc() {
 
   useEffect(() => {
     if (!isRealApi) { setLoadErr(true); return }
+    setLoadErr(false)
     const revision = creditRevision.current
     aigcApi.config().then((c) => {
       if (creditRevision.current !== revision) return
@@ -46,7 +43,7 @@ export function PortalAigc() {
       if (creditRevision.current === revision && typeof c === 'number') setCredits(c)
     }).catch(() => {})
     return () => { creditRevision.current += 1 }
-  }, [])
+  }, [configAttempt])
 
   const assetTypes = cfg?.assetTypes ?? []
   const current = assetTypes.find((a) => a.id === assetType)
@@ -69,7 +66,7 @@ export function PortalAigc() {
     try {
       const r = await aigcApi.generate(payload())
       if (!r.ok || !r.job) throw new Error('no job')
-      setGens((p) => [{ jobId: r.job!.id, assetLabel: current?.label ?? assetType, prompt: prompt.trim() }, ...p])
+      setGens((p) => [{ jobId: r.job!.id, assetType, assetLabel: current?.label ?? assetType, prompt: prompt.trim(), output: r.result, credits: r.job!.credits_charged }, ...p])
       const bal = r.credits?.availableCredits ?? r.credits?.balance
       creditRevision.current += 1
       setCredits(typeof bal === 'number' ? bal : null)
@@ -80,10 +77,8 @@ export function PortalAigc() {
   return (
     <>
       <PageHeader title="AIGC 素材" desc="一句话生成投放素材（图文 / 海报 / 短视频脚本），按量计费。素材可直接用于你的推广投放。" />
-      {loadErr ? <DemoNotice /> : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
-          {/* 左：生成表单 */}
-          <Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
+          {loadErr ? isRealApi ? <Card><p role="alert" className="text-sm text-warn-ink">素材配置暂时无法读取，已保存素材仍可查看。</p><Button onClick={() => setConfigAttempt(value => value + 1)}>重试连接</Button></Card> : <DemoNotice /> : <Card>
             <CardTitle title="生成素材" desc="选类型 → 一句话描述 → 生成" right={<Badge tone="info" dot>{credits != null ? `${int(credits)} 积分` : '积分'}</Badge>} />
             <div className="space-y-3">
               <Field label="素材类型">
@@ -116,34 +111,9 @@ export function PortalAigc() {
                 </Button>
               </div>
             </div>
-          </Card>
-
-          {/* 右：本次生成 */}
-          <Card>
-            <CardTitle title="本次生成" desc="经素材引擎实时生成，可继续用于投放" right={gens.length > 0 ? <Badge tone="good" dot>{gens.length} 条</Badge> : undefined} />
-            {gens.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <span className="mb-3 grid h-11 w-11 place-items-center rounded-full bg-surface text-ink-3"><Sparkles size={18} /></span>
-                <div className="text-[13.5px] font-semibold text-ink">还没有生成素材</div>
-                <p className="mt-1 text-[12px] text-ink-4">在左侧填一句话描述，点击生成。</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {gens.map((g) => (
-                  <div key={g.jobId} className="flex items-center gap-3 rounded-lg border border-line bg-surface-muted p-3">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-good-soft text-good-ink"><CheckCircle2 size={16} /></span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12.5px] font-medium text-ink">{g.assetLabel} · {g.prompt}</div>
-                      <div className="text-[11px] text-ink-4">{g.jobId}</div>
-                    </div>
-                    <Badge tone="info">可用于投放</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          </Card>}
+          {isRealApi && <GeneratedMaterials recent={gens} />}
         </div>
-      )}
     </>
   )
 }

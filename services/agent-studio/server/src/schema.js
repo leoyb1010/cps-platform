@@ -1,3 +1,4 @@
+import { FACTORY_INTENT_IDS } from "./factoryIntents.js";
 import { z } from "zod";
 import { directionLibrary, platformMeta, toneProfiles } from "../../src/lib/catalog.js";
 
@@ -324,7 +325,7 @@ export const FactoryEstimateRequestSchema = z.object({
   userId: z.string().max(80).optional(),
   assetType: FactoryAssetTypeEnum.default("carousel"),
   platform: z.string().max(40).optional().default("xhs"),
-  intent: z.enum(["educate", "sell", "promote", "explain", "announce", "summarize", "grow"]).optional().default("educate"),
+  intent: z.enum(FACTORY_INTENT_IDS).optional().default("educate"),
   prompt: z.string().min(1).max(600),
   audience: z.string().max(240).optional().default(""),
   product: z.string().max(240).optional().default(""),

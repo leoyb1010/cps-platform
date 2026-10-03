@@ -117,6 +117,22 @@ export class AigcController {
         headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(fwdBody),
       })
+      // Only the owned-job PNG endpoint can return binary data. Never embed
+      // generated HTML under the CPS origin or decode PNG bytes as UTF-8.
+      if (upstream.ok && /^jobs\/[^/]+\/assets\/\d{1,2}$/.test(tail)) {
+        if (upstream.headers.get('content-type')?.split(';')[0] !== 'image/png') {
+          res.status(502).json({ message: '素材格式不可预览' })
+          return
+        }
+        const bytes = Buffer.from(await upstream.arrayBuffer())
+        res.setHeader('content-type', 'image/png')
+        res.setHeader('x-content-type-options', 'nosniff')
+        res.setHeader('content-security-policy', "default-src 'none'; sandbox")
+        res.setHeader('cache-control', 'private, no-store')
+        res.setHeader('content-disposition', 'inline; filename="generated.png"')
+        res.status(upstream.status).send(bytes)
+        return
+      }
       const text = await upstream.text()
       // 生成成功 → 在 CPS 侧建 Asset 归属（仅 factory/generate，且有客户 scope）
       if (upstream.ok && tail === 'generate' && user?.scopeId) {
