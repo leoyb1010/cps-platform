@@ -459,3 +459,11 @@ table tbody td {
     animation: none;
   }
 }
+
+/* Keep marketplace actions readable when a sidebar narrows a tablet card. */
+.marketplace-card { container: marketplace / inline-size; }
+.marketplace-actions > button { white-space: nowrap; }
+@container marketplace (max-width: 330px) {
+  .marketplace-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .marketplace-actions > button:first-child { grid-column: 1 / -1; }
+}

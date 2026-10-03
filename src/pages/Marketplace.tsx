@@ -73,7 +73,7 @@ export default function Marketplace() {
             // 代理分润 = 品牌费率 × 分润占比（platformParams.agentSharePct，设置页可调，默认 72%）
             const agentShare = Math.round(b.feeRate * (platformParams.agentSharePct / 100))
             return (
-              <Card key={b.id + p.name} className="flex flex-col transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]">
+              <Card key={b.id + p.name} className="marketplace-card flex flex-col transition-[box-shadow,transform,border-color] duration-200 hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
                     <BrandMark brand={b.id} mark={b.mark} size={34} />
@@ -106,7 +106,7 @@ export default function Marketplace() {
                   <FileCheck size={13} className="text-good-ink" /> 落地页含合规告知 · 素材需过审
                 </div>
 
-                <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                <div className="marketplace-actions mt-3 flex gap-2 border-t border-line pt-3">
                   <Button variant="primary" className="flex-1 justify-center" onClick={() => claim(b.id, p.name, b.name)}><Link2 size={14} /> 领取追踪链接</Button>
                   {/* AIGC 入投放动线：素材应长在投放里，而非独立页（v9 §G7） */}
                   <Button variant="ghost" onClick={() => nav('/aigc')}><Sparkles size={14} /> 生成素材</Button>
