@@ -41,6 +41,9 @@ export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) 
       const promptOnly = ['image', 'poster', 'ad'].includes(type ?? '')
       const video = type === 'video'
       const copy = item.output?.copy ?? item.output?.pack?.platformCopy?.xhs
+      const copyBody = typeof copy?.body === 'string' ? copy.body : ''
+      const copyTitle = typeof copy?.title === 'string' ? copy.title : ''
+      const copyText = copyTitle && copyBody.split(/\r?\n/, 1)[0].trim() !== copyTitle.trim() ? `${copyTitle}\n\n${copyBody}` : copyBody
       return <article key={item.jobId} className="min-w-0 rounded-lg border border-line bg-surface-muted p-3">
         <div className="break-words text-sm font-medium">{item.assetLabel} · {item.prompt}</div>
         <div className="break-all text-xs text-ink-4">{item.jobId} · {item.credits == null ? '消耗积分待确认' : `消耗 ${item.credits} 积分`}</div>
@@ -53,7 +56,7 @@ export function GeneratedMaterials({ recent }: { recent: GeneratedMaterial[] }) 
           </> : video ? <>
             <p className="mt-2 text-sm text-warn-ink">当前结果为分镜脚本与预览图，未生成最终视频文件。</p>
             <ol className="mt-2 space-y-2 text-sm">{item.output?.storyboard?.map((frame, index) => <li key={index}><b>{frame.time} {frame.shot}</b><p>{frame.visual}</p><p>{frame.voice}</p></li>)}</ol>
-          </> : copy?.body ? <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm" data-testid="generated-copy">{copy.title ? `${copy.title}\n\n` : ''}{copy.body}</pre> : <p className="mt-2 text-sm text-ink-3">当前结果没有可用文案，请查看素材类型或稍后重试读取。</p>}
+          </> : copyBody.trim() ? <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm" data-testid="generated-copy">{copyText}</pre> : <p className="mt-2 text-sm text-ink-3">当前结果没有可用文案，请查看素材类型或稍后重试读取。</p>}
           {!!(item.output?.assets?.files ?? item.output?.motionPreview?.files)?.length && <div className="mt-2 grid gap-3 sm:grid-cols-2">{(item.output?.assets?.files ?? item.output?.motionPreview?.files)?.map((_, index) => <GeneratedImage key={index} jobId={item.jobId} index={index} />)}</div>}
         </details>
       </article>

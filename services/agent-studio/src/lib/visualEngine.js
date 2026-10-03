@@ -898,7 +898,7 @@ function buildXhsCarouselCards(pack) {
   }
 
   const sourceCards = Array.isArray(pack.cards) ? pack.cards : [];
-  if (sourceCards.length >= 6 && sourceCards.some((item) => String(item.body || "").length > 50)) {
+  if (sourceCards.length >= 6 && (pack.businessAction || sourceCards.some((item) => String(item.body || "").length > 50))) {
     const layouts = ["hero", "editorial", "dashboard", "timeline", "contrast", "debate"];
     return sourceCards.slice(0, 6).map((item, index) => {
       const bodyLines = splitLines(item.body || "", 4).filter(Boolean);
@@ -912,9 +912,9 @@ function buildXhsCarouselCards(pack) {
         kind: index === 0 ? "cover" : index === 5 ? "cta" : item.tone === "warn" ? "contrast" : "point",
         layout: layouts[index],
         kicker: item.eyebrow || ["开场", "反例", "判断", "方法", "边界", "收束"][index],
-        title: compactChinese(item.headline || pack.title, index === 0 ? 18 : 16),
-        body: compactChinese(item.body || pack.claims?.[index] || pack.core, index === 0 ? 82 : 96),
-        bullets: fallbackBullets.slice(0, 4).map((line) => compactChinese(line, 24)),
+        title: pack.businessAction ? String(item.headline || pack.title) : compactChinese(item.headline || pack.title, index === 0 ? 18 : 16),
+        body: pack.businessAction ? String(item.body || pack.claims?.[index] || pack.core) : compactChinese(item.body || pack.claims?.[index] || pack.core, index === 0 ? 82 : 96),
+        bullets: fallbackBullets.slice(0, 4).map((line) => pack.businessAction ? String(line) : compactChinese(line, 24)),
         note: index === 4 ? compactChinese(pack.antiPattern || pack.claims?.[2] || "", 58) : "",
         page: padNumber(index)
       };
@@ -1295,6 +1295,7 @@ function renderFeatureGridInfoCardHtml(pack, plan) {
 
 export function renderXhsCarouselHtml(pack, plan = {}) {
   const size = visualSize("3:4");
+  const cardText = (value, max) => pack.businessAction ? String(value || "") : compactChinese(value, max);
   const template = plan.templates?.["xhs-carousel"] || resolveVisualTemplate(pack, "xhs-carousel", plan.style);
   if (template === "product-real-carousel" || template === "process-story-carousel") {
     return renderProductSceneCarouselHtml(pack, plan, template);
@@ -1302,15 +1303,16 @@ export function renderXhsCarouselHtml(pack, plan = {}) {
   const cards = buildXhsCarouselCards(pack);
   const family = visualStyleCatalog[plan.style] || visualStyleCatalog["html5up-editorial"];
   const source = (plan.templateSources?.[0] || templateSourceCatalog.find((item) => (family.sourceIds || []).includes(item.id)) || templateSourceCatalog.find((item) => item.id === "html5up"));
+  const sourceCaption = suffix => pack.businessAction ? `模板参考：${source?.label || "Template Library"}` : `${source?.label || "Template Library"} ${suffix}`;
   const renderedCards = cards.map((card, index) => {
-    const bulletHtml = card.bullets.slice(0, 3).map((bullet) => `<li>${escapeHtml(compactChinese(bullet, 18))}</li>`).join("");
+    const bulletHtml = card.bullets.slice(0, 3).map((bullet) => `<li>${escapeHtml(cardText(bullet, 18))}</li>`).join("");
     const isCta = card.kind === "cta";
-    const note = card.note ? `<p class="note">${escapeHtml(compactChinese(card.note, 58))}</p>` : "";
-    const metricHtml = card.bullets.slice(0, 3).map((bullet, metricIndex) => `<article><small>signal ${metricIndex + 1}</small><b>${escapeHtml(compactChinese(bullet, 12))}</b><i></i></article>`).join("");
-    const timelineHtml = card.bullets.slice(0, 3).map((bullet, metricIndex) => `<li><b>${padNumber(metricIndex)}</b><span>${escapeHtml(compactChinese(bullet, 18))}</span></li>`).join("");
+    const note = card.note ? `<p class="note">${escapeHtml(cardText(card.note, 58))}</p>` : "";
+    const metricHtml = card.bullets.slice(0, 3).map((bullet, metricIndex) => `<article><small>signal ${metricIndex + 1}</small><b>${escapeHtml(cardText(bullet, 12))}</b><i></i></article>`).join("");
+    const timelineHtml = card.bullets.slice(0, 3).map((bullet, metricIndex) => `<li><b>${padNumber(metricIndex)}</b><span>${escapeHtml(cardText(bullet, 18))}</span></li>`).join("");
     const content = {
       hero: `<main class="content heroBlock">
-        <p class="source">${escapeHtml(source?.label || "Template Library")} inspired</p>
+        <p class="source">${escapeHtml(sourceCaption("inspired"))}</p>
         <h1>${escapeHtml(card.title)}</h1>
         <p class="body">${escapeHtml(card.body)}</p>
         <ul class="bullets pillList">${bulletHtml}</ul>
@@ -1318,47 +1320,47 @@ export function renderXhsCarouselHtml(pack, plan = {}) {
       editorial: `<main class="content editorialBlock">
         <div class="chapterNo">${padNumber(index)}</div>
         <div>
-          <p class="source">${escapeHtml(source?.label || "Template Library")} / editorial note</p>
+          <p class="source">${escapeHtml(sourceCaption("/ editorial note"))}</p>
           <h1>${escapeHtml(card.title)}</h1>
           <p class="body">${escapeHtml(card.body)}</p>
         </div>
-        <aside class="quoteBox">${escapeHtml(card.note || "把现象和判断分开，才不会被热榜牵着走。")}</aside>
+        <aside class="quoteBox">${escapeHtml(card.note || (pack.businessAction ? pack.claims?.[0] || "请核对已提供的产品信息。" : "把现象和判断分开，才不会被热榜牵着走。"))}</aside>
       </main>`,
       dashboard: `<main class="content dashboardBlock">
-        <p class="source">${escapeHtml(source?.label || "Template Library")} / signal board</p>
+        <p class="source">${escapeHtml(sourceCaption("/ signal board"))}</p>
         <h1>${escapeHtml(card.title)}</h1>
         <p class="body">${escapeHtml(card.body)}</p>
         <section class="metricGrid">${metricHtml}</section>
         ${note}
       </main>`,
       timeline: `<main class="content timelineBlock">
-        <p class="source">${escapeHtml(source?.label || "Template Library")} / decision path</p>
+        <p class="source">${escapeHtml(sourceCaption("/ decision path"))}</p>
         <h1>${escapeHtml(card.title)}</h1>
         <p class="body">${escapeHtml(card.body)}</p>
         <ol class="timelineList">${timelineHtml}</ol>
       </main>`,
       contrast: `<main class="content contrastBlock">
-        <p class="source">${escapeHtml(source?.label || "Template Library")} / counter view</p>
+        <p class="source">${escapeHtml(sourceCaption("/ counter view"))}</p>
         <h1>${escapeHtml(card.title)}</h1>
         <p class="body">${escapeHtml(card.body)}</p>
-        <section class="splitGrid">${card.bullets.slice(0, 2).map((bullet, splitIndex) => `<article><small>${splitIndex === 0 ? "支持" : "保留"}</small><b>${escapeHtml(compactChinese(bullet, 14))}</b></article>`).join("")}</section>
+        <section class="splitGrid">${card.bullets.slice(0, 2).map((bullet, splitIndex) => `<article><small>${splitIndex === 0 ? "支持" : "保留"}</small><b>${escapeHtml(cardText(bullet, 14))}</b></article>`).join("")}</section>
         ${note}
       </main>`,
       debate: `<main class="content debateBlock">
-        <p class="source">${escapeHtml(source?.label || "Template Library")} / comment prompt</p>
+        <p class="source">${escapeHtml(sourceCaption("/ comment prompt"))}</p>
         <h1>${escapeHtml(card.title)}</h1>
         <p class="body">${escapeHtml(card.body)}</p>
-        <div class="voteRow">${card.bullets.slice(0, 2).map((bullet) => `<span>${escapeHtml(compactChinese(bullet, 12))}</span>`).join("")}</div>
+        <div class="voteRow">${pack.businessAction ? `<span>${escapeHtml(pack.businessAction.label)}</span>` : card.bullets.slice(0, 2).map((bullet) => `<span>${escapeHtml(cardText(bullet, 12))}</span>`).join("")}</div>
       </main>`
     }[card.layout] || `<main class="content"><h1>${escapeHtml(card.title)}</h1><p class="body">${escapeHtml(card.body)}</p><ul class="bullets">${bulletHtml}</ul></main>`;
-    return `<section class="xhs-card ${card.kind} layout-${card.layout}" data-page="${index + 1}">
+    return `<section class="xhs-card ${pack.businessAction ? "business-card" : ""} ${card.kind} layout-${card.layout}" data-page="${index + 1}">
       <header class="topline">
         <span>${escapeHtml(card.kicker)}</span>
         <b>${card.page}</b>
       </header>
       ${content}
       <footer>
-        <span>${escapeHtml(index === 0 ? "手机端 3 秒读完" : isCta ? "评论 = 下一期选题" : pack.core)}</span>
+        <span>${escapeHtml(pack.businessAction ? (isCta ? pack.businessAction.label : "核对产品信息与服务条款") : index === 0 ? "手机端 3 秒读完" : isCta ? "评论 = 下一期选题" : pack.core)}</span>
         <i></i>
       </footer>
     </section>`;
@@ -1373,11 +1375,12 @@ export function renderXhsCarouselHtml(pack, plan = {}) {
   .content{flex:1;display:flex;flex-direction:column;justify-content:center;gap:32px}.source{margin:0;color:#6b7280;font-size:30px;line-height:1.5;font-weight:800}.content h1{margin:0;max-width:820px;font-size:88px;line-height:1.12;font-weight:1000;letter-spacing:0}.body{margin:0;max-width:820px;font-size:42px;line-height:1.58;font-weight:700;color:#374151;word-break:break-word}.note{margin:0;max-width:820px;padding:26px 30px;border-left:10px solid #ef4444;background:rgba(255,255,255,.6);font-size:34px;line-height:1.5;font-weight:800;color:#374151}.bullets{display:grid;gap:20px;margin:8px 0 0;padding:0;list-style:none;max-width:870px}.bullets li{min-height:76px;padding:18px 28px;border:4px solid #111827;border-radius:8px;background:#fffdf8;box-shadow:12px 12px 0 #111827;font-size:36px;line-height:1.35;font-weight:900;word-break:break-word}
   footer{min-height:58px;display:flex;justify-content:space-between;align-items:flex-end;color:#6b7280;font-size:28px;line-height:1.4;font-weight:800}footer i{width:160px;height:12px;border-radius:999px;background:#111827}
   .heroBlock h1{font-size:96px;max-width:760px}.heroBlock .body{font-size:44px}.editorialBlock{display:grid;grid-template-columns:170px 1fr;grid-template-rows:auto auto;align-content:center}.chapterNo{grid-row:1 / span 2;font-size:150px;line-height:.85;font-weight:1000;color:#ef4444}.quoteBox{grid-column:2;margin-top:8px;padding:30px;border:4px solid #111827;background:#fffdf8;box-shadow:12px 12px 0 #111827;font-size:34px;line-height:1.46;font-weight:900;color:#111827}.dashboardBlock{justify-content:center}.metricGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.metricGrid article{min-height:180px;padding:22px;border:4px solid #111827;background:#fffdf8;box-shadow:10px 10px 0 #111827}.metricGrid small{display:block;color:#ef4444;font-size:24px;line-height:1.3;font-weight:900}.metricGrid b{display:block;margin-top:18px;font-size:34px;line-height:1.25}.metricGrid i{display:block;margin-top:22px;height:12px;border-radius:99px;background:#ef4444}.timelineBlock{justify-content:center}.timelineList{display:grid;gap:22px;margin:8px 0 0;padding:0;list-style:none}.timelineList li{display:grid;grid-template-columns:92px 1fr;align-items:center;min-height:118px;border-top:4px solid #111827}.timelineList b{color:#ef4444;font-size:58px;line-height:1}.timelineList span{font-size:38px;line-height:1.35;font-weight:950}.contrast::after{border-radius:0;transform:rotate(8deg);border-color:rgba(17,24,39,.08)}.splitGrid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.splitGrid article{min-height:210px;padding:28px;border:4px solid #111827;background:#fffdf8;box-shadow:12px 12px 0 #111827}.splitGrid small{display:block;font-size:28px;color:#ef4444;font-weight:950}.splitGrid b{display:block;margin-top:20px;font-size:42px;line-height:1.25}.cta{background:#111827;color:#f9fafb}.cta::before{background-image:linear-gradient(rgba(249,250,251,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(249,250,251,.05) 1px,transparent 1px)}.cta::after{border-color:rgba(250,204,21,.18)}.cta .topline{border-color:#f9fafb}.cta .body,.cta .source, .cta footer{color:#d1d5db}.debateBlock h1{font-size:96px}.voteRow{display:grid;grid-template-columns:1fr 1fr;gap:22px}.voteRow span{min-height:110px;padding:26px 30px;border:4px solid #f9fafb;background:#facc15;color:#111827;box-shadow:12px 12px 0 #f9fafb;font-size:38px;line-height:1.3;font-weight:1000}
-  </style></head><body><main class="xhs-deck">${renderedCards}</main></body></html>`;
+  .business-card h1{font-size:72px;line-height:1.16;max-width:100%;text-wrap:balance;overflow-wrap:anywhere}.business-card .heroBlock h1{font-size:80px}.business-card .metricGrid{grid-template-columns:1fr}.business-card .metricGrid article{min-height:0;padding:18px 22px}.business-card .metricGrid b{margin-top:10px;line-height:1.4}.business-card .voteRow{grid-template-columns:1fr}.business-card .voteRow span{line-height:1.4}.business-card .splitGrid b{line-height:1.4}.business-card .timelineList span{line-height:1.4}</style></head><body><main class="xhs-deck">${renderedCards}</main></body></html>`;
 }
 
 function renderProductSceneCarouselHtml(pack, plan = {}, template = "product-real-carousel") {
   const size = visualSize("3:4");
+  const cardText = (value, max) => pack.businessAction ? String(value || "") : compactChinese(value, max);
   const assets = evidenceAssets(pack);
   const sourceCards = Array.isArray(pack.cards) ? pack.cards : [];
   const cards = Array.from({ length: 6 }, (_, index) => {
@@ -1391,14 +1394,14 @@ function renderProductSceneCarouselHtml(pack, plan = {}, template = "product-rea
       "个人工具先克制入口，减少整理负担，才可能长期用下去。",
       "下期继续拆 AI 辅助整理：帮人收束，而不是替人胡写。"
     ];
-    const body = compactChinese(card.body || fallbackBodies[index], index === 0 ? 52 : 66);
+    const body = cardText(card.body || fallbackBodies[index], index === 0 ? 52 : 66);
     return {
       kind: card.tone || "product",
       layout: index === 0 ? "cover" : index === 5 ? "wrap" : ["editorial", "dashboard", "timeline", "contrast"][index - 1] || "editorial",
       kicker: card.eyebrow || (template === "process-story-carousel" ? "操作流程" : "产品实景"),
-      title: compactChinese(card.headline || fallbackTitles[index], index === 0 ? 18 : 20),
+      title: cardText(card.headline || fallbackTitles[index], index === 0 ? 18 : 20),
       body,
-      bullets: (card.points || splitLines(card.body || body, 3)).map((item) => compactChinese(item, 22)).filter(Boolean),
+      bullets: (card.points || splitLines(card.body || body, 3)).map((item) => cardText(item, 22)).filter(Boolean),
       page: padNumber(index)
     };
   });
@@ -1407,21 +1410,21 @@ function renderProductSceneCarouselHtml(pack, plan = {}, template = "product-rea
     const shot = productShotHtml(assets[index] || assets[0], `${pack.core || "Product"} ${index + 1}`);
     const bulletItems = (card.bullets?.length ? card.bullets : splitLines(card.body, 3)).slice(0, 2);
     const bullets = bulletItems
-      .map((bullet, bulletIndex) => `<li><b>${padNumber(bulletIndex)}</b><span>${escapeHtml(compactChinese(bullet, 20))}</span></li>`).join("");
-    const body = compactChinese(card.body || card.note || pack.claims?.[index % (pack.claims?.length || 1)] || "", index === 0 ? 58 : 74);
+      .map((bullet, bulletIndex) => `<li><b>${padNumber(bulletIndex)}</b><span>${escapeHtml(cardText(bullet, 20))}</span></li>`).join("");
+    const body = cardText(card.body || card.note || pack.claims?.[index % (pack.claims?.length || 1)] || "", index === 0 ? 58 : 74);
     const layout = index === 0 ? "cover" : index === cards.length - 1 ? "wrap" : card.layout;
     return `<section class="xhs-card product-card layout-${layout}" data-recipe="product-real-scene" data-page="${index + 1}">
       <header class="topline"><span>${escapeHtml(card.kicker || (isProcess ? "操作流程" : "产品实景"))}</span><b>${card.page}</b></header>
       <main class="content">
         <section class="copy">
-          <p class="source">${escapeHtml(isProcess ? "PROCESS STORYBOARD" : "REAL PRODUCT SCENE")}</p>
-          <h1>${escapeHtml(compactChinese(card.title, index === 0 ? 16 : 18))}</h1>
+          <p class="source">${escapeHtml(pack.businessAction ? `模板参考：${plan.templateSources?.[0]?.label || "产品实景排版"}` : isProcess ? "PROCESS STORYBOARD" : "REAL PRODUCT SCENE")}</p>
+          <h1>${escapeHtml(cardText(card.title, index === 0 ? 16 : 18))}</h1>
           <p class="body">${escapeHtml(body)}</p>
         </section>
         ${shot}
         <ol class="stepList">${bullets}</ol>
       </main>
-      <footer><span>${escapeHtml(index === 0 ? "截图说话，不讲玄学" : index === cards.length - 1 ? "评论区继续拆功能" : compactChinese(pack.core, 18))}</span><i></i></footer>
+      <footer><span>${escapeHtml(pack.businessAction ? (index === cards.length - 1 ? pack.businessAction.label : "核对产品信息与服务条款") : index === 0 ? "截图说话，不讲玄学" : index === cards.length - 1 ? "评论区继续拆功能" : cardText(pack.core, 18))}</span><i></i></footer>
     </section>`;
   }).join("");
 
@@ -1711,7 +1714,8 @@ export function videoScenesFromPack(pack) {
       time: frame.time || "",
       shot: compactChinese(frame.shot || sceneKindLabel(kind), 12),
       title,
-      body: voice
+      body: voice,
+      actionLabel: kind === "cta" ? pack.businessAction?.label : undefined
     };
 
     if (kind === "hook") {
@@ -1735,7 +1739,7 @@ export function videoScenesFromPack(pack) {
     if (kind === "cta") {
       const recap = spine.slice(0, last)
         .map((item) => compactChinese(item.overlay || "", 14)).filter(Boolean).slice(0, 3);
-      return { ...base, recap, prompt: compactChinese(pack.discussionPrompt || voice || "评论区聊聊你的做法。", 40) };
+      return { ...base, recap, prompt: compactChinese(pack.businessAction?.text || pack.discussionPrompt || voice || "评论区聊聊你的做法。", 40) };
     }
     return { ...base, chips: clausePoints(voice, 3, 18) };
   });
@@ -1752,7 +1756,7 @@ function motionTitleClass(text) {
 // (agenda / comparison / numbered steps / key-point chips / recap). Every element carries a
 // data-reveal index so the timeline can stagger them in for real motion.
 function renderMotionSceneBody(scene) {
-  const heading = `<div class="kick" data-reveal="0">${escapeHtml(sceneKindLabel(scene.kind))}</div>`
+  const heading = `<div class="kick" data-reveal="0">${escapeHtml(scene.actionLabel || sceneKindLabel(scene.kind))}</div>`
     + `<h1 class="h ${motionTitleClass(scene.title)}" data-reveal="1">${escapeHtml(scene.title)}</h1>`;
 
   if (scene.kind === "hook") {

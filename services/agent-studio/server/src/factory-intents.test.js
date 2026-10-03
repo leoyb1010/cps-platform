@@ -69,3 +69,17 @@ describe('ordinary product brief fidelity',()=>{
   expect(result.ok).toBe(true);expect(result.result.copy.body).toContain('可回收纸材');expect(result.result.copy.body).toContain('每本24元');expect(result.result.copy.body).not.toContain('先分任务再选工具');expect(result.result.copy.body.trim().endsWith(FACTORY_INTENTS[intent].action)).toBe(true);expect(result.job.input_json.prompt).toBe(prompt);
  });
 });
+describe('business call to action reaches rendered carousel and video templates',()=>{
+ it.each(Object.keys(FACTORY_INTENTS))('%s uses its goal in the actual footer and video CTA, not a generic comment solicitation',async intent=>{
+  const {renderXhsCarouselHtml,videoScenesFromPack,renderMotionHtml,buildVisualPlan}=await import('../../src/lib/visualEngine.js');
+  const pack=buildPack('虚构青禾会员，年费99元。','howto','balanced',1,'',{businessGoal:FACTORY_INTENTS[intent],businessBrief:'虚构青禾会员，年费99元。',businessIntent:intent});
+  for(const template of ['editorial-carousel','product-real-carousel','process-story-carousel']){
+   const html=renderXhsCarouselHtml(pack,{templates:{'xhs-carousel':template}});expect(html).toContain(pack.businessAction.label);expect(html).not.toContain('评论 = 下一期选题');expect(html).not.toContain('评论区继续拆功能');expect(html).not.toContain('你站哪边');expect(html).not.toContain('…');expect(html).toContain(FACTORY_INTENTS[intent].action);
+  }
+  const scenes=videoScenesFromPack(pack);expect(scenes.at(-1).actionLabel).toBe(pack.businessAction.label);expect(scenes.at(-1).prompt).toContain(pack.businessAction.text.slice(0,30));const html=renderMotionHtml(pack,buildVisualPlan(pack,'douyin','motion-video',{ratio:'9:16',duration:12}));expect(html).not.toContain('>评论区<');
+ });
+});
+it('membership carousel export contains full decision sentences without unrelated fallback opinions or ellipses',async()=>{
+ const {renderXhsCarouselHtml}=await import('../../src/lib/visualEngine.js');const brief='虚构青禾读书会员，每月三本科普书摘要，年费99元。面向已订阅客户，自主决定是否续费，不承诺额外优惠。';const pack=buildPack(brief,'howto','balanced',1,'',{businessGoal:FACTORY_INTENTS.retain,businessBrief:brief,businessIntent:'retain'});for (const template of ['editorial-carousel','product-real-carousel','process-story-carousel']) { const html=renderXhsCarouselHtml(pack,{templates:{'xhs-carousel':template}});
+ expect(html).not.toContain('…');expect(html).not.toContain('被热榜牵着走');expect(html).not.toContain('comment prompt');expect(html).toContain('模板参考：');for(const step of pack.playbook)expect(html).toContain(step);expect(html).toContain(FACTORY_INTENTS.retain.action);expect(html).toContain('虚构青禾读书会员'); }
+});

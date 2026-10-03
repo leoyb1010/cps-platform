@@ -30,3 +30,9 @@ it('shows actual prompt-only and storyboard outputs without claiming finished me
  calls.jobs.mockResolvedValue({jobs:[{...job,id:'image',asset_type:'image',output_json:{type:'image',imagePrompt:'Actual image prompt',images:[],pack:{platformCopy:{xhs:{body:'Generic copy must not stand in for image'}}}}},{...job,id:'video',asset_type:'video',output_json:{type:'video',storyboard:[{voice:'Actual renewal storyboard'}]}}]})
  await render();expect(host.textContent).toContain('Actual image prompt');expect(host.textContent).toContain('尚未生成可用图片');expect(host.textContent).toContain('Actual renewal storyboard');expect(host.textContent).toContain('未生成最终视频文件');expect(host.textContent).not.toContain('Generic copy must not stand in for image')
 })
+it('a matching title already present as the first body line is displayed once, without altering body content',async()=>{
+ calls.jobs.mockResolvedValue({jobs:[{...job,output_json:{copy:{title:'Synthetic renewal heading',body:'Synthetic renewal heading\n\nOriginal membership facts and renewal action'}}}]});await render();const text=host.querySelector('[data-testid=generated-copy]')!.textContent!;expect(text.match(/Synthetic renewal heading/g)).toHaveLength(1);expect(text).toContain('Original membership facts and renewal action')
+})
+it('a title-only legacy result remains unavailable without breaking other history rows',async()=>{
+ calls.jobs.mockResolvedValue({jobs:[{...job,id:'incomplete',output_json:{copy:{title:'Title without body'}}},job]});await render();expect(host.querySelectorAll('article')).toHaveLength(2);expect(host.textContent).toContain('当前结果没有可用文案');expect(host.textContent).toContain('既有客户续费提示')
+})

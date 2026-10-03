@@ -803,6 +803,7 @@ export function buildPack(topic, direction = "insight", tone = "balanced", gener
     id: `${Date.now()}-${seed}`,
     version: creative ? "0.4-model" : "0.3-local",
     core,
+    ...(businessCopy ? { businessAction: { intent: options.businessIntent, text: sanitizePublicCopy(options.businessGoal.action), label: ({ educate: "了解后再选择", sell: "核对后再购买", convert: "核对后再购买", retain: "核对后自主续费", promote: "确认条件后参与", explain: "按步骤验证", announce: "查看更新说明", summarize: "核对关键结论", grow: "分享真实经验" })[options.businessIntent] || "了解后再决定" } } : {}),
     direction: dir,
     domain: dom,
     tone,
