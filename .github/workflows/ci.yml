@@ -127,7 +127,6 @@ jobs:
 
   role-journeys:
     name: Additional role rounds (real API + browser)
-    if: github.ref == 'refs/heads/codex/audit-cps-platform-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -230,7 +229,6 @@ jobs:
 
   studio:
     name: Agent Studio isolated tests video and UI
-    if: github.ref == 'refs/heads/codex/audit-cps-platform-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:

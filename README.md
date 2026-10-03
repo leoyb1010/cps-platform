@@ -182,6 +182,8 @@ docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d --build
 
 ## 🔐 安全与质量（Review）
 
+2026-10-03 合并前验证：前端 **83/83**、后端 **276/276**、Studio **86/86**（含真实 Chromium 渲染与出站请求拦截）、普通浏览器 **18/18**、真实 API 角色浏览器 **18/18** 全部通过。三套生产构建、前端 lint/typecheck、双 schema 同步、PostgreSQL schema 校验与依赖审计通过。真实角色与 Studio 门禁持续覆盖 main 和面向 main 的 PR。完整范围和部署迁移要求见 [本地验证与主仓更新记录](docs/audits/2026-10-03-main-integration.md)。
+
 经过**十轮对抗式安全与产品自审**（含多角色真实试用、独立子代理四路并行审计 + 多轮深度复测），累计定位并修复 **95+ 个真实缺陷** —— 每个都「可复现 → 修复 → 加测试 → 实跑验证」。
 
 **第十轮（v13）四路并行对抗审计（资金 / RBAC / CPS 支付 / 前端动线）**（详见 [`docs/CPS平台-商业化评审与打分-2026-08-07.md`](docs/)）：
@@ -344,7 +346,7 @@ cps-platform/
 │   ├── src/market src/portal  C 端超市（权威算价）· 客户门户 scoped 端点
 │   ├── src/common/            金额精度(decimal) · 幂等(资源绑定) · 指标 · 异常映射 · 健康
 │   └── prisma/                schema(sqlite) + schema.postgres(同步校验) + seed
-├── e2e/                       Playwright 端到端（9 用例）
+├── e2e/                       Playwright 端到端（18 个演示模式 + 18 个真实 API 角色用例）
 ├── scripts/screenshots.mjs    README 产品截图流水线
 ├── docker-compose.yml         一键起（+ .pg.yml 生产 PostgreSQL）
 └── docs/                      对接规范 · 规划文档归档 · 截图
@@ -356,6 +358,7 @@ cps-platform/
 
 | 阶段 | 内容 |
 |---|---|
+| **v16 · 会话、积分与多角色审计加固** | 登录/刷新/登出竞态与跨账号请求隔离；成员角色和租户范围一致性；任务级积分预留、扣减及失败释放；AIGC 余额、实际消耗与估算修订；Studio 渲染隔离、备份失败处理、响应式表单及错误反馈；正常动效下弹窗层级与手机抽屉宽度修复；真实角色与 Studio CI 门禁纳入 main。生产发布前需应用 RefreshToken.tokenVersion 增量迁移并处理 Studio 在途任务，详见验证记录 |
 | **v15 · 演示口令与门户归属加固** | `SEED_DEMO=true` 时启动流程即使已有数据库也会幂等重跑 seed，确保演示账号统一口令可同步更新；seed 失败 fail-fast；代理领取投放时强制校验 `productId` 与品牌归属及 `live` 状态；新增跨品牌领取 E2E 对抗用例；修复后端 `qs` 中危依赖告警 |
 | **v14 · 公网部署路径加固** | 平台私钥 `\n` 归一化 + 启动期 `createPrivateKey` 真解析（`youdao/platform-key.ts`，8 项单测含反向验证）；`prepare-deploy-env.sh` 默认 `SEED_DEMO=false`、开启时生成随机 `SEED_DEMO_PASSWORD`，生产 seed 强制校验；CI 三红修复（docker-smoke 补 `METRICS_TOKEN`、`.page-in` 纳入 reduced-motion、前后端 `npm audit` 清零）；nginx `CF-Connecting-IP` 信任前提写成硬约束；README 补 `WEB_PORT`/回环绑定/Cloudflare Tunnel 部署段 |
 | **v12 · 资金并发与安全清零** | 修复退款/准备金 CAS 竞争、补扣/解约状态机、原账期绑定；refresh 原子轮换、RSA DB nonce、IPv6/DNS 重绑定 SSRF；real 模式分页/RBAC/readiness；ESLint 转阻断；两轮对抗 findings=0 |
